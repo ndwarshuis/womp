@@ -32,12 +32,51 @@ library
       Paths_carbon
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  default-extensions:
+      OverloadedStrings
+      FlexibleContexts
+      FlexibleInstances
+      InstanceSigs
+      MultiParamTypeClasses
+      EmptyCase
+      LambdaCase
+      MultiWayIf
+      NamedFieldPuns
+      TupleSections
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveLift
+      DeriveTraversable
+      DerivingStrategies
+      DeriveDataTypeable
+      EmptyDataDecls
+      PartialTypeSignatures
+      GeneralizedNewtypeDeriving
+      StandaloneDeriving
+      BangPatterns
+      TypeOperators
+      ScopedTypeVariables
+      TypeApplications
+      ConstraintKinds
+      RankNTypes
+      GADTs
+      DefaultSignatures
+      NoImplicitPrelude
+      FunctionalDependencies
+      DataKinds
+      TypeFamilies
+      BinaryLiterals
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Wpartial-fields -Werror -O2
   build-depends:
       base >=4.7 && <5
+    , optparse-applicative
+    , rio >=0.1.21.0
+    , text >=1.2.4.1
   default-language: Haskell2010
 
-executable carbon-exe
+executable carbon
   main-is: Main.hs
   other-modules:
       Paths_carbon
@@ -45,23 +84,47 @@ executable carbon-exe
       Paths_carbon
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  default-extensions:
+      OverloadedStrings
+      FlexibleContexts
+      FlexibleInstances
+      InstanceSigs
+      MultiParamTypeClasses
+      EmptyCase
+      LambdaCase
+      MultiWayIf
+      NamedFieldPuns
+      TupleSections
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveLift
+      DeriveTraversable
+      DerivingStrategies
+      DeriveDataTypeable
+      EmptyDataDecls
+      PartialTypeSignatures
+      GeneralizedNewtypeDeriving
+      StandaloneDeriving
+      BangPatterns
+      TypeOperators
+      ScopedTypeVariables
+      TypeApplications
+      ConstraintKinds
+      RankNTypes
+      GADTs
+      DefaultSignatures
+      NoImplicitPrelude
+      FunctionalDependencies
+      DataKinds
+      TypeFamilies
+      BinaryLiterals
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Wpartial-fields -Werror -O2 -threaded
   build-depends:
       base >=4.7 && <5
     , carbon
-  default-language: Haskell2010
-
-test-suite carbon-test
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  other-modules:
-      Paths_carbon
-  autogen-modules:
-      Paths_carbon
-  hs-source-dirs:
-      test
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      base >=4.7 && <5
-    , carbon
+    , optparse-applicative
+    , rio >=0.1.21.0
+    , text >=1.2.4.1
   default-language: Haskell2010

@@ -1,6 +1,9 @@
-module Lib
-    ( someFunc
-    ) where
+module Lib (
+    someFunc,
+) where
+
+import Data.Text.IO as TI
+import RIO
 
 someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+someFunc = TI.putStrLn "someFunc"
