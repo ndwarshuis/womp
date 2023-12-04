@@ -61,6 +61,8 @@ dependencies:
 - rio >= 0.1.21.0
 - text >= 1.2.4.1
 - optparse-applicative
+- unliftio
+- req
 
 ghc-options:
 - -Wall
