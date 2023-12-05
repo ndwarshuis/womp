@@ -2,11 +2,16 @@ module Main (main) where
 
 -- import Lib
 
+import qualified Data.Aeson as A
 import qualified Data.Text.IO as TI
+import qualified Dhall as D
+import Internal.Types.Dhall
+import Internal.Types.FDC
 import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
 import RIO
+import qualified RIO.ByteString as B
 import RIO.FilePath
 import qualified RIO.Text as T
 import UnliftIO.Directory
@@ -92,7 +97,14 @@ dump =
     <*> switch (long "force" <> short 'f' <> help "force retrieve")
 
 export :: Parser ExportOptions
-export = undefined
+export =
+  ExportOptions
+    <$> strOption
+      ( long "config"
+          <> short 'c'
+          <> metavar "CONFIG"
+          <> help "path to config with schedules and meals"
+      )
 
 summarize :: Parser SummarizeOptions
 summarize = undefined
@@ -107,8 +119,8 @@ parse (Options c s) = do
     runRIO env $ case s of
       Fetch o -> runFetch c o
       Dump o -> runDump c o
+      Export o -> runExport c o
 
--- Export o -> runExport c o
 -- Summarize o -> runSummarize c o
 
 data Options = Options CommonOptions SubCommand
@@ -133,7 +145,7 @@ data FetchOptions = FetchOptions {foID :: !FID, foForce :: !Bool}
 
 data DumpOptions = DumpOptions {doID :: !FID, doForce :: !Bool}
 
-data ExportOptions
+data ExportOptions = ExportOptions {eoConfig :: !FilePath}
 
 data SummarizeOptions
 
@@ -168,8 +180,30 @@ runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
       j <- runFetch_ doForce doID k
       liftIO $ TI.putStr j
 
--- runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
--- runExport = undefined
+runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
+runExport co ExportOptions {eoConfig} = do
+  sch <- readConfig eoConfig
+  _ <- concat <$> mapM (scheduleToTable co) sch
+  return ()
+
+scheduleToTable :: MonadUnliftIO m => CommonOptions -> Schedule -> m [RowNutrient]
+scheduleToTable co Schedule {schMeal = Meal {mlIngs}} = do
+  mapM_ (ingredientToTable co) mlIngs
+  return []
+
+ingredientToTable :: MonadUnliftIO m => CommonOptions -> Ingredient -> m [RowNutrient]
+ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
+  res <- getStoreAPIKey coKey
+  case res of
+    -- TODO throw a real error here
+    Nothing -> undefined
+    Just k -> do
+      j <- runFetch_ True (fromIntegral ingFID) k
+      let p = A.decodeStrict $ encodeUtf8 j
+      B.putStr $ encodeUtf8 $ tshow (p :: Maybe AbridgedFoodItem)
+      return []
+
+data RowNutrient
 
 -- runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
 -- runSummarize = undefined
@@ -204,7 +238,7 @@ getStoreAPIKey k = do
 apiKeyFile :: FilePath
 apiKeyFile = "apikey"
 
-readAndCache :: MonadUnliftIO m => FilePath -> (m (Maybe T.Text)) -> m (Maybe T.Text)
+readAndCache :: MonadUnliftIO m => FilePath -> m (Maybe T.Text) -> m (Maybe T.Text)
 readAndCache p x = do
   e <- doesFileExist p
   if e then Just <$> readFileUtf8 p else go =<< x
@@ -214,3 +248,13 @@ readAndCache p x = do
       createDirectoryIfMissing True $ takeDirectory p
       writeFileUtf8 p t
       return $ Just t
+
+readConfig
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => FilePath
+  -> m [Schedule]
+readConfig f = do
+  logInfo "boom"
+  r <- liftIO $ D.inputFile D.auto f
+  logInfo "poop"
+  return r

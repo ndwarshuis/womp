@@ -3,7 +3,20 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    commit: ffd1ba94ef39b875aba8adc1c498f28aa02e36e4
+    git: https://github.com/dhall-lang/dhall-haskell.git
+    name: dhall
+    pantry-tree:
+      sha256: 5f5d242d7ff9d4976fceafa8926d190681f91b885fb65e7fd835e374f3a93807
+      size: 402374
+    subdir: dhall
+    version: 1.41.2
+  original:
+    commit: ffd1ba94ef39b875aba8adc1c498f28aa02e36e4
+    git: https://github.com/dhall-lang/dhall-haskell.git
+    subdir: dhall
 snapshots:
 - completed:
     sha256: 428ec8d5ce932190d3cbe266b9eb3c175cd81e984babf876b64019e2cbe4ea68

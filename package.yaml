@@ -63,6 +63,9 @@ dependencies:
 - optparse-applicative
 - unliftio
 - req
+- dhall
+- template-haskell
+- aeson
 
 ghc-options:
 - -Wall
