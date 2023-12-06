@@ -199,8 +199,8 @@ ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
     Nothing -> undefined
     Just k -> do
       j <- runFetch_ True (fromIntegral ingFID) k
-      let p = A.decodeStrict $ encodeUtf8 j
-      B.putStr $ encodeUtf8 $ tshow (p :: Maybe AbridgedFoodItem)
+      let p = A.eitherDecodeStrict $ encodeUtf8 j
+      B.putStr $ encodeUtf8 $ tshow (p :: Either String FoodItem)
       return []
 
 data RowNutrient

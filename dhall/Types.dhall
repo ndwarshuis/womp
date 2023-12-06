@@ -33,6 +33,8 @@ let RepeatPat =
           Optional Natural
       }
 
+let Btw = { btStart : Natural, btEnd : Natural }
+
 let MDYPat =
     {-
     Means to match either a year, month, or day in a date (the matched component
@@ -50,7 +52,7 @@ let MDYPat =
       | Repeat : RepeatPat
       | After : Natural
       | Before : Natural
-      | Between : { _between1 : Natural, _between2 : Natural }
+      | Between : Btw
       >
 
 let Weekday =
@@ -92,6 +94,7 @@ let Schedule =
       }
 
 in  { Modification
+    , Btw
     , Ingredient
     , Meal
     , RepeatPat
