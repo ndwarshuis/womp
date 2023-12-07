@@ -198,7 +198,7 @@ ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
     -- TODO throw a real error here
     Nothing -> undefined
     Just k -> do
-      j <- runFetch_ True (fromIntegral ingFID) k
+      j <- runFetch_ False (fromIntegral ingFID) k
       let p = A.eitherDecodeStrict $ encodeUtf8 j
       B.putStr $ encodeUtf8 $ tshow (p :: Either String FoodItem)
       return []

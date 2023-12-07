@@ -93,7 +93,8 @@ data FoundationFoodItem = FoundationFoodItem
   , ffiFoodCategory :: Maybe FoodCategory
   , ffiFoodComponents :: Maybe [FoodComponent]
   , ffiFoodNutrients :: Maybe [FoodNutrient]
-  , ffiFoodPortion :: Maybe [FoodPortion]
+  , ffiFoodAttributes :: Maybe [FoodAttribute]
+  , ffiFoodPortions :: Maybe [FoodPortion]
   , ffiInputFoods :: Maybe [InputFoodFoundation]
   , ffiNutrientConversionFactors :: Maybe [NutrientConversionFactor]
   }
@@ -103,7 +104,7 @@ instance FromJSON FoundationFoodItem where
   parseJSON = recordParseJSON "ffi"
 
 data FoodCategory = FoodCategory
-  { fcID :: Maybe Int
+  { fcId :: Maybe Int
   , fcCode :: Maybe T.Text
   , fcDescription :: Maybe T.Text
   }
@@ -122,11 +123,35 @@ data FoodComponent = FoodComponent
   deriving (Show, Generic, FromJSON)
 
 data FoodPortion = FoodPortion
-  deriving (Show, Generic, FromJSON)
+  { fpId :: Maybe Int
+  , fpAmount :: Maybe Double
+  , fpDataPoints :: Maybe Int
+  , fpGramWeight :: Maybe Double
+  , fpMinYearAcquired :: Maybe Int
+  , fpMinDateAcquired :: Maybe T.Text
+  , fpModifier :: Maybe T.Text
+  , fpPortionDescription :: Maybe T.Text
+  , fpSequenceNumber :: Maybe Int
+  , fpMeasureUnit :: Maybe MeasureUnit
+  }
+  deriving (Show, Generic)
+
+instance FromJSON FoodPortion where
+  parseJSON = recordParseJSON "fp"
+
+data MeasureUnit = MeausureUnit
+  { muId :: Maybe Int
+  , muAbbreviation :: Maybe T.Text
+  , muName :: Maybe T.Text
+  }
+  deriving (Show, Generic)
+
+instance FromJSON MeasureUnit where
+  parseJSON = recordParseJSON "mu"
 
 data InputFoodFoundation = InputFoodFoundation
-  { iffID :: Maybe Int
-  , iffDescription :: Maybe T.Text
+  { iffId :: Maybe Int
+  , iffFoodDescription :: Maybe T.Text
   , iffInputFood :: Maybe SampleFoodItem
   }
   deriving (Show, Generic)
@@ -148,20 +173,108 @@ instance FromJSON SampleFoodItem where
   parseJSON = recordParseJSON "sfi"
 
 data NutrientConversionFactor = NutrientConversionFactor
-  deriving (Show, Generic, FromJSON)
+  { ncfType :: Maybe T.Text
+  , ncfValue :: Maybe Double
+  }
+  deriving (Show, Generic)
 
+instance FromJSON NutrientConversionFactor where
+  parseJSON = recordParseJSON "ncf"
+
+-- NOTE all of these are maybe (unlike what the doc says)
 data FoodNutrient = FoodNutrient
-  { fnNumber :: Maybe Int
-  , fnName :: Maybe T.Text
+  { fnId :: Maybe Int
   , fnAmount :: Maybe Double
-  , fnUnitName :: Maybe T.Text
-  , fnDerivationCode :: Maybe T.Text
-  , fnDerivationDescription :: Maybe T.Text
+  , fnDataPoints :: Maybe Integer
+  , fnMin :: Maybe Double
+  , fnMax :: Maybe Double
+  , fnMedian :: Maybe Double
+  , fnType :: Maybe T.Text
+  , fnNutrient :: Maybe Nutrient
+  , -- NOTE not documented
+    fnMinYearAcquired :: Maybe Int
+  , -- NOTE not documented
+    fnLoq :: Maybe Double
+  , fnFoodNutrientDerivation :: Maybe NutrientDerivation
+  , -- NOTE this is not documented as an array
+    fnNutrientAnalysisDetails :: Maybe [NutrientAnalysisDetails]
   }
   deriving (Show, Generic)
 
 instance FromJSON FoodNutrient where
   parseJSON = recordParseJSON "fn"
+
+data NutrientDerivation = NutrientDerivation
+  { ndId :: Maybe Int
+  , ndCode :: Maybe T.Text
+  , ndDescription :: Maybe T.Text
+  , ndFoodNutrientSource :: Maybe FoodNutrientSource
+  }
+  deriving (Show, Generic)
+
+instance FromJSON NutrientDerivation where
+  parseJSON = recordParseJSON "nd"
+
+data Nutrient = Nutrient
+  { nId :: Maybe Int
+  , nNumber :: Maybe T.Text
+  , nName :: Maybe T.Text
+  , nRank :: Maybe Int
+  , nUnitName :: Maybe T.Text
+  }
+  deriving (Show, Generic)
+
+instance FromJSON Nutrient where
+  parseJSON = recordParseJSON "n"
+
+data FoodNutrientDerivation = FoodNutrientDerivation
+  { fndId :: Maybe Int
+  , fndCode :: Maybe T.Text
+  , fndDescription :: Maybe T.Text
+  , fndFoodNutientSource :: Maybe FoodNutrientSource
+  }
+  deriving (Show, Generic)
+
+instance FromJSON FoodNutrientDerivation where
+  parseJSON = recordParseJSON "fnd"
+
+data FoodNutrientSource = FoodNutrientSource
+  { fnsId :: Maybe Int
+  , fnsCode :: Maybe T.Text
+  , fnsDescription :: Maybe T.Text
+  }
+  deriving (Show, Generic)
+
+instance FromJSON FoodNutrientSource where
+  parseJSON = recordParseJSON "fns"
+
+data NutrientAnalysisDetails = NutrientAnalysisDetails
+  { nadSubSampleId :: Maybe Int
+  , nadAmount :: Maybe Double
+  , nadNutrientId :: Maybe Int
+  , nadLabMethodDescription :: Maybe T.Text
+  , nadLabMethodOriginalDescription :: Maybe T.Text
+  , nadLabMethodLink :: Maybe T.Text
+  , nadLabMethodTechnique :: Maybe T.Text
+  , -- NOTE not documented
+    nadLoq :: Maybe Double
+  , nadNutrientAcquisitionDetails :: Maybe [NutrientAcquisitionDetails]
+  }
+  deriving (Show, Generic)
+
+instance FromJSON NutrientAnalysisDetails where
+  parseJSON = recordParseJSON "nad"
+
+data NutrientAcquisitionDetails = NutrientAcquisitionDetails
+  { ncdSampleUnitId :: Maybe Int
+  , ncdPurchaseDate :: Maybe T.Text
+  , ncdStoreCity :: Maybe T.Text
+  , ncdStoreState :: Maybe T.Text
+  }
+  deriving (Show, Generic)
+
+instance FromJSON NutrientAcquisitionDetails where
+  parseJSON = recordParseJSON "ncd"
 
 data FoodUpdateLog = FoodUpdateLog
   { fulFdcId :: Maybe Int
@@ -218,6 +331,7 @@ recordOptions :: String -> Options
 recordOptions x =
   defaultOptions
     { fieldLabelModifier = stripRecordPrefix x
+    , rejectUnknownFields = True
     }
 
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
