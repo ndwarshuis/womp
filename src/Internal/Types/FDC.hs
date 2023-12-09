@@ -159,6 +159,7 @@ data InputFoodFoundation = InputFoodFoundation
 instance FromJSON InputFoodFoundation where
   parseJSON = recordParseJSON "iff"
 
+-- TODO missing foodGroup, foodAttributeTypes, totalRefuse
 data SampleFoodItem = SampleFoodItem
   { sfiFdcId :: Int
   , sfiDataType :: T.Text
@@ -331,7 +332,7 @@ recordOptions :: String -> Options
 recordOptions x =
   defaultOptions
     { fieldLabelModifier = stripRecordPrefix x
-    , rejectUnknownFields = True
+    , rejectUnknownFields = False
     }
 
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a

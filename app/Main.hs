@@ -1,8 +1,8 @@
 module Main (main) where
 
--- import Lib
-
 import qualified Data.Aeson as A
+import qualified Data.ByteString.Char8 as BC
+import qualified Data.Csv as C
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Types.Dhall
@@ -11,7 +11,9 @@ import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
 import RIO
-import qualified RIO.ByteString as B
+-- import qualified RIO.ByteString as B
+import qualified RIO.ByteString.Lazy as BL
+import RIO.Char
 import RIO.FilePath
 import qualified RIO.Text as T
 import UnliftIO.Directory
@@ -183,27 +185,68 @@ runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
 runExport co ExportOptions {eoConfig} = do
   sch <- readConfig eoConfig
-  _ <- concat <$> mapM (scheduleToTable co) sch
+  rs <- concat <$> mapM (scheduleToTable co) sch
+  BL.putStr $ C.encodeWith tsvOptions rs
   return ()
 
-scheduleToTable :: MonadUnliftIO m => CommonOptions -> Schedule -> m [RowNutrient]
-scheduleToTable co Schedule {schMeal = Meal {mlIngs}} = do
-  mapM_ (ingredientToTable co) mlIngs
-  return []
+scheduleToTable
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => CommonOptions
+  -> Schedule
+  -> m [RowNutrient]
+scheduleToTable co Schedule {schMeal = Meal {mlIngs}} =
+  concat <$> mapM (ingredientToTable co) mlIngs
 
-ingredientToTable :: MonadUnliftIO m => CommonOptions -> Ingredient -> m [RowNutrient]
+-- TODO what do I want this table to look like?
+ingredientToTable
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => CommonOptions
+  -> Ingredient
+  -> m [RowNutrient]
 ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
   res <- getStoreAPIKey coKey
   case res of
     -- TODO throw a real error here
-    Nothing -> undefined
+    Nothing -> logError "well crap" >> return []
     Just k -> do
       j <- runFetch_ False (fromIntegral ingFID) k
       let p = A.eitherDecodeStrict $ encodeUtf8 j
-      B.putStr $ encodeUtf8 $ tshow (p :: Either String FoodItem)
-      return []
+      -- B.putStr $ encodeUtf8 $ tshow (p :: Either String FoodItem)
+      case p of
+        Right r -> return $ toRowNutrients r
+        Left e -> do
+          logError $ displayBytesUtf8 $ BC.pack e
+          return []
 
-data RowNutrient
+toRowNutrients :: FoodItem -> [RowNutrient]
+toRowNutrients (Foundation FoundationFoodItem {ffiFdcId, ffiDescription, ffiFoodNutrients}) =
+  go <$> fromMaybe [] ffiFoodNutrients
+  where
+    go FoodNutrient {fnNutrient, fnAmount} =
+      RowNutrient
+        { rnDesc = ffiDescription
+        , rnId = ffiFdcId
+        , rnNutrientId = nId =<< fnNutrient
+        , rnNutrientName = nName =<< fnNutrient
+        , rnUnit = nUnitName =<< fnNutrient
+        , rnAmount = fnAmount
+        }
+toRowNutrients (Branded BrandedFoodItem {bfiFdcId, bfiDescription, bfiFoodNutrients}) =
+  go <$> fromMaybe [] ffiFoodNutrients
+toRowNutrients (SRLegacy SRLegacyFoodItem {}) = []
+toRowNutrients (Survey SurveyFoodItem {}) = []
+
+data RowNutrient = RowNutrient
+  { rnId :: Int
+  , rnDesc :: T.Text
+  , rnNutrientName :: Maybe T.Text
+  , rnNutrientId :: Maybe Int
+  , rnAmount :: Maybe Double
+  , rnUnit :: Maybe T.Text
+  }
+  deriving (Generic, Show)
+
+instance C.ToRecord RowNutrient
 
 -- runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
 -- runSummarize = undefined
@@ -258,3 +301,10 @@ readConfig f = do
   r <- liftIO $ D.inputFile D.auto f
   logInfo "poop"
   return r
+
+tsvOptions :: C.EncodeOptions
+tsvOptions =
+  C.defaultEncodeOptions
+    { C.encDelimiter = fromIntegral (ord '\t')
+    , C.encIncludeHeader = True
+    }

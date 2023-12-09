@@ -66,6 +66,8 @@ dependencies:
 - dhall
 - template-haskell
 - aeson
+- cassava
+- bytestring
 
 ghc-options:
 - -Wall

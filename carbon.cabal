@@ -74,6 +74,8 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
+    , bytestring
+    , cassava
     , dhall
     , optparse-applicative
     , req
@@ -131,7 +133,9 @@ executable carbon
   build-depends:
       aeson
     , base >=4.7 && <5
+    , bytestring
     , carbon
+    , cassava
     , dhall
     , optparse-applicative
     , req
