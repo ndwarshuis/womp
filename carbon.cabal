@@ -80,8 +80,10 @@ library
     , optparse-applicative
     , req
     , rio >=0.1.21.0
+    , scientific
     , template-haskell
     , text >=1.2.4.1
+    , transformers
     , unliftio
   default-language: Haskell2010
 
@@ -140,7 +142,9 @@ executable carbon
     , optparse-applicative
     , req
     , rio >=0.1.21.0
+    , scientific
     , template-haskell
     , text >=1.2.4.1
+    , transformers
     , unliftio
   default-language: Haskell2010

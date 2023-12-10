@@ -4,6 +4,7 @@ module Internal.Types.FDC where
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Scientific
 import GHC.Generics
 import RIO
 import qualified RIO.Char as C
@@ -143,19 +144,19 @@ parseFoundationLegacyCommon v =
     <*> v .:? "nutrientConversionFactors"
 
 data LabelNutrient = LabelNutrient
-  { lnFat :: Maybe Double
-  , lnSaturatedFat :: Maybe Double
-  , lnTransFat :: Maybe Double
-  , lnCholesterol :: Maybe Double
-  , lnSodium :: Maybe Double
-  , lnCarbohydrates :: Maybe Double
-  , lnFiber :: Maybe Double
-  , lnSugars :: Maybe Double
-  , lnProtein :: Maybe Double
-  , lnCalcium :: Maybe Double
-  , lnIron :: Maybe Double
-  , lnPotassium :: Maybe Double
-  , lnCalories :: Maybe Double
+  { lnFat :: Maybe Scientific
+  , lnSaturatedFat :: Maybe Scientific
+  , lnTransFat :: Maybe Scientific
+  , lnCholesterol :: Maybe Scientific
+  , lnSodium :: Maybe Scientific
+  , lnCarbohydrates :: Maybe Scientific
+  , lnFiber :: Maybe Scientific
+  , lnSugars :: Maybe Scientific
+  , lnProtein :: Maybe Scientific
+  , lnCalcium :: Maybe Scientific
+  , lnIron :: Maybe Scientific
+  , lnPotassium :: Maybe Scientific
+  , lnCalories :: Maybe Scientific
   }
   deriving (Show, Generic)
 
@@ -177,9 +178,9 @@ data FoodComponent = FoodComponent
 
 data FoodPortion = FoodPortion
   { fpId :: Maybe Int
-  , fpAmount :: Maybe Double
+  , fpAmount :: Maybe Scientific
   , fpDataPoints :: Maybe Int
-  , fpGramWeight :: Maybe Double
+  , fpGramWeight :: Maybe Scientific
   , fpMinYearAcquired :: Maybe Int
   , fpMinDateAcquired :: Maybe T.Text
   , fpModifier :: Maybe T.Text
@@ -227,7 +228,7 @@ instance FromJSON SampleFoodItem where
 
 data NutrientConversionFactor = NutrientConversionFactor
   { ncfType :: Maybe T.Text
-  , ncfValue :: Maybe Double
+  , ncfValue :: Maybe Scientific
   }
   deriving (Show, Generic)
 
@@ -237,17 +238,17 @@ instance FromJSON NutrientConversionFactor where
 -- NOTE all of these are maybe (unlike what the doc says)
 data FoodNutrient = FoodNutrient
   { fnId :: Maybe Int
-  , fnAmount :: Maybe Double
+  , fnAmount :: Maybe Scientific
   , fnDataPoints :: Maybe Integer
-  , fnMin :: Maybe Double
-  , fnMax :: Maybe Double
-  , fnMedian :: Maybe Double
+  , fnMin :: Maybe Scientific
+  , fnMax :: Maybe Scientific
+  , fnMedian :: Maybe Scientific
   , fnType :: Maybe T.Text
   , fnNutrient :: Maybe Nutrient
   , -- NOTE not documented
     fnMinYearAcquired :: Maybe Int
   , -- NOTE not documented
-    fnLoq :: Maybe Double
+    fnLoq :: Maybe Scientific
   , fnFoodNutrientDerivation :: Maybe NutrientDerivation
   , -- NOTE this is not documented as an array
     fnNutrientAnalysisDetails :: Maybe [NutrientAnalysisDetails]
@@ -303,14 +304,14 @@ instance FromJSON FoodNutrientSource where
 
 data NutrientAnalysisDetails = NutrientAnalysisDetails
   { nadSubSampleId :: Maybe Int
-  , nadAmount :: Maybe Double
+  , nadAmount :: Maybe Scientific
   , nadNutrientId :: Maybe Int
   , nadLabMethodDescription :: Maybe T.Text
   , nadLabMethodOriginalDescription :: Maybe T.Text
   , nadLabMethodLink :: Maybe T.Text
   , nadLabMethodTechnique :: Maybe T.Text
   , -- NOTE not documented
-    nadLoq :: Maybe Double
+    nadLoq :: Maybe Scientific
   , nadNutrientAcquisitionDetails :: Maybe [NutrientAcquisitionDetails]
   }
   deriving (Show, Generic)
@@ -341,7 +342,7 @@ data FoodUpdateLog = FoodUpdateLog
   , fulIngredients :: Maybe T.Text
   , fulModifiedDate :: Maybe T.Text
   , fulPublicationDate :: Maybe T.Text
-  , fulServingSize :: Maybe Double
+  , fulServingSize :: Maybe Scientific
   , fulServingSizeUnit :: Maybe T.Text
   , fulBrandedFoodCategory :: Maybe T.Text
   , fulChanges :: Maybe T.Text

@@ -1,8 +1,10 @@
 module Main (main) where
 
+import Control.Monad.Trans.Except
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Csv as C
+import Data.Scientific
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Types.Dhall
@@ -15,6 +17,8 @@ import RIO
 import qualified RIO.ByteString.Lazy as BL
 import RIO.Char
 import RIO.FilePath
+import qualified RIO.List as L
+import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
 import UnliftIO.Directory
 
@@ -122,8 +126,7 @@ parse (Options c s) = do
       Fetch o -> runFetch c o
       Dump o -> runDump c o
       Export o -> runExport c o
-
--- Summarize o -> runSummarize c o
+      Summarize o -> runSummarize c o
 
 data Options = Options CommonOptions SubCommand
 
@@ -184,10 +187,14 @@ runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
 runExport co ExportOptions {eoConfig} = do
-  sch <- readConfig eoConfig
-  rs <- concat <$> mapM (scheduleToTable co) sch
+  rs <- readRowNutrients co eoConfig
   BL.putStr $ C.encodeWith tsvOptions rs
   return ()
+
+readRowNutrients :: CommonOptions -> FilePath -> RIO SimpleApp [RowNutrient]
+readRowNutrients co p = do
+  sch <- readConfig p
+  concat <$> mapM (scheduleToTable co) sch
 
 scheduleToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -246,15 +253,186 @@ data RowNutrient = RowNutrient
   , rnNutrientName :: Maybe T.Text
   , rnNutrientId :: Maybe Int
   , rnDerivation :: Maybe T.Text
-  , rnAmount :: Maybe Double
+  , rnAmount :: Maybe Scientific
   , rnUnit :: Maybe T.Text
+  }
+  deriving (Generic, Show)
+
+data RowSum = RowSum
+  { rsNutrientName :: T.Text
+  , rsNutrientId :: Int
+  , rsAmount :: Scientific
+  , rsUnit :: T.Text
   }
   deriving (Generic, Show)
 
 instance C.ToRecord RowNutrient
 
--- runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
--- runSummarize = undefined
+instance C.ToRecord RowSum
+
+data Dimensional = Dimensional
+  { dimValue :: Scientific
+  , dimUnit :: Unit
+  }
+  deriving (Show, Eq)
+
+data Unit = Unit
+  { unitName :: UnitName
+  , unitBase :: Prefix
+  }
+  deriving (Show, Eq)
+
+sumRowNutrients :: [RowNutrient] -> Except T.Text [RowSum]
+sumRowNutrients rs =
+  mapM go $
+    N.groupAllWith rsNutrientId $
+      [ RowSum
+        { rsAmount = v
+        , rsUnit = u
+        , rsNutrientName = n
+        , rsNutrientId = i
+        }
+      | x@RowNutrient
+          { rnAmount = Just v
+          , rnUnit = Just u
+          , rnNutrientId = Just i
+          , rnNutrientName = Just n
+          } <-
+          rs
+      ]
+  where
+    go ys@(y :| _) = do
+      ds <- mapM (\x -> parseDimensional (rsAmount x) (rsUnit x)) ys
+      d <- sumDimensionals ds
+      let (newValue, newUnit) = fromDimensional d
+      return $ y {rsAmount = newValue, rsUnit = newUnit}
+
+sumDimensionals :: NonEmpty Dimensional -> Except T.Text Dimensional
+sumDimensionals alld@(d :| ds) = do
+  d' <- foldM addDimensional d ds
+  return $
+    d'
+      { dimUnit =
+          Unit
+            { unitBase = majorityBase
+            , unitName = unitName $ dimUnit d
+            }
+      }
+  where
+    majorityBase = majority $ fmap (unitBase . dimUnit) alld
+
+majority :: Eq a => NonEmpty a -> a
+majority = fst . N.head . N.reverse . N.sortWith snd . count
+
+count :: Eq a => NonEmpty a -> NonEmpty (a, Int)
+count (x :| xs) =
+  let (xs', ys) = L.partition (x ==) xs
+      thisCount = (x, length xs')
+   in case N.nonEmpty ys of
+        Nothing -> thisCount :| []
+        Just ys' -> thisCount :| (N.toList (count ys'))
+
+addDimensional :: Dimensional -> Dimensional -> Except T.Text Dimensional
+addDimensional x@(Dimensional v0 u0) y@(Dimensional v1 _)
+  | uname x == uname y = return $ Dimensional (v0 + v1) u0
+  | otherwise =
+      throwE $
+        T.append
+          (T.unwords ["could not add", tshow x, "and", tshow y])
+          ": units don't match"
+  where
+    uname = unitName . dimUnit
+
+fromDimensional :: Dimensional -> (Scientific, T.Text)
+fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
+  (raisePower dimValue (-(prefixValue unitBase)), tunit u)
+
+tdimensional :: Dimensional -> T.Text
+tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
+
+raisePower :: Scientific -> Int -> Scientific
+raisePower s x = scientific (coefficient s) (base10Exponent s + x)
+
+tunit :: Unit -> Text
+tunit Unit {unitName, unitBase} = T.append n b
+  where
+    n = case unitName of
+      Calorie -> "cal"
+      Joule -> "J"
+      Gram -> "g"
+    b = case unitBase of
+      Nano -> "n"
+      Micro -> "µ"
+      Milli -> "m"
+      Centi -> "c"
+      Deci -> "d"
+      Unity -> ""
+      Deca -> "da"
+      Hecto -> "h"
+      Kilo -> "k"
+      Mega -> "M"
+      Giga -> "G"
+
+parseDimensional :: Scientific -> Text -> Except T.Text Dimensional
+parseDimensional n u = do
+  u' <- parseUnit u
+  let n' = raisePower n (prefixValue $ unitBase u')
+  return $ Dimensional n' u'
+
+parseUnit :: T.Text -> Except T.Text Unit
+parseUnit s = case T.splitAt 1 s of
+  ("G", rest) -> parseName Giga rest <|> def
+  ("M", rest) -> parseName Mega rest <|> def
+  ("k", rest) -> parseName Kilo rest <|> def
+  ("h", rest) -> parseName Hecto rest <|> def
+  ("d", rest) -> parseName Deci rest <|> def
+  ("c", rest) -> parseName Centi rest <|> def
+  ("m", rest) -> parseName Milli rest <|> def
+  ("µ", rest) -> parseName Micro rest <|> def
+  ("n", rest) -> parseName Nano rest <|> def
+  _ -> case T.splitAt 2 s of
+    ("da", rest) -> parseName Deca rest <|> def
+    _ -> def
+  where
+    def = parseName Unity s
+    parseName p r = case r of
+      "cal" -> return $ Unit Calorie p
+      "g" -> return $ Unit Gram p
+      "J" -> return $ Unit Joule p
+      _ -> throwE $ T.append "could not parse unit: " s
+
+data UnitName = Gram | Calorie | Joule
+  deriving (Show, Eq)
+
+prefixValue :: Prefix -> Int
+prefixValue Nano = -9
+prefixValue Micro = -6
+prefixValue Milli = -3
+prefixValue Centi = -2
+prefixValue Deci = -1
+prefixValue Unity = 0
+prefixValue Deca = 1
+prefixValue Hecto = 2
+prefixValue Kilo = 3
+prefixValue Mega = 6
+prefixValue Giga = 9
+
+data Prefix
+  = Nano
+  | Micro
+  | Milli
+  | Centi
+  | Deci
+  | Unity
+  | Deca
+  | Hecto
+  | Kilo
+  | Mega
+  | Giga
+  deriving (Show, Eq)
+
+runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
+runSummarize = sumRowNutrients
 
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "carbon"

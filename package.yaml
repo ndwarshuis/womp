@@ -68,6 +68,8 @@ dependencies:
 - aeson
 - cassava
 - bytestring
+- scientific
+- transformers
 
 ghc-options:
 - -Wall
