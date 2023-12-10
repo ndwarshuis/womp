@@ -113,7 +113,14 @@ export =
       )
 
 summarize :: Parser SummarizeOptions
-summarize = undefined
+summarize =
+  SummarizeOptions
+    <$> strOption
+      ( long "config"
+          <> short 'c'
+          <> metavar "CONFIG"
+          <> help "path to config with schedules and meals"
+      )
 
 parse :: MonadUnliftIO m => Options -> m ()
 parse (Options c s) = do
@@ -152,7 +159,7 @@ data DumpOptions = DumpOptions {doID :: !FID, doForce :: !Bool}
 
 data ExportOptions = ExportOptions {eoConfig :: !FilePath}
 
-data SummarizeOptions
+data SummarizeOptions = SummarizeOptions {soConfig :: !FilePath}
 
 runFetch :: CommonOptions -> FetchOptions -> RIO SimpleApp ()
 runFetch CommonOptions {coKey} FetchOptions {foID, foForce} = do
@@ -201,17 +208,17 @@ scheduleToTable
   => CommonOptions
   -> Schedule
   -> m [RowNutrient]
-scheduleToTable co Schedule {schMeal = Meal {mlIngs}} =
-  concat <$> mapM (ingredientToTable co) mlIngs
+scheduleToTable co Schedule {schMeal = Meal {mlIngs, mlName}} =
+  concat <$> mapM (ingredientToTable co mlName) mlIngs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
--- TODO what do I want this table to look like?
 ingredientToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
+  -> T.Text
   -> Ingredient
   -> m [RowNutrient]
-ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
+ingredientToTable CommonOptions {coKey} n Ingredient {ingFID, ingMass, ingModifications} = do
   res <- getStoreAPIKey coKey
   case res of
     -- TODO throw a real error here
@@ -219,15 +226,34 @@ ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
     Just k -> do
       j <- runFetch_ False (fromIntegral ingFID) k
       let p = A.eitherDecodeStrict $ encodeUtf8 j
-      -- B.putStr $ encodeUtf8 $ tshow (p :: Either String FoodItem)
       case p of
-        Right r -> return $ toRowNutrients r
+        Right r ->
+          return $
+            fmap applyScale $
+              applyMods ingModifications $
+                toRowNutrients n r
         Left e -> do
           logError $ displayBytesUtf8 $ BC.pack e
           return []
+  where
+    scale = fromFloatDigits ingMass / standardMass
+    applyScale r@RowNutrient {rnAmount} = r {rnAmount = (* scale) <$> rnAmount}
+    applyMods ms rs = fmap (\r -> foldr applyModification r ms) rs
 
-toRowNutrients :: FoodItem -> [RowNutrient]
-toRowNutrients i = case i of
+-- TODO not sure if this ever changes
+standardMass :: Scientific
+standardMass = 100
+
+applyModification :: Modification -> RowNutrient -> RowNutrient
+applyModification
+  Modification {modNutID, modScale}
+  r@RowNutrient {rnNutrientId, rnAmount}
+    | Just (fromIntegral modNutID) == rnNutrientId =
+        r {rnAmount = (* fromFloatDigits modScale) <$> rnAmount}
+    | otherwise = r
+
+toRowNutrients :: T.Text -> FoodItem -> [RowNutrient]
+toRowNutrients n i = case i of
   (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
     go ffiMeta (flcCommon ffiCommon)
   (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
@@ -239,6 +265,7 @@ toRowNutrients i = case i of
     go' m FoodNutrient {fnNutrient, fnAmount, fnFoodNutrientDerivation} =
       RowNutrient
         { rnDesc = frmDescription m
+        , rnMealName = n
         , rnId = frmId m
         , rnDerivation = ndDescription =<< fnFoodNutrientDerivation
         , rnNutrientId = nId =<< fnNutrient
@@ -249,6 +276,7 @@ toRowNutrients i = case i of
 
 data RowNutrient = RowNutrient
   { rnId :: Int
+  , rnMealName :: T.Text
   , rnDesc :: T.Text
   , rnNutrientName :: Maybe T.Text
   , rnNutrientId :: Maybe Int
@@ -292,7 +320,7 @@ sumRowNutrients rs =
         , rsNutrientName = n
         , rsNutrientId = i
         }
-      | x@RowNutrient
+      | RowNutrient
           { rnAmount = Just v
           , rnUnit = Just u
           , rnNutrientId = Just i
@@ -347,20 +375,20 @@ fromDimensional :: Dimensional -> (Scientific, T.Text)
 fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
   (raisePower dimValue (-(prefixValue unitBase)), tunit u)
 
-tdimensional :: Dimensional -> T.Text
-tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
+-- tdimensional :: Dimensional -> T.Text
+-- tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
 
 raisePower :: Scientific -> Int -> Scientific
 raisePower s x = scientific (coefficient s) (base10Exponent s + x)
 
 tunit :: Unit -> Text
-tunit Unit {unitName, unitBase} = T.append n b
+tunit Unit {unitName, unitBase} = T.append prefix unit
   where
-    n = case unitName of
+    unit = case unitName of
       Calorie -> "cal"
       Joule -> "J"
       Gram -> "g"
-    b = case unitBase of
+    prefix = case unitBase of
       Nano -> "n"
       Micro -> "µ"
       Milli -> "m"
@@ -432,7 +460,13 @@ data Prefix
   deriving (Show, Eq)
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize = sumRowNutrients
+runSummarize co SummarizeOptions {soConfig} = do
+  rs <- readRowNutrients co soConfig
+  let res = runExcept $ sumRowNutrients rs
+  case res of
+    Left e -> logError $ displayBytesUtf8 $ encodeUtf8 e
+    Right ss -> BL.putStr $ C.encodeWith tsvOptions ss
+  return ()
 
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "carbon"
