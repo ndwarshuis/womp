@@ -197,6 +197,7 @@ scheduleToTable
 scheduleToTable co Schedule {schMeal = Meal {mlIngs}} =
   concat <$> mapM (ingredientToTable co) mlIngs
 
+-- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 -- TODO what do I want this table to look like?
 ingredientToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -219,28 +220,32 @@ ingredientToTable CommonOptions {coKey} Ingredient {ingFID} = do
           return []
 
 toRowNutrients :: FoodItem -> [RowNutrient]
-toRowNutrients (Foundation FoundationFoodItem {ffiFdcId, ffiDescription, ffiFoodNutrients}) =
-  go <$> fromMaybe [] ffiFoodNutrients
+toRowNutrients i = case i of
+  (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
+    go ffiMeta (flcCommon ffiCommon)
+  (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
+    go bfiMeta bfiCommon
+  (SRLegacy SRLegacyFoodItem {srlMeta, srlCommon}) ->
+    go srlMeta (flcCommon srlCommon)
   where
-    go FoodNutrient {fnNutrient, fnAmount} =
+    go m c = go' m <$> fcFoodNutrients c
+    go' m FoodNutrient {fnNutrient, fnAmount, fnFoodNutrientDerivation} =
       RowNutrient
-        { rnDesc = ffiDescription
-        , rnId = ffiFdcId
+        { rnDesc = frmDescription m
+        , rnId = frmId m
+        , rnDerivation = ndDescription =<< fnFoodNutrientDerivation
         , rnNutrientId = nId =<< fnNutrient
         , rnNutrientName = nName =<< fnNutrient
         , rnUnit = nUnitName =<< fnNutrient
         , rnAmount = fnAmount
         }
-toRowNutrients (Branded BrandedFoodItem {bfiFdcId, bfiDescription, bfiFoodNutrients}) =
-  go <$> fromMaybe [] ffiFoodNutrients
-toRowNutrients (SRLegacy SRLegacyFoodItem {}) = []
-toRowNutrients (Survey SurveyFoodItem {}) = []
 
 data RowNutrient = RowNutrient
   { rnId :: Int
   , rnDesc :: T.Text
   , rnNutrientName :: Maybe T.Text
   , rnNutrientId :: Maybe Int
+  , rnDerivation :: Maybe T.Text
   , rnAmount :: Maybe Double
   , rnUnit :: Maybe T.Text
   }

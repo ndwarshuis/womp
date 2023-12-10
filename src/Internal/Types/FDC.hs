@@ -14,7 +14,6 @@ data FoodItem
   = Branded BrandedFoodItem
   | Foundation FoundationFoodItem
   | SRLegacy SRLegacyFoodItem
-  | Survey SurveyFoodItem
   deriving (Show, Generic)
 
 instance FromJSON FoodItem where
@@ -26,39 +25,122 @@ instance FromJSON FoodItem where
       go t
         | t == "Branded" = Branded <$> parseJSON o
         | t == "Foundation" = Foundation <$> parseJSON o
-        | t == "Survey (FNDDS)" = Survey <$> parseJSON o
+        | t == "Survey (FNDDS)" = mempty
         | t == "SR Legacy" = SRLegacy <$> parseJSON o
         | otherwise = mempty
   parseJSON _ = mempty
 
 data BrandedFoodItem = BrandedFoodItem
-  { bfiDataType :: T.Text
-  , bfiDescription :: T.Text
-  , bfiFdcId :: Int
-  , bfiAvailableDate :: Maybe T.Text
+  { bfiMeta :: FoodRequiredMeta
+  , bfiCommon :: FoodCommon
   , bfiBrandOwner :: T.Text
   , bfiDataSource :: Maybe T.Text
-  , bfiFoodClass :: Maybe T.Text
-  , bfiGtinUpc :: Maybe T.Text
-  , bfiHouseholdServingFullText :: Maybe T.Text
-  , bfiIngredients :: Maybe T.Text
-  , bfiModifiedDate :: Maybe T.Text
-  , bfiPublicationDate :: Maybe T.Text
-  , bfiServingSize :: Maybe Int
-  , bfiFormat :: Maybe Double
-  , bfiServingSizeUnit :: Maybe T.Text
-  , bfiPreparationStateCode :: Maybe T.Text
-  , bfiBrandedFoodCategory :: Maybe T.Text
-  , bfiTradeChannel :: [T.Text]
-  , bfiGpcClassCode :: Maybe Int
-  , bfiFoodNutrients :: [FoodNutrient]
-  , bfiFoodUpdateLog :: [FoodUpdateLog]
-  , bfiLabelNutrients :: [LabelNutrient]
+  , -- , bfiGtinUpc :: Maybe T.Text
+    -- , bfiHouseholdServingFullText :: Maybe T.Text
+    bfiIngredients :: Maybe T.Text
+  , -- , bfiModifiedDate :: Maybe T.Text
+    bfiServingSize :: Maybe Int
+  , -- , bfiFormat :: Maybe Double
+    bfiServingSizeUnit :: Maybe T.Text
+    -- , bfiPreparationStateCode :: Maybe T.Text
+    -- , bfiBrandedFoodCategory :: Maybe T.Text
+    -- , bfiTradeChannel :: [T.Text]
+    -- , bfiGpcClassCode :: Maybe Int
+    -- , bfiFoodUpdateLog :: Maybe [FoodUpdateLog]
+    -- , bfiLabelNutrients :: Maybe [LabelNutrient]
   }
   deriving (Show, Generic)
 
 instance FromJSON BrandedFoodItem where
-  parseJSON = recordParseJSON "bfi"
+  parseJSON = withObject "BrandedFoodItem" $ \v ->
+    BrandedFoodItem
+      <$> parseFoodRequiredMeta v
+      <*> parseFoodCommon v
+      <*> v .: "brandOwner"
+      <*> v .: "dataSource"
+      <*> v .: "ingredients"
+      <*> v .: "servingSize"
+      <*> v .: "servingSizeUnit"
+
+parseFoodRequiredMeta :: Object -> Parser FoodRequiredMeta
+parseFoodRequiredMeta v =
+  FoodRequiredMeta
+    <$> v .: "fdcId"
+    <*> v .: "description"
+
+parseFoodCommon :: Object -> Parser FoodCommon
+parseFoodCommon v =
+  FoodCommon
+    <$> v .:? "foodClass"
+    <*> v .:? "publicationDate"
+    <*> (v .:? "foodNutrients" .!= [])
+
+data FoundationFoodItem = FoundationFoodItem
+  { ffiMeta :: FoodRequiredMeta
+  , ffiCommon :: FoundationLegacyCommon
+  , ffiFootNote :: Maybe T.Text
+  , ffiFoodComponents :: Maybe [FoodComponent]
+  , ffiFoodAttributes :: Maybe [FoodAttribute]
+  , ffiFoodPortions :: Maybe [FoodPortion]
+  , ffiInputFoods :: Maybe [InputFoodFoundation]
+  }
+  deriving (Show, Generic)
+
+instance FromJSON FoundationFoodItem where
+  parseJSON = withObject "FoundationFoodItem" $ \v ->
+    FoundationFoodItem
+      <$> parseFoodRequiredMeta v
+      <*> parseFoundationLegacyCommon v
+      <*> v .:? "foodNote"
+      <*> v .:? "foodComponents"
+      <*> v .:? "foodAttributes"
+      <*> v .:? "foodPortions"
+      <*> v .:? "inputFoods"
+
+data SRLegacyFoodItem = SRLegacyFoodItem
+  { srlMeta :: FoodRequiredMeta
+  , srlCommon :: FoundationLegacyCommon
+  }
+  deriving (Show, Generic)
+
+instance FromJSON SRLegacyFoodItem where
+  parseJSON = withObject "SRLegacyFoodItem" $ \v ->
+    SRLegacyFoodItem
+      <$> parseFoodRequiredMeta v
+      <*> parseFoundationLegacyCommon v
+
+data FoodRequiredMeta = FoodRequiredMeta
+  { frmId :: Int
+  , frmDescription :: T.Text
+  }
+  deriving (Show)
+
+data FoodCommon = FoodCommon
+  { fcFoodClass :: Maybe T.Text
+  , fcPublicationDate :: Maybe T.Text
+  , fcFoodNutrients :: [FoodNutrient]
+  }
+  deriving (Show)
+
+data FoundationLegacyCommon = FoundationLegacyCommon
+  { flcCommon :: FoodCommon
+  , flcIsHistoricalReference :: Maybe Bool
+  , flcNdbNumber :: Maybe Int
+  , flcScientificName :: Maybe T.Text
+  , flcFoodCategory :: Maybe FoodCategory
+  , flcNutrientConversionFactors :: Maybe [NutrientConversionFactor]
+  }
+  deriving (Show)
+
+parseFoundationLegacyCommon :: Object -> Parser FoundationLegacyCommon
+parseFoundationLegacyCommon v =
+  FoundationLegacyCommon
+    <$> parseFoodCommon v
+    <*> v .:? "isHistoricalReference"
+    <*> v .:? "ndbNumber"
+    <*> v .:? "scientificName"
+    <*> v .:? "foodCategory"
+    <*> v .:? "nutrientConversionFactors"
 
 data LabelNutrient = LabelNutrient
   { lnFat :: Maybe Double
@@ -80,29 +162,6 @@ data LabelNutrient = LabelNutrient
 instance FromJSON LabelNutrient where
   parseJSON = recordParseJSON "ln"
 
-data FoundationFoodItem = FoundationFoodItem
-  { ffiFdcId :: Int
-  , ffiDataType :: T.Text
-  , ffiDescription :: T.Text
-  , ffiFoodClass :: Maybe T.Text
-  , ffiFootNote :: Maybe T.Text
-  , ffiIsHistoricalReference :: Maybe Bool
-  , ffiNdbNumber :: Maybe Int
-  , ffiPublicationDate :: Maybe T.Text
-  , ffiScientificName :: Maybe T.Text
-  , ffiFoodCategory :: Maybe FoodCategory
-  , ffiFoodComponents :: Maybe [FoodComponent]
-  , ffiFoodNutrients :: Maybe [FoodNutrient]
-  , ffiFoodAttributes :: Maybe [FoodAttribute]
-  , ffiFoodPortions :: Maybe [FoodPortion]
-  , ffiInputFoods :: Maybe [InputFoodFoundation]
-  , ffiNutrientConversionFactors :: Maybe [NutrientConversionFactor]
-  }
-  deriving (Show, Generic)
-
-instance FromJSON FoundationFoodItem where
-  parseJSON = recordParseJSON "ffi"
-
 data FoodCategory = FoodCategory
   { fcId :: Maybe Int
   , fcCode :: Maybe T.Text
@@ -112,12 +171,6 @@ data FoodCategory = FoodCategory
 
 instance FromJSON FoodCategory where
   parseJSON = recordParseJSON "fc"
-
-data SRLegacyFoodItem = SRLegacyFoodItem
-  deriving (Show, Generic, FromJSON)
-
-data SurveyFoodItem = SurveyFoodItem
-  deriving (Show, Generic, FromJSON)
 
 data FoodComponent = FoodComponent
   deriving (Show, Generic, FromJSON)
@@ -162,7 +215,6 @@ instance FromJSON InputFoodFoundation where
 -- TODO missing foodGroup, foodAttributeTypes, totalRefuse
 data SampleFoodItem = SampleFoodItem
   { sfiFdcId :: Int
-  , sfiDataType :: T.Text
   , sfiDescription :: T.Text
   , sfiFoodClass :: Maybe T.Text
   , sfiPublicationDate :: Maybe T.Text
@@ -282,7 +334,6 @@ data FoodUpdateLog = FoodUpdateLog
   , fulAvailableDate :: Maybe T.Text
   , fulBrandOwner :: Maybe T.Text
   , fulDataSource :: Maybe T.Text
-  , fulDataType :: Maybe T.Text
   , fulDescription :: Maybe T.Text
   , fulFoodClass :: Maybe T.Text
   , fulGtinUpc :: Maybe T.Text
