@@ -169,7 +169,12 @@ runFetch CommonOptions {coKey} FetchOptions {foID, foForce} = do
     Nothing -> undefined
     Just k -> void $ runFetch_ foForce foID k
 
-runFetch_ :: MonadUnliftIO m => Bool -> FID -> APIKey -> m T.Text
+runFetch_
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => Bool
+  -> FID
+  -> APIKey
+  -> m T.Text
 runFetch_ frc i k = do
   f <- cacheDir
   let p = f </> (show i ++ ".json")
@@ -388,6 +393,7 @@ tunit Unit {unitName, unitBase} = T.append prefix unit
       Calorie -> "cal"
       Joule -> "J"
       Gram -> "g"
+      IU -> "IU"
     prefix = case unitBase of
       Nano -> "n"
       Micro -> "µ"
@@ -427,9 +433,14 @@ parseUnit s = case T.splitAt 1 s of
       "cal" -> return $ Unit Calorie p
       "g" -> return $ Unit Gram p
       "J" -> return $ Unit Joule p
+      "IU" -> return $ Unit IU p
       _ -> throwE $ T.append "could not parse unit: " s
 
-data UnitName = Gram | Calorie | Joule
+data UnitName
+  = Gram
+  | Calorie
+  | Joule
+  | IU
   deriving (Show, Eq)
 
 prefixValue :: Prefix -> Int
@@ -474,9 +485,17 @@ configDir = getXdgDirectory XdgConfig "carbon"
 cacheDir :: MonadUnliftIO m => m FilePath
 cacheDir = getXdgDirectory XdgCache "carb0n"
 
-getFoodJSON :: MonadUnliftIO m => APIKey -> FID -> m T.Text
-getFoodJSON k i = R.runReq R.defaultHttpConfig $ do
-  res <- R.req R.GET url R.NoReqBody R.bsResponse opts
+getFoodJSON
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => APIKey
+  -> FID
+  -> m T.Text
+getFoodJSON k i = do
+  logInfo $ displayBytesUtf8 $ encodeUtf8 $ T.append "downloading " (tshow i)
+  res <-
+    R.runReq R.defaultHttpConfig $
+      R.req R.GET url R.NoReqBody R.bsResponse opts
+  logInfo $ displayBytesUtf8 $ encodeUtf8 $ T.append "downloaded " (tshow i)
   return $ decodeUtf8Lenient $ R.responseBody res
   where
     url = apiFoodURL /~ tshow i
