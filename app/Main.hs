@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Control.Monad.Error.Class
 import Control.Monad.Trans.Except
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
@@ -9,6 +10,7 @@ import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Types.Dhall
 import Internal.Types.FDC
+import Internal.Types.Main
 import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
@@ -20,6 +22,7 @@ import RIO.FilePath
 import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
+import RIO.Time
 import UnliftIO.Directory
 
 main :: IO ()
@@ -121,6 +124,30 @@ summarize =
           <> metavar "CONFIG"
           <> help "path to config with schedules and meals"
       )
+    <*> ( (Just . readDay)
+            <$> strOption
+              ( long "start"
+                  <> short 's'
+                  <> metavar "START"
+                  <> help "start date on which to begin summary calculations"
+              )
+        )
+    <*> ( (Just . readDay)
+            <$> strOption
+              ( long "end"
+                  <> short 'e'
+                  <> metavar "END"
+                  <> help "end date on which to stop summary calculations (exclusive)"
+              )
+        )
+    <*> option
+      auto
+      ( long "days"
+          <> short 'd'
+          <> metavar "DAYS"
+          <> help "length of interval in days within which summary will be calculated (ignored if END is present)"
+          <> value 7
+      )
 
 parse :: MonadUnliftIO m => Options -> m ()
 parse (Options c s) = do
@@ -159,7 +186,15 @@ data DumpOptions = DumpOptions {doID :: !FID, doForce :: !Bool}
 
 data ExportOptions = ExportOptions {eoConfig :: !FilePath}
 
-data SummarizeOptions = SummarizeOptions {soConfig :: !FilePath}
+data SummarizeOptions = SummarizeOptions
+  { soConfig :: !FilePath
+  , soStart :: Maybe Day
+  , soEnd :: Maybe Day
+  , soDays :: Int
+  }
+
+readDay :: String -> Day
+readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
 
 runFetch :: CommonOptions -> FetchOptions -> RIO SimpleApp ()
 runFetch CommonOptions {coKey} FetchOptions {foID, foForce} = do
@@ -199,22 +234,26 @@ runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
 runExport co ExportOptions {eoConfig} = do
-  rs <- readRowNutrients co eoConfig
+  rs <- readRowNutrients co eoConfig _
   BL.putStr $ C.encodeWith tsvOptions rs
   return ()
 
-readRowNutrients :: CommonOptions -> FilePath -> RIO SimpleApp [RowNutrient]
-readRowNutrients co p = do
+readRowNutrients :: CommonOptions -> FilePath -> DaySpan -> RIO SimpleApp [RowNutrient]
+readRowNutrients co p ds = do
   sch <- readConfig p
-  concat <$> mapM (scheduleToTable co) sch
+  concat <$> mapM (scheduleToTable co ds) sch
 
 scheduleToTable
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m, MonadAppError m)
   => CommonOptions
+  -> DaySpan
   -> Schedule
   -> m [RowNutrient]
-scheduleToTable co Schedule {schMeal = Meal {mlIngs, mlName}} =
-  concat <$> mapM (ingredientToTable co mlName) mlIngs
+scheduleToTable co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+  days <- liftExcept $ expandCronPat ds schWhen
+  let scale = fromFloatDigits $ ((fromIntegral $ length days) * schScale)
+  rs <- concat <$> mapM (ingredientToTable co mlName) mlIngs
+  return $ fmap (scaleRowNutrient scale) rs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 ingredientToTable
@@ -242,8 +281,11 @@ ingredientToTable CommonOptions {coKey} n Ingredient {ingFID, ingMass, ingModifi
           return []
   where
     scale = fromFloatDigits ingMass / standardMass
-    applyScale r@RowNutrient {rnAmount} = r {rnAmount = (* scale) <$> rnAmount}
+    applyScale = scaleRowNutrient scale
     applyMods ms rs = fmap (\r -> foldr applyModification r ms) rs
+
+scaleRowNutrient :: Scientific -> RowNutrient -> RowNutrient
+scaleRowNutrient x r@RowNutrient {rnAmount} = r {rnAmount = (* x) <$> rnAmount}
 
 -- TODO not sure if this ever changes
 standardMass :: Scientific
@@ -471,13 +513,22 @@ data Prefix
   deriving (Show, Eq)
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soConfig} = do
-  rs <- readRowNutrients co soConfig
+runSummarize co SummarizeOptions {soConfig, soStart, soEnd, soDays} = do
+  start <- maybe currentDay return soStart
+  let dayLen = maybe soDays (fromIntegral . diffDays start) soEnd
+  let dayspan = (start, dayLen)
+  rs <- readRowNutrients co soConfig dayspan
   let res = runExcept $ sumRowNutrients rs
   case res of
     Left e -> logError $ displayBytesUtf8 $ encodeUtf8 e
     Right ss -> BL.putStr $ C.encodeWith tsvOptions ss
   return ()
+
+currentDay :: MonadUnliftIO m => m Day
+currentDay = do
+  u <- getCurrentTime
+  z <- getCurrentTimeZone
+  return $ localDay $ utcToLocalTime z u
 
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "carbon"
@@ -544,3 +595,84 @@ tsvOptions =
     { C.encDelimiter = fromIntegral (ord '\t')
     , C.encIncludeHeader = True
     }
+
+type DaySpan = (Day, Int)
+
+expandCronPat :: DaySpan -> Cron -> AppExcept [Day]
+expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =
+  combineError3 yRes mRes dRes $ \ys ms ds ->
+    filter validWeekday $
+      mapMaybe (uncurry3 toDay) $
+        takeWhile (\((y, _), m, d) -> (y, m, d) <= (yb1, mb1, db1)) $
+          dropWhile (\((y, _), m, d) -> (y, m, d) < (yb0, mb0, db0)) $
+            [(y, m, d) | y <- (\y -> (y, isLeapYear y)) <$> ys, m <- ms, d <- ds]
+  where
+    yRes = case cronYear of
+      Nothing -> return [yb0 .. yb1]
+      Just pat -> do
+        ys <- expandMDYPat (fromIntegral yb0) (fromIntegral yb1) pat
+        return $ dropWhile (< yb0) $ fromIntegral <$> ys
+    mRes = expandMD 12 cronMonth
+    dRes = expandMD 31 cronDay
+    (s, e) = fromDaySpan b
+    (yb0, mb0, db0) = toGregorian s
+    (yb1, mb1, db1) = toGregorian $ addDays (-1) e
+    expandMD lim =
+      fmap (fromIntegral <$>)
+        . maybe (return [1 .. lim]) (expandMDYPat 1 lim)
+    expandW (OnDay x) = [fromEnum x]
+    expandW (OnDays xs) = fromEnum <$> xs
+    ws = maybe [] expandW cronWeekly
+    validWeekday = if null ws then const True else \day -> dayToWeekday day `elem` ws
+    toDay (y, leap) m d
+      | m == 2 && (not leap && d > 28 || leap && d > 29) = Nothing
+      | m `elem` [4, 6, 9, 11] && d > 30 = Nothing
+      | otherwise = Just $ fromGregorian y m d
+
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (x, y, z) = f x y z
+
+expandMDYPat :: Natural -> Natural -> MDYPat -> AppExcept [Natural]
+expandMDYPat lower upper (Single x) = return [x | lower <= x && x <= upper]
+expandMDYPat lower upper (Multi xs) = return $ dropWhile (<= lower) $ takeWhile (<= upper) xs
+expandMDYPat lower upper (After x) = return [max lower x .. upper]
+expandMDYPat lower upper (Before x) = return [lower .. min upper x]
+expandMDYPat lower upper (Between (Btw btStart btEnd)) =
+  return [max lower btStart .. min upper btEnd]
+expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r})
+  | b < 1 = throwAppError $ DatePatternError s b r ZeroLength
+  | otherwise = do
+      k <- limit r
+      return $ dropWhile (<= lower) $ takeWhile (<= k) [s + i * b | i <- [0 ..]]
+  where
+    limit Nothing = return upper
+    limit (Just n)
+      -- this guard not only produces the error for the user but also protects
+      -- from an underflow below it
+      | n < 1 = throwAppError $ DatePatternError s b r ZeroRepeats
+      | otherwise = return $ min (s + b * (n - 1)) upper
+
+throwAppError :: MonadAppError m => AppError -> m a
+throwAppError e = throwError $ AppException [e]
+
+fromDaySpan :: DaySpan -> (Day, Day)
+fromDaySpan (d, n) = (d, addDays (fromIntegral n + 1) d)
+
+dayToWeekday :: Day -> Int
+dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7
+
+combineError3 :: MonadAppError m => m a -> m b -> m c -> (a -> b -> c -> d) -> m d
+combineError3 a b c f =
+  combineError (combineError a b (,)) c $ \(x, y) z -> f x y z
+
+combineError :: MonadAppError m => m a -> m b -> (a -> b -> c) -> m c
+combineError a b f = combineErrorM a b (\x y -> pure $ f x y)
+
+combineErrorM :: MonadAppError m => m a -> m b -> (a -> b -> m c) -> m c
+combineErrorM a b f = do
+  a' <- catchError a $ \e ->
+    throwError =<< catchError (e <$ b) (return . (e <>))
+  f a' =<< b
+
+liftExcept :: MonadError e m => Except e a -> m a
+liftExcept = either throwError return . runExcept

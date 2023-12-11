@@ -37,3 +37,5 @@ deriveProduct
   , "Cron"
   , "Schedule"
   ]
+
+deriving instance Enum Weekday

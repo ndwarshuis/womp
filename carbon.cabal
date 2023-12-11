@@ -27,6 +27,7 @@ library
   exposed-modules:
       Internal.Types.Dhall
       Internal.Types.FDC
+      Internal.Types.Main
       Internal.Types.TH
   other-modules:
       Paths_carbon
@@ -77,6 +78,7 @@ library
     , bytestring
     , cassava
     , dhall
+    , mtl
     , optparse-applicative
     , req
     , rio >=0.1.21.0
@@ -139,6 +141,7 @@ executable carbon
     , carbon
     , cassava
     , dhall
+    , mtl
     , optparse-applicative
     , req
     , rio >=0.1.21.0
