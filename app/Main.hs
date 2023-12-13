@@ -49,6 +49,11 @@ commonOptions =
               <> help "API key for USDA FoodData Central"
           )
       )
+    <*> switch
+      ( long "verbose"
+          <> short 'v'
+          <> help "be obnoxious"
+      )
 
 subcommand :: Parser SubCommand
 subcommand =
@@ -144,31 +149,33 @@ dateInterval =
 startDay :: Parser (Maybe Day)
 startDay =
   fmap readDay
-    <$> ( optional $
-            strOption
-              ( long "start"
-                  <> short 's'
-                  <> metavar "START"
-                  <> help "start date on which to begin summary calculations"
-              )
-        )
+    <$> optional
+      ( strOption
+          ( long "start"
+              <> short 's'
+              <> metavar "START"
+              <> help "start date on which to begin summary calculations"
+          )
+      )
 
 endDay :: Parser (Maybe Day)
 endDay =
   fmap readDay
-    <$> ( optional $
-            strOption
-              ( long "end"
-                  <> short 'e'
-                  <> metavar "END"
-                  <> help "end date on which to stop summary calculations (exclusive)"
-              )
-        )
+    <$> optional
+      ( strOption
+          ( long "end"
+              <> short 'e'
+              <> metavar "END"
+              <> help "end date on which to stop summary calculations (exclusive)"
+          )
+      )
 
 parse :: MonadUnliftIO m => Options -> m ()
-parse (Options c s) = do
+parse (Options c@CommonOptions {coVerbosity} s) = do
   logOpts <-
-    setLogVerboseFormat True . setLogUseTime True
+    setLogVerboseFormat True
+      . setLogUseTime False
+      . setLogMinLevel (if coVerbosity then LevelDebug else LevelInfo)
       <$> logOptionsHandle stderr False
   withLogFunc logOpts $ \lf -> do
     env <- mkSimpleApp lf Nothing
@@ -185,7 +192,8 @@ parse (Options c s) = do
 data Options = Options CommonOptions SubCommand
 
 data CommonOptions = CommonOptions
-  { coKey :: (Maybe APIKey)
+  { coKey :: !(Maybe APIKey)
+  , coVerbosity :: !Bool
   }
 
 type FID = Int
@@ -401,7 +409,7 @@ count (x :| xs) =
       thisCount = (x, length xs')
    in case N.nonEmpty ys of
         Nothing -> thisCount :| []
-        Just ys' -> thisCount :| (N.toList (count ys'))
+        Just ys' -> thisCount :| N.toList (count ys')
 
 addDimensional :: MonadAppError m => Dimensional -> Dimensional -> m Dimensional
 addDimensional x@(Dimensional v0 u0) y@(Dimensional v1 _)
@@ -562,10 +570,12 @@ readConfig
   => FilePath
   -> m [Schedule]
 readConfig f = do
-  logInfo "boom"
-  r <- liftIO $ D.inputFile D.auto f
-  logInfo "poop"
-  return r
+  logDebug $
+    displayBytesUtf8 $
+      encodeUtf8 $
+        T.append "reading schedule at path: " $
+          T.pack f
+  liftIO $ D.inputFile D.auto f
 
 tsvOptions :: C.EncodeOptions
 tsvOptions =
@@ -700,7 +710,7 @@ mapErrorsIO f xs = mapM go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
-  (DaySpanError d) -> [T.unwords ["time interval must be positive, got ", tshow d, "days"]]
+  (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
   (UnitParseError u) -> [T.append "could not parse unit: " u]
   (UnitMatchError x y) ->
     [ T.append
