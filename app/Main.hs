@@ -291,8 +291,8 @@ scheduleToTable
   -> m [RowNutrient]
 scheduleToTable co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   days <- fromEither $ expandCronPat ds schWhen
-  let scale = fromFloatDigits $ ((fromIntegral $ length days) * fromMaybe 1.0 schScale)
   rs <- concat <$> mapM (ingredientToTable co mlName) mlIngs
+  let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
   return $ fmap (scaleRowNutrient scale) rs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
