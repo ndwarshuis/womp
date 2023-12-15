@@ -129,19 +129,57 @@ data FoundationLegacyCommon = FoundationLegacyCommon
   , flcNdbNumber :: Maybe Int
   , flcScientificName :: Maybe T.Text
   , flcFoodCategory :: Maybe FoodCategory
-  , flcNutrientConversionFactors :: Maybe [NutrientConversionFactor]
+  , flcCalorieConversion :: CalorieConversion
+  , flcProteinConversion :: ProteinConversion
+  }
+  deriving (Show)
+
+data CalorieConversion = CalorieConversion
+  { ccFat :: Double
+  , ccProtein :: Double
+  , ccCarbs :: Double
+  , ccAssumed :: Bool
+  }
+  deriving (Show)
+
+data ProteinConversion = ProteinConversion
+  { pcFactor :: Double
+  , pcAssumed :: Bool
   }
   deriving (Show)
 
 parseFoundationLegacyCommon :: Object -> Parser FoundationLegacyCommon
-parseFoundationLegacyCommon v =
+parseFoundationLegacyCommon v = do
+  ncf <- v .: "nutrientConversionFactors"
+  c <- firstM caloreConv ncf
+  p <- firstM proteinConv ncf
   FoundationLegacyCommon
     <$> parseFoodCommon v
     <*> v .:? "isHistoricalReference"
     <*> v .:? "ndbNumber"
     <*> v .:? "scientificName"
     <*> v .:? "foodCategory"
-    <*> v .:? "nutrientConversionFactors"
+    <*> pure (fromMaybe defCalorie c)
+    <*> pure (fromMaybe defProtein p)
+  where
+    caloreConv t = case (t :: T.Text) of
+      ".CalorieConversionFactor" -> do
+        f <- v .: "fatValue"
+        p <- v .: "proteinValue"
+        c <- v .: "carbohydrateValue"
+        return $ Just $ CalorieConversion f p c False
+      _ -> return Nothing
+    proteinConv t = case (t :: T.Text) of
+      ".ProteinConversionFactor" -> do
+        p <- v .: "value"
+        return $ Just $ ProteinConversion p False
+      _ -> return Nothing
+    defCalorie = CalorieConversion {ccFat = 9, ccProtein = 4, ccCarbs = 4, ccAssumed = True}
+    defProtein = ProteinConversion 6.25 True
+
+firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
+firstM _ [] = return Nothing
+firstM f (x : xs) = maybe (firstM f xs) (return . Just) =<< f x
 
 data LabelNutrient = LabelNutrient
   { lnFat :: Maybe Scientific
