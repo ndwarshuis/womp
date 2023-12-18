@@ -27,9 +27,9 @@ library
   exposed-modules:
       Internal.Nutrient
       Internal.Types.Dhall
-      Internal.Types.FDC
       Internal.Types.Main
       Internal.Types.TH
+      Internal.Utils
   other-modules:
       Paths_carbon
   autogen-modules:
