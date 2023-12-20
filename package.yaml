@@ -71,6 +71,8 @@ dependencies:
 - scientific
 - transformers
 - mtl
+- lens
+- generic-monoid
 
 ghc-options:
 - -Wall

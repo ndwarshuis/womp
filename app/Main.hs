@@ -7,8 +7,10 @@ import qualified Data.Csv as C
 import Data.Scientific
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
+import Internal.Nutrient
 import Internal.Types.Dhall
 import Internal.Types.Main
+import Internal.Utils
 import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
@@ -342,8 +344,8 @@ toRowNutrients :: T.Text -> FoodItem -> [RowNutrient]
 toRowNutrients n i = case i of
   (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
     go ffiMeta (flcCommon ffiCommon)
-  (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
-    go bfiMeta bfiCommon
+  -- (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
+  --   go bfiMeta bfiCommon
   (SRLegacy SRLegacyFoodItem {srlMeta, srlCommon}) ->
     go srlMeta (flcCommon srlCommon)
   where
@@ -638,12 +640,6 @@ expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r
       -- from an underflow below it
       | n < 1 = throwAppError $ DatePatternError s b r ZeroRepeats
       | otherwise = return $ min (s + b * (n - 1)) upper
-
-throwAppError :: MonadAppError m => AppError -> m a
-throwAppError e = throwError $ AppException [e]
-
-throwAppErrorIO :: MonadUnliftIO m => AppError -> m a
-throwAppErrorIO = fromEither . throwAppError
 
 fromDaySpan :: DaySpan -> (Day, Day)
 fromDaySpan (d, n) = (d, addDays (fromIntegral n + 1) d)

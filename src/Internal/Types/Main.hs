@@ -8,6 +8,8 @@ import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.Csv as C
+import Data.Monoid
+import Data.Monoid.Generic
 import Data.Scientific
 import GHC.Generics
 import RIO
@@ -16,8 +18,8 @@ import qualified RIO.List as L
 import qualified RIO.Text as T
 
 data FoodItem
-  = Branded BrandedFoodItem
-  | Foundation FoundationFoodItem
+  = -- = Branded BrandedFoodItem
+    Foundation FoundationFoodItem
   | SRLegacy SRLegacyFoodItem
   deriving (Show, Generic)
 
@@ -28,7 +30,8 @@ instance FromJSON FoodItem where
     where
       go :: T.Text -> Parser FoodItem
       go t
-        | t == "Branded" = Branded <$> parseJSON o
+        -- \| t == "Branded" = Branded <$> parseJSON o
+        | t == "Branded" = mempty
         | t == "Foundation" = Foundation <$> parseJSON o
         | t == "Survey (FNDDS)" = mempty
         | t == "SR Legacy" = SRLegacy <$> parseJSON o
@@ -191,9 +194,9 @@ data LabelNutrient = LabelNutrient
   , lnTransFat :: Maybe Scientific
   , lnCholesterol :: Maybe Scientific
   , lnSodium :: Maybe Scientific
-  , lnCarbohydrates :: Maybe Scientific
+  , lnCarbohydrates_ :: Maybe Scientific
   , lnFiber :: Maybe Scientific
-  , lnSugars :: Maybe Scientific
+  , lnSugars_ :: Maybe Scientific
   , lnProtein :: Maybe Scientific
   , lnCalcium :: Maybe Scientific
   , lnIron :: Maybe Scientific
@@ -434,15 +437,23 @@ recordOptions x =
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
 recordParseJSON s = genericParseJSON (recordOptions s)
 
+-- data RowNutrient = RowNutrient
+--   { rnId :: Int
+--   , rnMealName :: T.Text
+--   , rnDesc :: T.Text
+--   , rnNutrientName :: Maybe T.Text
+--   , rnNutrientId :: Maybe Int
+--   , rnDerivation :: Maybe T.Text
+--   , rnAmount :: Maybe Scientific
+--   , rnUnit :: Maybe T.Text
+--   }
+--   deriving (Generic, Show)
+
 data RowNutrient = RowNutrient
-  { rnId :: Int
-  , rnMealName :: T.Text
-  , rnDesc :: T.Text
-  , rnNutrientName :: Maybe T.Text
-  , rnNutrientId :: Maybe Int
-  , rnDerivation :: Maybe T.Text
-  , rnAmount :: Maybe Scientific
-  , rnUnit :: Maybe T.Text
+  { rnNutrientId :: Int
+  , rnNutrientName :: T.Text
+  , rnAmount :: Scientific
+  , rnUnit :: Unit
   }
   deriving (Generic, Show)
 
@@ -472,40 +483,81 @@ data UnitName
   deriving (Show, Eq)
 
 data Unit = Unit
-  { unitName :: UnitName
-  , unitBase :: Prefix
+  { unitBase :: Prefix
+  , unitName :: UnitName
   }
   deriving (Show, Eq)
 
-data FoodTree = FoodTree
+tunit :: Unit -> Text
+tunit Unit {unitName, unitBase} = T.append prefix unit
+  where
+    unit = case unitName of
+      Calorie -> "cal"
+      Joule -> "J"
+      Gram -> "g"
+      IU -> "IU"
+    prefix = case unitBase of
+      Nano -> "n"
+      Micro -> "µ"
+      Milli -> "m"
+      Centi -> "c"
+      Deci -> "d"
+      Unity -> ""
+      Deca -> "da"
+      Hecto -> "h"
+      Kilo -> "k"
+      Mega -> "M"
+      Giga -> "G"
+
+instance C.ToField Unit where
+  toField = encodeUtf8 . tunit
+
+type FoodTree = FoodTree_ NutrientValue
+
+-- TOOO this doesn't make much sense if we are going to be mashing trees
+-- together with monoid math, unless I turn the name and id fields into lists to
+-- reflect the fact that multiple ingredients will be included
+data FoodTree_ a = FoodTree
   { ftName :: T.Text
   , ftId :: Int
-  , ftCalculated :: CalculatedTree
+  , ftCalculated :: CalculatedTree_ a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
 
-data CalculatedTree = CalculatedTree
-  { fctProximates :: ProximateTree
-  , fctEnergy :: Scientific
-  , fctCarbDiff :: Scientific
+type CalculatedTree = CalculatedTree_ NutrientValue
+
+data CalculatedTree_ a = CalculatedTree
+  { fctProximates :: ProximateTree_ a
+  , fctEnergy :: a
+  , fctCarbDiff :: a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (CalculatedTree_ a)
+  deriving (Monoid) via GenericMonoid (CalculatedTree_ a)
 
-data ProximateTree = ProximateTree
-  { ptProtein :: Proteins
-  , ptCarbohydrates :: Carbohydrates
-  , ptLipids :: Lipids
-  , ptAsh :: Ash
-  , ptWater :: Scientific
+type ProximateTree = ProximateTree_ NutrientValue
+
+data ProximateTree_ a = ProximateTree
+  { ptProtein :: Proteins_ a
+  , ptCarbohydrates_ :: Carbohydrates_ a
+  , ptLipids :: Lipids_ a
+  , ptAsh :: Ash_ a
+  , ptWater :: a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (ProximateTree_ a)
+  deriving (Monoid) via GenericMonoid (ProximateTree_ a)
 
-data Proteins = Proteins
-  { pTotal :: Scientific
+type Proteins = Proteins_ NutrientValue
+
+data Proteins_ a = Proteins
+  { pTotal :: a
   -- TODO add amino acid composition to this
   -- , pAminoAcids :: TODO
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Proteins_ a)
+  deriving (Monoid) via GenericMonoid (Proteins_ a)
 
 -- data AminoAcids = AminoAcids
 --   { aaTryptophan :: Maybe Scientific
@@ -534,68 +586,97 @@ data Proteins = Proteins
 --   }
 --   deriving (Show)
 
-data ProteinMethod = Dumas | Kjeldahl
-  deriving (Show)
+-- data ProteinMethod = Dumas | Kjeldahl
+--   deriving (Show)
 
-data Carbohydrates = Carbohydrates
-  { chSugars :: Sugars
-  , chOligos :: OligoSaccharides
-  , chFiber :: Fiber
-  , chStarch :: Maybe Scientific
+type Carbohydrates = Carbohydrates_ NutrientValue
+
+data Carbohydrates_ a = Carbohydrates
+  { chSugars_ :: Sugars_ a
+  , chOligos :: OligoSaccharides_ a
+  , chFiber :: Fiber_ a
+  , chStarch :: Maybe a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Carbohydrates_ a)
+  deriving (Monoid) via GenericMonoid (Carbohydrates_ a)
 
-data Sugars = Sugars
-  { sTotal :: Maybe Scientific
-  , sSucrose :: Maybe Scientific
-  , sGlucose :: Maybe Scientific
-  , sFructose :: Maybe Scientific
-  , sLactose :: Maybe Scientific
-  , sMaltose :: Maybe Scientific
-  , sGalactose :: Maybe Scientific
+type Sugars = Sugars_ NutrientValue
+
+data Sugars_ a = Sugars
+  { sTotal :: Maybe a
+  , sSucrose :: Maybe a
+  , sGlucose :: Maybe a
+  , sFructose :: Maybe a
+  , sLactose :: Maybe a
+  , sMaltose :: Maybe a
+  , sGalactose :: Maybe a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Sugars_ a)
+  deriving (Monoid) via GenericMonoid (Sugars_ a)
 
-data OligoSaccharides = OligoSaccharides
-  { osRaffinose :: Maybe Scientific
-  , osStachyose :: Maybe Scientific
-  , osVerbascose :: Maybe Scientific
+type OligoSaccharides = OligoSaccharides_ NutrientValue
+
+data OligoSaccharides_ a = OligoSaccharides
+  { osRaffinose :: Maybe a
+  , osStachyose :: Maybe a
+  , osVerbascose :: Maybe a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (OligoSaccharides_ a)
+  deriving (Monoid) via GenericMonoid (OligoSaccharides_ a)
 
-data Fiber = Fiber
-  { fTotal :: Maybe Scientific
-  , fPrecipitated :: Maybe FiberPrecipitated
+type Fiber = Fiber_ NutrientValue
+
+data Fiber_ a = Fiber
+  { fFractions1992 :: Maybe (FiberFractions1992_ a)
+  , fFractions2011 :: Maybe (FiberFractions2011_ a)
   , -- technically a subset of soluble fiber
-    fBetaGlucan :: Maybe Scientific
-  , fWeighted :: Maybe FiberWeighted
+    fBetaGlucan :: Maybe a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Fiber_ a)
+  deriving (Monoid) via GenericMonoid (Fiber_ a)
 
-data FiberPrecipitated = FiberPrecipitated
-  { fsSoluble :: Scientific
-  , fsInsoluble :: Scientific
-  }
-  deriving (Show)
+type FiberFractions1992 = FiberFractions1992_ NutrientValue
 
-data FiberWeighted = FiberWeighted
-  { fwLow :: Scientific
-  , fwHigh :: Scientific
+data FiberFractions1992_ a = FiberFractions1992
+  { ffTotal1992 :: a
+  , ffSoluble :: Maybe a
+  , ffInsoluble :: Maybe a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (FiberFractions1992_ a)
+  deriving (Monoid) via GenericMonoid (FiberFractions1992_ a)
+
+type FiberFractions2011 = FiberFractions2011_ NutrientValue
+
+data FiberFractions2011_ a = FiberFractions2011
+  { ffTotal2011 :: a
+  , ffHMW :: Maybe a
+  , ffLMW :: Maybe a
+  }
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (FiberFractions2011_ a)
+  deriving (Monoid) via GenericMonoid (FiberFractions2011_ a)
+
+type Lipids = Lipids_ NutrientValue
 
 -- TODO break out the subtypes into their individual components
-data Lipids = Lipids
-  { lTotal :: Scientific
+data Lipids_ a = Lipids
+  { lTotal :: a
   -- , lTFA :: Maybe Scientific
   -- , lSFA :: Maybe Scientific
   -- , lMUFA :: Maybe Scientific
   -- , lPUFA :: Maybe Scientific
   -- TODO add cholesterol
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Lipids_ a)
+  deriving (Monoid) via GenericMonoid (Lipids_ a)
 
--- data TotalLipids = TotalLipids
+-- data TotalLipds_ = TotalLipds_
 --   { tlAmount :: Scientific
 --   , tlMethod :: TotalLipidMethod
 --   }
@@ -603,38 +684,56 @@ data Lipids = Lipids
 
 -- NOTE: all except GLC are used for total fat determination, all the subtypes
 -- are determined via GLC
-data TotalLipidMethod
-  = -- acid hydrolysis followed by extraction
-    AcidHydrolysis
-  | -- base hydrolysis followed by extraction
-    BaseHydrolysis
-  | -- soxhlet extraction or similar
-    Extraction
-  | -- gas-liquid chromatography
-    GLC
-  deriving (Show)
+-- data TotalLipidMethod
+--   = -- acid hydrolysis followed by extraction
+--     AcidHydrolysis
+--   | -- base hydrolysis followed by extraction
+--     BaseHydrolysis
+--   | -- soxhlet extraction or similar
+--     Extraction
+--   | -- gas-liquid chromatography
+--     GLC
+--   deriving (Show)
 
-data Ash = Ash
-  { aTotal :: Scientific
-  , aMinerals :: Minerals
-  }
-  deriving (Show)
+type Ash = Ash_ NutrientValue
 
-data Minerals = Minerals
-  { mSodium :: Maybe Scientific
-  , mMagnesium :: Maybe Scientific
-  , mPhosphorus :: Maybe Scientific
-  , mPotassium :: Maybe Scientific
-  , mCalcium :: Maybe Scientific
-  , mManganese :: Maybe Scientific
-  , mIron :: Maybe Scientific
-  , mCopper :: Maybe Scientific
-  , mZinc :: Maybe Scientific
-  , mSelenium :: Maybe Scientific
-  , mMolybdenum :: Maybe Scientific
-  , mIodine :: Maybe Scientific
+data Ash_ a = Ash
+  { aTotal :: a
+  , aMinerals_ :: Minerals_ a
   }
-  deriving (Show)
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Ash_ a)
+  deriving (Monoid) via GenericMonoid (Ash_ a)
+
+type Minerals = Minerals_ NutrientValue
+
+data Minerals_ a = Minerals
+  { mSodium :: Maybe a
+  , mMagnesium :: Maybe a
+  , mPhosphorus :: Maybe a
+  , mPotassium :: Maybe a
+  , mCalcium :: Maybe a
+  , mManganese :: Maybe a
+  , mIron :: Maybe a
+  , mCopper :: Maybe a
+  , mZinc :: Maybe a
+  , mSelenium :: Maybe a
+  , mMolybdenum :: Maybe a
+  , mIodine :: Maybe a
+  }
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (Minerals_ a)
+  deriving (Monoid) via GenericMonoid (Minerals_ a)
+
+type NutrientValue = NutrientValue_ (Sum Scientific)
+
+data NutrientValue_ a = NutrientValue
+  { nvValue :: a
+  , nvCount :: Sum Int
+  }
+  deriving (Show, Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
+  deriving (Monoid) via GenericMonoid (NutrientValue_ a)
 
 data Prefix
   = Nano

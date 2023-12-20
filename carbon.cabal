@@ -79,6 +79,8 @@ library
     , bytestring
     , cassava
     , dhall
+    , generic-monoid
+    , lens
     , mtl
     , optparse-applicative
     , req
@@ -142,6 +144,8 @@ executable carbon
     , carbon
     , cassava
     , dhall
+    , generic-monoid
+    , lens
     , mtl
     , optparse-applicative
     , req
