@@ -15,6 +15,7 @@ import GHC.Generics
 import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
+import qualified RIO.Map as M
 import qualified RIO.Text as T
 
 data FoodItem
@@ -533,7 +534,8 @@ data CalculatedTree_ a = CalculatedTree
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (CalculatedTree_ a)
-  deriving (Monoid) via GenericMonoid (CalculatedTree_ a)
+
+-- deriving (Monoid) via GenericMonoid (CalculatedTree_ a)
 
 type ProximateTree = ProximateTree_ NutrientValue
 
@@ -541,12 +543,13 @@ data ProximateTree_ a = ProximateTree
   { ptProtein :: Proteins_ a
   , ptCarbohydrates_ :: Carbohydrates_ a
   , ptLipids :: Lipids_ a
-  , ptAsh :: Ash_ a
+  , ptAsh :: AshFraction_ a
   , ptWater :: a
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (ProximateTree_ a)
-  deriving (Monoid) via GenericMonoid (ProximateTree_ a)
+
+-- deriving (Monoid) via GenericMonoid (ProximateTree_ a)
 
 type Proteins = Proteins_ NutrientValue
 
@@ -557,7 +560,8 @@ data Proteins_ a = Proteins
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (Proteins_ a)
-  deriving (Monoid) via GenericMonoid (Proteins_ a)
+
+-- deriving (Monoid) via GenericMonoid (Proteins_ a)
 
 -- data AminoAcids = AminoAcids
 --   { aaTryptophan :: Maybe Scientific
@@ -599,7 +603,8 @@ data Carbohydrates_ a = Carbohydrates
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (Carbohydrates_ a)
-  deriving (Monoid) via GenericMonoid (Carbohydrates_ a)
+
+-- deriving (Monoid) via GenericMonoid (Carbohydrates_ a)
 
 type Sugars = Sugars_ NutrientValue
 
@@ -614,7 +619,8 @@ data Sugars_ a = Sugars
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (Sugars_ a)
-  deriving (Monoid) via GenericMonoid (Sugars_ a)
+
+-- deriving (Monoid) via GenericMonoid (Sugars_ a)
 
 type OligoSaccharides = OligoSaccharides_ NutrientValue
 
@@ -625,7 +631,8 @@ data OligoSaccharides_ a = OligoSaccharides
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (OligoSaccharides_ a)
-  deriving (Monoid) via GenericMonoid (OligoSaccharides_ a)
+
+-- deriving (Monoid) via GenericMonoid (OligoSaccharides_ a)
 
 type Fiber = Fiber_ NutrientValue
 
@@ -637,7 +644,8 @@ data Fiber_ a = Fiber
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (Fiber_ a)
-  deriving (Monoid) via GenericMonoid (Fiber_ a)
+
+-- deriving (Monoid) via GenericMonoid (Fiber_ a)
 
 type FiberFractions1992 = FiberFractions1992_ NutrientValue
 
@@ -648,7 +656,8 @@ data FiberFractions1992_ a = FiberFractions1992
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (FiberFractions1992_ a)
-  deriving (Monoid) via GenericMonoid (FiberFractions1992_ a)
+
+-- deriving (Monoid) via GenericMonoid (FiberFractions1992_ a)
 
 type FiberFractions2011 = FiberFractions2011_ NutrientValue
 
@@ -659,7 +668,8 @@ data FiberFractions2011_ a = FiberFractions2011
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (FiberFractions2011_ a)
-  deriving (Monoid) via GenericMonoid (FiberFractions2011_ a)
+
+-- deriving (Monoid) via GenericMonoid (FiberFractions2011_ a)
 
 type Lipids = Lipids_ NutrientValue
 
@@ -674,7 +684,8 @@ data Lipids_ a = Lipids
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (Lipids_ a)
-  deriving (Monoid) via GenericMonoid (Lipids_ a)
+
+-- deriving (Monoid) via GenericMonoid (Lipids_ a)
 
 -- data TotalLipds_ = TotalLipds_
 --   { tlAmount :: Scientific
@@ -695,15 +706,16 @@ data Lipids_ a = Lipids
 --     GLC
 --   deriving (Show)
 
-type Ash = Ash_ NutrientValue
+type AshFraction = AshFraction_ NutrientValue
 
-data Ash_ a = Ash
+data AshFraction_ a = AshFraction
   { aTotal :: a
   , aMinerals_ :: Minerals_ a
   }
   deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Ash_ a)
-  deriving (Monoid) via GenericMonoid (Ash_ a)
+  deriving (Semigroup) via GenericSemigroup (AshFraction_ a)
+
+-- deriving (Monoid) via GenericMonoid (Ash_ a)
 
 type Minerals = Minerals_ NutrientValue
 
@@ -723,17 +735,221 @@ data Minerals_ a = Minerals
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (Minerals_ a)
-  deriving (Monoid) via GenericMonoid (Minerals_ a)
+
+-- deriving (Monoid) via GenericMonoid (Minerals_ a)
+
+data FoodMeta = FoodMeta
+  { fmId :: Int
+  , fmName :: T.Text
+  }
+  deriving (Show)
 
 type NutrientValue = NutrientValue_ (Sum Scientific)
 
+-- the good old heterogeneous list trick :)
+data Meas = forall n. Measurable n => Meas n
+
+instance Show Meas where
+  show :: Meas -> String
+  show (Meas x) = show $ toMeasuredInfo x
+
+data Disp = forall n. Displayable n => Disp n
+
+data MeasDisp = forall n. (Displayable n, Measurable n) => MeasDisp n
+
+instance Show Disp where
+  show :: Disp -> String
+  show (Disp x) = show $ toDisplayInfo x
+
 data NutrientValue_ a = NutrientValue
   { nvValue :: a
-  , nvCount :: Sum Int
+  , nvMembers :: NonEmpty Disp
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
-  deriving (Monoid) via GenericMonoid (NutrientValue_ a)
+
+class Measurable a where
+  toMeasuredInfo :: a -> (Int, T.Text)
+
+  toId :: a -> Int
+  toId = fst . toMeasuredInfo
+
+  toName :: a -> T.Text
+  toName = snd . toMeasuredInfo
+
+class Displayable a where
+  toDisplayInfo :: a -> (T.Text, Unit)
+
+  toDName :: a -> T.Text
+  toDName = fst . toDisplayInfo
+
+  toDUnit :: a -> Unit
+  toDUnit = snd . toDisplayInfo
+
+-- TODO these can be categorized into the following groups
+-- - direct or calculated and displayed (protein)
+-- - direct and displayed (most of these)
+-- - calculated and displayed (differential carbohydrates)
+-- - direct and not displayed
+--
+-- anything directly parsed needs an ID (duh)
+-- anything to be displayed needs a string and unit
+
+data AppNutrient
+  = Water
+  | Protein
+  | Starch
+  | TotalSugar
+  | Sucrose
+  | Glucose
+  | Fructose
+  | Lactose
+  | Maltose
+  | Galactose
+  | Raffinose
+  | Stachyose
+  | Verbascose
+  | TotalFiber1992
+  | SolublseFiber
+  | InsolublseFiber
+  | TotalFiber2011
+  | HighMWFiber
+  | LowMWFiber
+  | BetaGlucan
+  | TotalFat
+  | Ash
+  | Calcium
+  | Iron
+  | Magnesium
+  | Phosphorus
+  | Potassium
+  | Sodium
+  | Zinc
+  | Copper
+  | Iodine
+  | Manganese
+  | Molybdenum
+  | Selenium
+  deriving (Show)
+
+data MeasuredNutrient
+  = Nitrogen
+  deriving (Show)
+
+data CalcNutrient
+  = Energy
+  | CarbDiff
+  | CarbSum
+  deriving (Show)
+
+instance Measurable MeasuredNutrient where
+  toMeasuredInfo :: MeasuredNutrient -> (Int, T.Text)
+  toMeasuredInfo Nitrogen = (1002, tshow Nitrogen)
+
+instance Displayable CalcNutrient where
+  toDisplayInfo :: CalcNutrient -> (T.Text, Unit)
+  toDisplayInfo n = case n of
+    Energy -> (tshow n, Unit Kilo Calorie)
+    CarbDiff -> ("Carbohydrates (by difference)", Unit Unity Gram)
+    CarbSum -> ("Carbohydrates (by summation)", Unit Unity Gram)
+
+instance Measurable AppNutrient where
+  toMeasuredInfo :: AppNutrient -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    Water -> (1051, tshow n)
+    Protein -> (1003, tshow n)
+    Starch -> (1009, tshow n)
+    TotalSugar -> (1063, "Total Sugar")
+    Sucrose -> (1010, tshow n)
+    Glucose -> (1011, tshow n)
+    Fructose -> (1012, tshow n)
+    Lactose -> (1013, tshow n)
+    Maltose -> (1014, tshow n)
+    Galactose -> (1075, tshow n)
+    Raffinose -> (1076, tshow n)
+    Stachyose -> (1077, tshow n)
+    Verbascose -> (2063, tshow n)
+    TotalFiber1992 -> (1079, "Soluble/Insoluble Fiber")
+    SolublseFiber -> (1082, "Soluble Fiber")
+    InsolublseFiber -> (1084, "Insoluble Fiber")
+    TotalFiber2011 -> (2033, "High/Low Molecular Weight Fiber")
+    HighMWFiber -> (2038, "High Molecular Weight Fiber")
+    LowMWFiber -> (2065, "Low Molecular Weight Fiber")
+    BetaGlucan -> (2058, "Beta Glucans")
+    TotalFat -> (1004, "Total Fat")
+    Ash -> (1007, tshow n)
+    Calcium -> (1087, tshow n)
+    Iron -> (1089, tshow n)
+    Magnesium -> (1090, tshow n)
+    Phosphorus -> (1091, tshow n)
+    Potassium -> (1092, tshow n)
+    Sodium -> (1093, tshow n)
+    Zinc -> (1095, tshow n)
+    Copper -> (1098, tshow n)
+    Iodine -> (1100, tshow n)
+    Manganese -> (1101, tshow n)
+    Molybdenum -> (1102, tshow n)
+    Selenium -> (1103, tshow n)
+
+instance Displayable AppNutrient where
+  toDisplayInfo :: AppNutrient -> (T.Text, Unit)
+  toDisplayInfo n = (toName n,) $ case n of
+    Water -> g
+    Protein -> g
+    Starch -> g
+    TotalSugar -> g
+    Sucrose -> g
+    Glucose -> g
+    Fructose -> g
+    Lactose -> g
+    Maltose -> g
+    Galactose -> g
+    Raffinose -> g
+    Stachyose -> g
+    Verbascose -> g
+    TotalFiber1992 -> g
+    SolublseFiber -> g
+    InsolublseFiber -> g
+    TotalFiber2011 -> g
+    HighMWFiber -> g
+    LowMWFiber -> g
+    BetaGlucan -> g
+    TotalFat -> g
+    Ash -> g
+    Calcium -> mg
+    Iron -> mg
+    Magnesium -> mg
+    Phosphorus -> mg
+    Potassium -> mg
+    Sodium -> mg
+    Zinc -> mg
+    Copper -> mg
+    Iodine -> mg
+    Manganese -> mg
+    Molybdenum -> mg
+    Selenium -> mg
+    where
+      g = Unit Unity Gram
+      mg = Unit Milli Gram
+
+data NutrientHierarchy
+  = MBranch Meas NutrientHierarchy
+  | -- nutrient with subcomponents and optionally a difference nutrient, head
+    -- nutrient must be both measurable and displayable
+    DBranch MeasDisp (NonEmpty NutrientHierarchy) (Maybe Disp)
+  | -- nutrient with no subcomponents, must be both measurable and displayable
+    Leaf MeasDisp
+
+data MTree a = MTree
+  { mtMass :: Scientific
+  , mtKnown :: M.Map a (MTree a)
+  , mtUnknown :: M.Map a (UTree a)
+  }
+
+data UTree a = UTree
+  { utKnown :: M.Map a (MTree a)
+  , utUnknown :: M.Map a (UTree a)
+  }
 
 data Prefix
   = Nano
@@ -766,7 +982,7 @@ data AppError
   | UnitParseError !T.Text
   | DaySpanError !Int
   | -- TODO store FDC id/name and nutrient name here too
-    NutrientError !Int
+    NutrientError !Meas
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)

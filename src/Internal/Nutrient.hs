@@ -6,7 +6,7 @@ import Internal.Types.Dhall
 import Internal.Types.Main
 import Internal.Utils
 import RIO
-import qualified RIO.List as L
+import RIO.State
 
 -- calcTreeToRows :: CalculatedTree -> [RowNutrient]
 -- calcTreeToRows CalculatedTree {fctProximates, fctEnergy, fctCarbDiff} =
@@ -34,7 +34,7 @@ ingredientToTree
   => [Modification]
   -> Double
   -> FoodItem
-  -> m FoodTree
+  -> m CalculatedTree
 ingredientToTree ms mass f =
   fmap (scaleNV scale) <$> foodItemToTree (foldr modifyItem f ms)
   where
@@ -58,15 +58,15 @@ modifyNutrient
         f {fnAmount = (* fromFloatDigits modScale) <$> fnAmount}
     | otherwise = f
 
-foodItemToTree :: MonadAppError m => FoodItem -> m FoodTree
+foodItemToTree :: MonadAppError m => FoodItem -> m CalculatedTree
 foodItemToTree (Foundation f) = foundationToTree f
 foodItemToTree (SRLegacy f) = legacyToTree f
 
-legacyToTree :: MonadAppError m => SRLegacyFoodItem -> m FoodTree
+legacyToTree :: MonadAppError m => SRLegacyFoodItem -> m CalculatedTree
 legacyToTree SRLegacyFoodItem {srlMeta, srlCommon} =
   legFoundToTree srlMeta srlCommon
 
-foundationToTree :: MonadAppError m => FoundationFoodItem -> m FoodTree
+foundationToTree :: MonadAppError m => FoundationFoodItem -> m CalculatedTree
 foundationToTree FoundationFoodItem {ffiMeta, ffiCommon} =
   legFoundToTree ffiMeta ffiCommon
 
@@ -74,281 +74,307 @@ legFoundToTree
   :: MonadAppError m
   => FoodRequiredMeta
   -> FoundationLegacyCommon
-  -> m FoodTree
-legFoundToTree fm flc = do
-  ps <- nutrientsToTree pConv nuts
-  return $
-    FoodTree
-      { ftName = frmDescription fm
-      , ftId = frmId fm
-      , ftCalculated = calculateTree cConv ps
-      }
+  -> m CalculatedTree
+legFoundToTree fm flc =
+  flip runReaderT rd $ do
+    -- TODO do something with the state somehow (ie print the remaining nutrients
+    -- that didn't get parsed in a debug message)
+    (ps, _) <- runStateT (nutrientsToTree pConv) nuts
+    calculateTree cConv ps
   where
+    rd = FoodMeta (frmId fm) (frmDescription fm)
     nuts = fcFoodNutrients $ flcCommon flc
     pConv = flcProteinConversion flc
     cConv = flcCalorieConversion flc
 
 calculateTree
-  :: CalorieConversion
+  :: NutrientReader m
+  => CalorieConversion
   -> ProximateTree
-  -> CalculatedTree
+  -> m CalculatedTree
 calculateTree
   CalorieConversion {ccFat, ccProtein, ccCarbs}
   t@ProximateTree
     { ptProtein = Proteins {pTotal}
     , ptLipids = Lipids {lTotal}
-    , ptAsh = Ash {aTotal}
+    , ptAsh = AshFraction {aTotal}
     , ptWater = water
-    } = CalculatedTree t energy carbs
+    } = do
+    carbs <-
+      initNV $ 100.0 - val pTotal - val lTotal - val aTotal - val water
+    energy <-
+      initNV $
+        ccFat * val lTotal + ccProtein * val pTotal + ccCarbs * val carbs
+    return $ CalculatedTree t energy carbs
     where
-      carbs =
-        initNV $ 100.0 - val pTotal - val lTotal - val aTotal - val water
-      energy =
-        initNV $
-          ccFat * val lTotal + ccProtein * val pTotal + ccCarbs * val carbs
       val = getSum . nvValue
 
 nutrientsToTree
-  :: MonadAppError m
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
   => ProteinConversion
-  -> [FoodNutrient]
   -> m ProximateTree
-nutrientsToTree pc ns = do
-  p <- nutrientsToProteins pc ns
-  c <- nutrientsToCarbs ns
-  l <- nutrientsToLipids ns
-  a <- nutrientsToAsh ns
-  w <- lookupAmountError waterId ns
+nutrientsToTree pc = do
+  p <- nutrientsToProteins pc
+  c <- nutrientsToCarbs
+  l <- nutrientsToLipids
+  a <- nutrientsToAsh
+  w <- lookupAmountError Water
   return $ ProximateTree p c l a w
 
 nutrientsToProteins
-  :: MonadAppError m
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
   => ProteinConversion
-  -> [FoodNutrient]
   -> m Proteins
-nutrientsToProteins ProteinConversion {pcFactor} ns =
-  Proteins <$> maybe fromNitrogen pure fromProtein
+nutrientsToProteins ProteinConversion {pcFactor} =
+  Proteins <$> (maybe fromNitrogen (return . scaleNV pcFactor) =<< fromProtein)
   where
-    fromProtein = lookupAmount proteinId ns
-    fromNitrogen = scaleNV pcFactor <$> lookupAmountError nitrogenId ns
+    fromProtein = lookupAmount Protein
+    fromNitrogen = lookupAmountError Nitrogen
 
-nutrientsToCarbs :: MonadAppError m => [FoodNutrient] -> m Carbohydrates
-nutrientsToCarbs ns = do
-  f <- nutrientsToFiber ns
-  pure $
-    Carbohydrates
-      (nutrientsToSugars ns)
-      (nutrientsToOligos ns)
-      f
-      (lookupAmount starchId ns)
+nutrientsToCarbs :: (NutrientReader m, NutrientState m, MonadAppError m) => m Carbohydrates
+nutrientsToCarbs =
+  Carbohydrates
+    <$> nutrientsToSugars
+    <*> nutrientsToOligos
+    <*> nutrientsToFiber
+    <*> lookupAmount Starch
 
-nutrientsToSugars :: [FoodNutrient] -> Sugars
-nutrientsToSugars ns =
+nutrientsToSugars :: (NutrientReader m, NutrientState m) => m Sugars
+nutrientsToSugars =
   Sugars
-    (lookupAmount totalSugarsId ns)
-    (lookupAmount sucroseId ns)
-    (lookupAmount glucoseId ns)
-    (lookupAmount fructoseId ns)
-    (lookupAmount lactoseId ns)
-    (lookupAmount maltoseId ns)
-    (lookupAmount galactoseId ns)
+    <$> lookupAmount TotalSugar
+    <*> lookupAmount Sucrose
+    <*> lookupAmount Glucose
+    <*> lookupAmount Fructose
+    <*> lookupAmount Lactose
+    <*> lookupAmount Maltose
+    <*> lookupAmount Galactose
 
-nutrientsToOligos :: [FoodNutrient] -> OligoSaccharides
-nutrientsToOligos ns =
+nutrientsToOligos :: (NutrientReader m, NutrientState m) => m OligoSaccharides
+nutrientsToOligos =
   OligoSaccharides
-    (lookupAmount raffinoseId ns)
-    (lookupAmount stachyoseId ns)
-    (lookupAmount verbascoseId ns)
+    <$> lookupAmount Raffinose
+    <*> lookupAmount Stachyose
+    <*> lookupAmount Verbascose
 
-nutrientsToFiber :: MonadAppError m => [FoodNutrient] -> m Fiber
-nutrientsToFiber ns =
+nutrientsToFiber :: (NutrientReader m, NutrientState m, MonadAppError m) => m Fiber
+nutrientsToFiber =
   Fiber
-    <$> nutrientsTo1992Fiber ns
-    <*> nutrientsTo2011Fiber ns
-    <*> pure (lookupAmount betaGlucanId ns)
+    <$> nutrientsTo1992Fiber
+    <*> nutrientsTo2011Fiber
+    <*> lookupAmount BetaGlucan
 
 nutrientsTo1992Fiber
-  :: MonadAppError m
-  => [FoodNutrient]
-  -> m (Maybe FiberFractions1992)
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
+  => m (Maybe FiberFractions1992)
 nutrientsTo1992Fiber =
-  nutrientsToFiberFraction FiberFractions1992 totalFiber1992Id solublseFiberId insolublseFiberId
+  nutrientsToFiberFraction FiberFractions1992 TotalFiber1992 SolublseFiber InsolublseFiber
 
 nutrientsTo2011Fiber
-  :: MonadAppError m
-  => [FoodNutrient]
-  -> m (Maybe FiberFractions2011)
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
+  => m (Maybe FiberFractions2011)
 nutrientsTo2011Fiber =
-  nutrientsToFiberFraction FiberFractions2011 totalFiber2011Id highMWFiberId lowMWFiberId
+  nutrientsToFiberFraction FiberFractions2011 TotalFiber2011 HighMWFiber LowMWFiber
 
 nutrientsToFiberFraction
-  :: MonadAppError m
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
   => ( NutrientValue
        -> Maybe NutrientValue
        -> Maybe NutrientValue
        -> f NutrientValue
      )
-  -> Int
-  -> Int
-  -> Int
-  -> [FoodNutrient]
+  -> AppNutrient
+  -> AppNutrient
+  -> AppNutrient
   -> m (Maybe (f NutrientValue))
-nutrientsToFiberFraction c tid i0 i1 ns =
-  case (lookupAmount i0 ns, lookupAmount i1 ns) of
+nutrientsToFiberFraction c tid i0 i1 = do
+  a0 <- lookupAmount i0
+  a1 <- lookupAmount i1
+  case (a0, a1) of
     (Just r0, Just r1) -> do
-      t <- lookupAmountError tid ns
+      t <- lookupAmountError tid
       pure $ Just $ c t (Just r0) (Just r1)
-    _ -> pure $ (\t -> c t Nothing Nothing) <$> lookupAmount tid ns
+    _ -> mapM (\t -> pure $ c t Nothing Nothing) =<< lookupAmount tid
 
-nutrientsToLipids :: MonadAppError m => [FoodNutrient] -> m Lipids
-nutrientsToLipids ns = Lipids <$> lookupAmountError totalFatId ns
+nutrientsToLipids :: (NutrientReader m, NutrientState m, MonadAppError m) => m Lipids
+nutrientsToLipids = Lipids <$> lookupAmountError TotalFat
 
-nutrientsToAsh :: MonadAppError m => [FoodNutrient] -> m Ash
-nutrientsToAsh ns = do
-  t <- lookupAmountError totalFatId ns
-  pure $ Ash t (nutrientsToMinerals ns)
+nutrientsToAsh :: (NutrientReader m, NutrientState m, MonadAppError m) => m AshFraction
+nutrientsToAsh =
+  AshFraction <$> lookupAmountError Ash <*> nutrientsToMinerals
 
-nutrientsToMinerals :: [FoodNutrient] -> Minerals
-nutrientsToMinerals ns =
+nutrientsToMinerals :: (NutrientReader m, NutrientState m) => m Minerals
+nutrientsToMinerals =
   Minerals
-    (lookupAmount sodiumId ns)
-    (lookupAmount magnesiumId ns)
-    (lookupAmount phosphorusId ns)
-    (lookupAmount potassiumId ns)
-    (lookupAmount calciumId ns)
-    (lookupAmount manganeseId ns)
-    (lookupAmount ironId ns)
-    (lookupAmount copperId ns)
-    (lookupAmount zincId ns)
-    (lookupAmount seleniumId ns)
-    (lookupAmount molybdenumId ns)
-    (lookupAmount iodineId ns)
+    <$> lookupAmount Sodium
+    <*> lookupAmount Magnesium
+    <*> lookupAmount Phosphorus
+    <*> lookupAmount Potassium
+    <*> lookupAmount Calcium
+    <*> lookupAmount Manganese
+    <*> lookupAmount Iron
+    <*> lookupAmount Copper
+    <*> lookupAmount Zinc
+    <*> lookupAmount Selenium
+    <*> lookupAmount Molybdenum
+    <*> lookupAmount Iodine
 
-energyId :: Int
-energyId = 1008
+-- energyId :: Int
+-- energyId = 1008
 
-carbDiffId :: Int
-carbDiffId = 1005
+-- carbDiffId :: Int
+-- carbDiffId = 1005
 
-waterId :: Int
-waterId = 1051
+-- waterId :: Int
+-- waterId = 1051
 
-nitrogenId :: Int
-nitrogenId = 1002
+-- nitrogenId :: Int
+-- nitrogenId = 1002
 
-proteinId :: Int
-proteinId = 1003
+-- proteinId :: Int
+-- proteinId = 1003
 
-starchId :: Int
-starchId = 1009
+-- starchId :: Int
+-- starchId = 1009
 
-totalSugarsId :: Int
-totalSugarsId = 1063
+-- totalSugarsId :: Int
+-- totalSugarsId = 1063
 
-sucroseId :: Int
-sucroseId = 1010
+-- sucroseId :: Int
+-- sucroseId = 1010
 
-glucoseId :: Int
-glucoseId = 1011
+-- glucoseId :: Int
+-- glucoseId = 1011
 
-fructoseId :: Int
-fructoseId = 1012
+-- fructoseId :: Int
+-- fructoseId = 1012
 
-lactoseId :: Int
-lactoseId = 1013
+-- lactoseId :: Int
+-- lactoseId = 1013
 
-maltoseId :: Int
-maltoseId = 1014
+-- maltoseId :: Int
+-- maltoseId = 1014
 
-galactoseId :: Int
-galactoseId = 1075
+-- galactoseId :: Int
+-- galactoseId = 1075
 
-raffinoseId :: Int
-raffinoseId = 1076
+-- raffinoseId :: Int
+-- raffinoseId = 1076
 
-stachyoseId :: Int
-stachyoseId = 1077
+-- stachyoseId :: Int
+-- stachyoseId = 1077
 
-verbascoseId :: Int
-verbascoseId = 2063
+-- verbascoseId :: Int
+-- verbascoseId = 2063
 
-totalFiber1992Id :: Int
-totalFiber1992Id = 1079
+-- totalFiber1992Id :: Int
+-- totalFiber1992Id = 1079
 
-solublseFiberId :: Int
-solublseFiberId = 1082
+-- solublseFiberId :: Int
+-- solublseFiberId = 1082
 
-insolublseFiberId :: Int
-insolublseFiberId = 1084
+-- insolublseFiberId :: Int
+-- insolublseFiberId = 1084
 
-totalFiber2011Id :: Int
-totalFiber2011Id = 2033
+-- totalFiber2011Id :: Int
+-- totalFiber2011Id = 2033
 
-highMWFiberId :: Int
-highMWFiberId = 2038
+-- highMWFiberId :: Int
+-- highMWFiberId = 2038
 
-lowMWFiberId :: Int
-lowMWFiberId = 2065
+-- lowMWFiberId :: Int
+-- lowMWFiberId = 2065
 
-betaGlucanId :: Int
-betaGlucanId = 2058
+-- betaGlucanId :: Int
+-- betaGlucanId = 2058
 
-totalFatId :: Int
-totalFatId = 1004
+-- totalFatId :: Int
+-- totalFatId = 1004
 
-ashId :: Int
-ashId = 1007
+-- ashId :: Int
+-- ashId = 1007
 
-calciumId :: Int
-calciumId = 1087
+-- calciumId :: Int
+-- calciumId = 1087
 
-ironId :: Int
-ironId = 1089
+-- ironId :: Int
+-- ironId = 1089
 
-magnesiumId :: Int
-magnesiumId = 1090
+-- magnesiumId :: Int
+-- magnesiumId = 1090
 
-phosphorusId :: Int
-phosphorusId = 1091
+-- phosphorusId :: Int
+-- phosphorusId = 1091
 
-potassiumId :: Int
-potassiumId = 1092
+-- potassiumId :: Int
+-- potassiumId = 1092
 
-sodiumId :: Int
-sodiumId = 1093
+-- sodiumId :: Int
+-- sodiumId = 1093
 
-zincId :: Int
-zincId = 1095
+-- zincId :: Int
+-- zincId = 1095
 
-copperId :: Int
-copperId = 1098
+-- copperId :: Int
+-- copperId = 1098
 
-iodineId :: Int
-iodineId = 1100
+-- iodineId :: Int
+-- iodineId = 1100
 
-manganeseId :: Int
-manganeseId = 1101
+-- manganeseId :: Int
+-- manganeseId = 1101
 
-molybdenumId :: Int
-molybdenumId = 1102
+-- molybdenumId :: Int
+-- molybdenumId = 1102
 
-seleniumId :: Int
-seleniumId = 1103
+-- seleniumId :: Int
+-- seleniumId = 1103
 
-findId :: Int -> [FoodNutrient] -> Maybe FoodNutrient
-findId i = L.find (\x -> fnId x == Just i)
+findId :: Int -> [FoodNutrient] -> (Maybe FoodNutrient, [FoodNutrient])
+findId i = go []
+  where
+    -- TODO this reverse isn't really necessary (this would only be necessary if
+    -- I wanted more speed, in which case this would be an ordered set on which
+    -- I could perform binary search, since that isn't the case, order doesn't
+    -- matter)
+    go acc [] = (Nothing, reverse acc)
+    go acc (x : xs)
+      | fnId x == Just i = (Just x, reverse acc ++ xs)
+      | otherwise = go (x : acc) xs
 
-findIdError :: MonadAppError m => Int -> [FoodNutrient] -> m FoodNutrient
-findIdError i = maybe (throwAppError $ NutrientError i) return . findId i
+-- findId i = L.find (\x -> fnId x == Just i)
 
-lookupAmount :: Int -> [FoodNutrient] -> Maybe NutrientValue
-lookupAmount i = (fmap initNV . fnAmount) <=< findId i
+findIdM :: NutrientState m => Int -> m (Maybe FoodNutrient)
+findIdM i = state (findId i)
 
-lookupAmountError :: MonadAppError m => Int -> [FoodNutrient] -> m NutrientValue
-lookupAmountError i = maybe (throwAppError $ NutrientError i) return . lookupAmount i
+-- findIdError :: (NutrientState m, MonadAppError m) => AppNutrient -> m FoodNutrient
+-- findIdError i = maybe (throwAppError $ NutrientError $ Meas i) return =<< findIdM i
 
-initNV :: Scientific -> NutrientValue
-initNV s = NutrientValue (Sum s) 1
+lookupVal :: (NutrientReader m, NutrientState m) => n -> m (Maybe Scientific)
+lookupVal i = (fnAmount =<<) <$> findIdM (toId i)
+
+lookupValError
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
+  => n
+  -> m (Maybe Scientific)
+lookupValError i = (fnAmount =<<) <$> findIdM (toId i)
+
+lookupAmount :: (NutrientReader m, NutrientState m) => n -> m (Maybe NutrientValue)
+lookupAmount i = mapM initNV =<< lookupVal i
+
+lookupAmountError
+  :: (NutrientReader m, NutrientState m, MonadAppError m)
+  => n
+  -> m NutrientValue
+lookupAmountError i =
+  maybe (throwAppError $ NutrientError $ Meas i) return =<< lookupAmount i
+
+initNV :: (Displayable n, NutrientReader m) => Scientific -> m NutrientValue
+initNV s = NutrientValue (Sum s) . pure . Disp <$> ask
 
 scaleNV :: Num a => a -> NutrientValue_ (Sum a) -> NutrientValue_ (Sum a)
 scaleNV x = fmap (fmap (* x))
+
+type NutrientReader r m = MonadReader FoodMeta
+
+type NutrientState = MonadState [FoodNutrient]
