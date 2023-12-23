@@ -16,6 +16,7 @@ import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
 import qualified RIO.Map as M
+import RIO.NonEmpty.Partial (fromList)
 import qualified RIO.Text as T
 
 data FoodItem
@@ -513,239 +514,6 @@ tunit Unit {unitName, unitBase} = T.append prefix unit
 instance C.ToField Unit where
   toField = encodeUtf8 . tunit
 
-type FoodTree = FoodTree_ NutrientValue
-
--- TOOO this doesn't make much sense if we are going to be mashing trees
--- together with monoid math, unless I turn the name and id fields into lists to
--- reflect the fact that multiple ingredients will be included
-data FoodTree_ a = FoodTree
-  { ftName :: T.Text
-  , ftId :: Int
-  , ftCalculated :: CalculatedTree_ a
-  }
-  deriving (Show, Generic, Functor)
-
-type CalculatedTree = CalculatedTree_ NutrientValue
-
-data CalculatedTree_ a = CalculatedTree
-  { fctProximates :: ProximateTree_ a
-  , fctEnergy :: a
-  , fctCarbDiff :: a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (CalculatedTree_ a)
-
--- deriving (Monoid) via GenericMonoid (CalculatedTree_ a)
-
-type ProximateTree = ProximateTree_ NutrientValue
-
-data ProximateTree_ a = ProximateTree
-  { ptProtein :: Proteins_ a
-  , ptCarbohydrates_ :: Carbohydrates_ a
-  , ptLipids :: Lipids_ a
-  , ptAsh :: AshFraction_ a
-  , ptWater :: a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (ProximateTree_ a)
-
--- deriving (Monoid) via GenericMonoid (ProximateTree_ a)
-
-type Proteins = Proteins_ NutrientValue
-
-data Proteins_ a = Proteins
-  { pTotal :: a
-  -- TODO add amino acid composition to this
-  -- , pAminoAcids :: TODO
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Proteins_ a)
-
--- deriving (Monoid) via GenericMonoid (Proteins_ a)
-
--- data AminoAcids = AminoAcids
---   { aaTryptophan :: Maybe Scientific
---   , aaThreonine :: Maybe Scientific
---   , aaIsoleucine :: Maybe Scientific
---   , aaLeucine :: Maybe Scientific
---   , aaLysine :: Maybe Scientific
---   , aaMethionine :: Maybe Scientific
---   , aaCystine :: Maybe Scientific
---   , aaPhenylalanine :: Maybe Scientific
---   , aaTyrosine :: Maybe Scientific
---   , aaValine :: Maybe Scientific
---   , aaArginine :: Maybe Scientific
---   , aaHistidine :: Maybe Scientific
---   , aaAlanine :: Maybe Scientific
---   , aaAsparticAcid :: Maybe Scientific
---   , aaGlutamicAcid :: Maybe Scientific
---   , aaGlycine :: Maybe Scientific
---   , aaProline :: Maybe Scientific
---   , aaSerine :: Maybe Scientific
---   , aaHydroxyproline :: Maybe Scientific
---   , aaAsparagine :: Maybe Scientific
---   , aaCysteine :: Maybe Scientific
---   , aaGlutamine :: Maybe Scientific
---   , aaTaurine :: Maybe Scientific
---   }
---   deriving (Show)
-
--- data ProteinMethod = Dumas | Kjeldahl
---   deriving (Show)
-
-type Carbohydrates = Carbohydrates_ NutrientValue
-
-data Carbohydrates_ a = Carbohydrates
-  { chSugars_ :: Sugars_ a
-  , chOligos :: OligoSaccharides_ a
-  , chFiber :: Fiber_ a
-  , chStarch :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Carbohydrates_ a)
-
--- deriving (Monoid) via GenericMonoid (Carbohydrates_ a)
-
-type Sugars = Sugars_ NutrientValue
-
-data Sugars_ a = Sugars
-  { sTotal :: Maybe a
-  , sSucrose :: Maybe a
-  , sGlucose :: Maybe a
-  , sFructose :: Maybe a
-  , sLactose :: Maybe a
-  , sMaltose :: Maybe a
-  , sGalactose :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Sugars_ a)
-
--- deriving (Monoid) via GenericMonoid (Sugars_ a)
-
-type OligoSaccharides = OligoSaccharides_ NutrientValue
-
-data OligoSaccharides_ a = OligoSaccharides
-  { osRaffinose :: Maybe a
-  , osStachyose :: Maybe a
-  , osVerbascose :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (OligoSaccharides_ a)
-
--- deriving (Monoid) via GenericMonoid (OligoSaccharides_ a)
-
-type Fiber = Fiber_ NutrientValue
-
-data Fiber_ a = Fiber
-  { fFractions1992 :: Maybe (FiberFractions1992_ a)
-  , fFractions2011 :: Maybe (FiberFractions2011_ a)
-  , -- technically a subset of soluble fiber
-    fBetaGlucan :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Fiber_ a)
-
--- deriving (Monoid) via GenericMonoid (Fiber_ a)
-
-type FiberFractions1992 = FiberFractions1992_ NutrientValue
-
-data FiberFractions1992_ a = FiberFractions1992
-  { ffTotal1992 :: a
-  , ffSoluble :: Maybe a
-  , ffInsoluble :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (FiberFractions1992_ a)
-
--- deriving (Monoid) via GenericMonoid (FiberFractions1992_ a)
-
-type FiberFractions2011 = FiberFractions2011_ NutrientValue
-
-data FiberFractions2011_ a = FiberFractions2011
-  { ffTotal2011 :: a
-  , ffHMW :: Maybe a
-  , ffLMW :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (FiberFractions2011_ a)
-
--- deriving (Monoid) via GenericMonoid (FiberFractions2011_ a)
-
-type Lipids = Lipids_ NutrientValue
-
--- TODO break out the subtypes into their individual components
-data Lipids_ a = Lipids
-  { lTotal :: a
-  -- , lTFA :: Maybe Scientific
-  -- , lSFA :: Maybe Scientific
-  -- , lMUFA :: Maybe Scientific
-  -- , lPUFA :: Maybe Scientific
-  -- TODO add cholesterol
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Lipids_ a)
-
--- deriving (Monoid) via GenericMonoid (Lipids_ a)
-
--- data TotalLipds_ = TotalLipds_
---   { tlAmount :: Scientific
---   , tlMethod :: TotalLipidMethod
---   }
---   deriving (Show)
-
--- NOTE: all except GLC are used for total fat determination, all the subtypes
--- are determined via GLC
--- data TotalLipidMethod
---   = -- acid hydrolysis followed by extraction
---     AcidHydrolysis
---   | -- base hydrolysis followed by extraction
---     BaseHydrolysis
---   | -- soxhlet extraction or similar
---     Extraction
---   | -- gas-liquid chromatography
---     GLC
---   deriving (Show)
-
-type AshFraction = AshFraction_ NutrientValue
-
-data AshFraction_ a = AshFraction
-  { aTotal :: a
-  , aMinerals_ :: Minerals_ a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (AshFraction_ a)
-
--- deriving (Monoid) via GenericMonoid (Ash_ a)
-
-type Minerals = Minerals_ NutrientValue
-
-data Minerals_ a = Minerals
-  { mSodium :: Maybe a
-  , mMagnesium :: Maybe a
-  , mPhosphorus :: Maybe a
-  , mPotassium :: Maybe a
-  , mCalcium :: Maybe a
-  , mManganese :: Maybe a
-  , mIron :: Maybe a
-  , mCopper :: Maybe a
-  , mZinc :: Maybe a
-  , mSelenium :: Maybe a
-  , mMolybdenum :: Maybe a
-  , mIodine :: Maybe a
-  }
-  deriving (Show, Generic, Functor)
-  deriving (Semigroup) via GenericSemigroup (Minerals_ a)
-
--- deriving (Monoid) via GenericMonoid (Minerals_ a)
-
-data FoodMeta = FoodMeta
-  { fmId :: Int
-  , fmName :: T.Text
-  }
-  deriving (Show)
-
-type NutrientValue = NutrientValue_ (Sum Scientific)
-
 -- the good old heterogeneous list trick :)
 data Meas = forall n. Measurable n => Meas n
 
@@ -786,39 +554,130 @@ class Displayable a where
   toDUnit :: a -> Unit
   toDUnit = snd . toDisplayInfo
 
--- TODO these can be categorized into the following groups
--- - direct or calculated and displayed (protein)
--- - direct and displayed (most of these)
--- - calculated and displayed (differential carbohydrates)
--- - direct and not displayed
---
--- anything directly parsed needs an ID (duh)
--- anything to be displayed needs a string and unit
+data Proximates = Water | Protein | Lipid | Ash
+  deriving (Show)
 
-data AppNutrient
-  = Water
-  | Protein
+-- instance Measurable MeasuredProximates where
+--   toMeasuredInfo :: MeasuredProximates -> (Int, T.Text)
+--   toMeasuredInfo n = case n of
+--     Water -> (1051, tshow n)
+--     Protein -> (1003, tshow n)
+--     Lipid -> (1004, tshow n)
+--     Ash -> (1007, tshow n)
+
+-- instance Displayable MeasuredProximates where
+--   toDisplayInfo :: MeasuredProximates -> (T.Text, Unit)
+--   toDisplayInfo n = (toName n, Unit Unity Gram)
+
+-- data AppNutrient
+--   = Starch
+--   | TotalSugar
+--   | TotalFat
+--   deriving (Show)
+
+data Lipids
+  = FattyAcids
+  | Cholesterol
+  deriving (Show)
+
+-- \| Phytosterols
+
+data FattyAcids
+  = SaturatedFattyAcids
+  | MonounsaturatedFattyAcids
+  | PolyunsaturatedFattyAcids
+  | TransFattyAcids
+  deriving (Show)
+
+data Carbohydrates
+  = Fiber
+  | BetaGlucan
   | Starch
-  | TotalSugar
-  | Sucrose
+  deriving (Show)
+
+data Fiber
+  = FiberBySolubility
+  | FiberByWeight
+  deriving (Show)
+
+data FiberBySolubility
+  = SolubleFiber
+  | InsolubleFiber
+  deriving (Show, Enum, Bounded)
+
+data FiberByWeight
+  = HighMWFiber
+  | LowMWFiber
+  deriving (Show, Enum, Bounded)
+
+data Sugars
+  = SimpleSugars
+  | OligoSaccharides
+  deriving (Show)
+
+data SimpleSugar
+  = Sucrose
   | Glucose
   | Fructose
   | Lactose
   | Maltose
   | Galactose
-  | Raffinose
+  deriving (Show)
+
+data OligoSaccharides
+  = Raffinose
   | Stachyose
   | Verbascose
-  | TotalFiber1992
-  | SolublseFiber
-  | InsolublseFiber
-  | TotalFiber2011
-  | HighMWFiber
-  | LowMWFiber
-  | BetaGlucan
-  | TotalFat
-  | Ash
-  | Calcium
+  deriving (Show)
+
+-- data TotalFiber1992
+--   = SolubleFiber
+--   | InsolubleFiber
+--   deriving (Show)
+
+-- data TotalFiber2011
+--   = HighMWFiber
+--   | LowMWFiber
+--   deriving (Show)
+
+-- data MeasuredNutrient
+--   = Nitrogen
+--   deriving (Show)
+
+-- data CalcNutrient
+--   = Energy
+--   | CarbDiff
+--   | CarbSum
+--   deriving (Show)
+
+data AminoAcid
+  = Tryptophan
+  | Threonine
+  | Isoleucine
+  | Leucine
+  | Lysine
+  | Methionine
+  | Cystine
+  | Phenylalanine
+  | Tyrosine
+  | Valine
+  | Arginine
+  | Histidine
+  | Alanine
+  | AsparticAcid
+  | GlutamicAcid
+  | Glycine
+  | Proline
+  | Serine
+  | Hydroxyproline
+  | Asparagine
+  | Cysteine
+  | Glutamine
+  | Taurine
+  deriving (Show, Enum, Bounded)
+
+data Mineral
+  = Calcium
   | Iron
   | Magnesium
   | Phosphorus
@@ -830,115 +689,273 @@ data AppNutrient
   | Manganese
   | Molybdenum
   | Selenium
-  deriving (Show)
+  deriving (Show, Enum, Bounded)
 
-data MeasuredNutrient
-  = Nitrogen
-  deriving (Show)
-
-data CalcNutrient
-  = Energy
-  | CarbDiff
-  | CarbSum
-  deriving (Show)
-
-instance Measurable MeasuredNutrient where
-  toMeasuredInfo :: MeasuredNutrient -> (Int, T.Text)
-  toMeasuredInfo Nitrogen = (1002, tshow Nitrogen)
-
-instance Displayable CalcNutrient where
-  toDisplayInfo :: CalcNutrient -> (T.Text, Unit)
-  toDisplayInfo n = case n of
-    Energy -> (tshow n, Unit Kilo Calorie)
-    CarbDiff -> ("Carbohydrates (by difference)", Unit Unity Gram)
-    CarbSum -> ("Carbohydrates (by summation)", Unit Unity Gram)
-
-instance Measurable AppNutrient where
-  toMeasuredInfo :: AppNutrient -> (Int, T.Text)
+instance Measurable Carbohydrates where
+  toMeasuredInfo :: Carbohydrates -> (Int, T.Text)
   toMeasuredInfo n = case n of
-    Water -> (1051, tshow n)
-    Protein -> (1003, tshow n)
+    Fiber -> (1079, "Soluble/Insoluble Fiber")
+    BetaGlucan -> (2058, "Beta Glucans")
     Starch -> (1009, tshow n)
-    TotalSugar -> (1063, "Total Sugar")
-    Sucrose -> (1010, tshow n)
-    Glucose -> (1011, tshow n)
-    Fructose -> (1012, tshow n)
-    Lactose -> (1013, tshow n)
-    Maltose -> (1014, tshow n)
-    Galactose -> (1075, tshow n)
-    Raffinose -> (1076, tshow n)
-    Stachyose -> (1077, tshow n)
-    Verbascose -> (2063, tshow n)
-    TotalFiber1992 -> (1079, "Soluble/Insoluble Fiber")
-    SolublseFiber -> (1082, "Soluble Fiber")
-    InsolublseFiber -> (1084, "Insoluble Fiber")
-    TotalFiber2011 -> (2033, "High/Low Molecular Weight Fiber")
+
+instance Measurable Mineral where
+  toMeasuredInfo :: Mineral -> (Int, T.Text)
+  toMeasuredInfo n = (,tshow n) $ case n of
+    Calcium -> 1087
+    Iron -> 1089
+    Magnesium -> 1090
+    Phosphorus -> 1091
+    Potassium -> 1092
+    Sodium -> 1093
+    Zinc -> 1095
+    Copper -> 1098
+    Iodine -> 1100
+    Manganese -> 1101
+    Molybdenum -> 1102
+    Selenium -> 1103
+
+instance Measurable Fiber where
+  toMeasuredInfo :: Fiber -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    FiberBySolubility -> (1079, "Soluble/Insoluble Fiber")
+    FiberByWeight -> (2033, "High/Low Molecular Weight Fiber")
+
+instance Measurable FiberBySolubility where
+  toMeasuredInfo :: FiberBySolubility -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    SolubleFiber -> (1082, "Soluble Fiber")
+    InsolubleFiber -> (1084, "Insoluble Fiber")
+
+instance Measurable FiberByWeight where
+  toMeasuredInfo :: FiberByWeight -> (Int, T.Text)
+  toMeasuredInfo n = case n of
     HighMWFiber -> (2038, "High Molecular Weight Fiber")
     LowMWFiber -> (2065, "Low Molecular Weight Fiber")
-    BetaGlucan -> (2058, "Beta Glucans")
-    TotalFat -> (1004, "Total Fat")
-    Ash -> (1007, tshow n)
-    Calcium -> (1087, tshow n)
-    Iron -> (1089, tshow n)
-    Magnesium -> (1090, tshow n)
-    Phosphorus -> (1091, tshow n)
-    Potassium -> (1092, tshow n)
-    Sodium -> (1093, tshow n)
-    Zinc -> (1095, tshow n)
-    Copper -> (1098, tshow n)
-    Iodine -> (1100, tshow n)
-    Manganese -> (1101, tshow n)
-    Molybdenum -> (1102, tshow n)
-    Selenium -> (1103, tshow n)
 
-instance Displayable AppNutrient where
-  toDisplayInfo :: AppNutrient -> (T.Text, Unit)
-  toDisplayInfo n = (toName n,) $ case n of
-    Water -> g
-    Protein -> g
-    Starch -> g
-    TotalSugar -> g
-    Sucrose -> g
-    Glucose -> g
-    Fructose -> g
-    Lactose -> g
-    Maltose -> g
-    Galactose -> g
-    Raffinose -> g
-    Stachyose -> g
-    Verbascose -> g
-    TotalFiber1992 -> g
-    SolublseFiber -> g
-    InsolublseFiber -> g
-    TotalFiber2011 -> g
-    HighMWFiber -> g
-    LowMWFiber -> g
-    BetaGlucan -> g
-    TotalFat -> g
-    Ash -> g
-    Calcium -> mg
-    Iron -> mg
-    Magnesium -> mg
-    Phosphorus -> mg
-    Potassium -> mg
-    Sodium -> mg
-    Zinc -> mg
-    Copper -> mg
-    Iodine -> mg
-    Manganese -> mg
-    Molybdenum -> mg
-    Selenium -> mg
-    where
-      g = Unit Unity Gram
-      mg = Unit Milli Gram
+-- Sugars -> (1063, tshow n)
 
-data NutrientHierarchy
-  = MBranch Meas NutrientHierarchy
-  | -- nutrient with subcomponents and optionally a difference nutrient, head
-    -- nutrient must be both measurable and displayable
-    DBranch MeasDisp (NonEmpty NutrientHierarchy) (Maybe Disp)
-  | -- nutrient with no subcomponents, must be both measurable and displayable
-    Leaf MeasDisp
+-- instance Measurable AppNutrient where
+--   toMeasuredInfo :: AppNutrient -> (Int, T.Text)
+--   toMeasuredInfo n = case n of
+--     Starch -> (1009, tshow n)
+--     TotalSugar -> (1063, "Total Sugar")
+--     Sucrose -> (1010, tshow n)
+--     Glucose -> (1011, tshow n)
+--     Fructose -> (1012, tshow n)
+--     Lactose -> (1013, tshow n)
+--     Maltose -> (1014, tshow n)
+--     Galactose -> (1075, tshow n)
+--     Raffinose -> (1076, tshow n)
+--     Stachyose -> (1077, tshow n)
+--     Verbascose -> (2063, tshow n)
+--     TotalFiber1992 -> (1079, "Soluble/Insoluble Fiber")
+--     SolubleFiber -> (1082, "Soluble Fiber")
+--     InsolubleFiber -> (1084, "Insoluble Fiber")
+--     TotalFiber2011 -> (2033, "High/Low Molecular Weight Fiber")
+--     HighMWFiber -> (2038, "High Molecular Weight Fiber")
+--     LowMWFiber -> (2065, "Low Molecular Weight Fiber")
+--     BetaGlucan -> (2058, "Beta Glucans")
+--     TotalFat -> (1004, "Total Fat")
+--     Calcium -> (1087, tshow n)
+--     Iron -> (1089, tshow n)
+--     Magnesium -> (1090, tshow n)
+--     Phosphorus -> (1091, tshow n)
+--     Potassium -> (1092, tshow n)
+--     Sodium -> (1093, tshow n)
+--     Zinc -> (1095, tshow n)
+--     Copper -> (1098, tshow n)
+--     Iodine -> (1100, tshow n)
+--     Manganese -> (1101, tshow n)
+--     Molybdenum -> (1102, tshow n)
+--     Selenium -> (1103, tshow n)
+
+instance Measurable AminoAcid where
+  toMeasuredInfo :: AminoAcid -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    Tryptophan -> (1210, tshow n)
+    Threonine -> (1211, tshow n)
+    Isoleucine -> (1212, tshow n)
+    Leucine -> (1213, tshow n)
+    Lysine -> (1214, tshow n)
+    Methionine -> (1215, tshow n)
+    Cystine -> (1216, tshow n)
+    Phenylalanine -> (1217, tshow n)
+    Tyrosine -> (1218, tshow n)
+    Valine -> (1219, tshow n)
+    Arginine -> (1220, tshow n)
+    Histidine -> (1221, tshow n)
+    Alanine -> (1222, tshow n)
+    AsparticAcid -> (1223, "Aspartic Acid")
+    GlutamicAcid -> (1224, "Glutamic Acid")
+    Glycine -> (1225, tshow n)
+    Proline -> (1226, tshow n)
+    Serine -> (1227, tshow n)
+    Hydroxyproline -> (1228, tshow n)
+    Asparagine -> (1231, tshow n)
+    Cysteine -> (1232, tshow n)
+    Glutamine -> (1233, tshow n)
+    Taurine -> (1234, tshow n)
+
+-- instance Measurable MeasuredNutrient where
+--   toMeasuredInfo :: MeasuredNutrient -> (Int, T.Text)
+--   toMeasuredInfo Nitrogen = (1002, tshow Nitrogen)
+
+-- instance Displayable CalcNutrient where
+--   toDisplayInfo :: CalcNutrient -> (T.Text, Unit)
+--   toDisplayInfo n = case n of
+--     Energy -> (tshow n, Unit Kilo Calorie)
+--     CarbDiff -> ("Carbohydrates (by difference)", Unit Unity Gram)
+--     CarbSum -> ("Carbohydrates (by summation)", Unit Unity Gram)
+
+-- instance Displayable AppNutrient where
+--   toDisplayInfo :: AppNutrient -> (T.Text, Unit)
+--   toDisplayInfo n = (toName n,) $ case n of
+--     Starch -> g
+--     TotalSugar -> g
+--     Sucrose -> g
+--     Glucose -> g
+--     Fructose -> g
+--     Lactose -> g
+--     Maltose -> g
+--     Galactose -> g
+--     Raffinose -> g
+--     Stachyose -> g
+--     Verbascose -> g
+--     TotalFiber1992 -> g
+--     SolubleFiber -> g
+--     InsolubleFiber -> g
+--     TotalFiber2011 -> g
+--     HighMWFiber -> g
+--     LowMWFiber -> g
+--     BetaGlucan -> g
+--     TotalFat -> g
+--     Calcium -> mg
+--     Iron -> mg
+--     Magnesium -> mg
+--     Phosphorus -> mg
+--     Potassium -> mg
+--     Sodium -> mg
+--     Zinc -> mg
+--     Copper -> mg
+--     Iodine -> mg
+--     Manganese -> mg
+--     Molybdenum -> mg
+--     Selenium -> mg
+--     where
+--       g = Unit Unity Gram
+--       mg = Unit Milli Gram
+
+-- data NutrientHierarchy
+--   = forall n.
+--     Displayable n =>
+--     DBranch n (NonEmpty NutrientHierarchy) NutrientHierarchy
+--   | forall n.
+--     (Displayable n, Measurable n) =>
+--     MBranch n (NonEmpty NutrientHierarchy)
+--   | forall n. (Displayable n, Measurable n) => MLeaf n
+--   | forall n. Displayable n => DLeaf n
+
+-- data NutrientHierarchy a
+--   = forall b. DBranch a (Node b)
+--   | forall b. MBranch a (NonEmpty (NutrientHierarchy b))
+--   | MLeaf a
+--   | DLeaf T.Text
+
+data NutTree a = NutTree
+  { ntFractions :: Branches a
+  , ntPrefix :: Prefix
+  , ntUnmeasuredHeader :: T.Text
+  , ntUnmeasuredTree :: Maybe (Aggregation MNode)
+  }
+
+enumToNonEmpty :: (Bounded a, Enum a) => NonEmpty a
+enumToNonEmpty = fromList [minBound ..]
+
+toLeaves :: (Bounded a, Enum a) => Branches a
+toLeaves = (\x -> Single (Right x, Nothing)) <$> enumToNonEmpty
+
+data MNode = forall a. Measurable a => MNode (NutTree a)
+
+type Branches a = NonEmpty (Aggregation (Either T.Text a, Maybe MNode))
+
+nutHierarchy :: NutTree Proximates
+nutHierarchy =
+  NutTree
+    { ntFractions =
+        Single (Right Water, Nothing)
+          :| [ Single (Right Lipid, Just undefined)
+             , Single
+                ( Right Protein
+                , Just $
+                    MNode $
+                      NutTree
+                        { ntFractions = toLeaves :: Branches AminoAcid
+                        , ntPrefix = Milli
+                        , ntUnmeasuredHeader = "Other Protein Mass"
+                        , ntUnmeasuredTree = Nothing
+                        }
+                )
+             , Single
+                ( Right Ash
+                , Just $
+                    MNode $
+                      NutTree
+                        { ntFractions = toLeaves :: Branches Mineral
+                        , ntPrefix = Milli
+                        , ntUnmeasuredHeader = "Other Inorganics"
+                        , ntUnmeasuredTree = Nothing
+                        }
+                )
+             ]
+    , ntPrefix = Unity
+    , ntUnmeasuredHeader = "Carbohydrates (by difference)"
+    , ntUnmeasuredTree =
+        Just $
+          Single $
+            MNode $
+              NutTree
+                { ntFractions =
+                    Single (Right Starch, Nothing)
+                      :| [ Single (Right BetaGlucan, Nothing)
+                         , Priority
+                            ( ( Right FiberBySolubility
+                              , Just $
+                                  MNode $
+                                    NutTree
+                                      { ntFractions =
+                                          Single (Right SolubleFiber, Nothing)
+                                            :| [ Single (Right InsolubleFiber, Nothing)
+                                               ]
+                                      , ntPrefix = Unity
+                                      , ntUnmeasuredHeader = "Other fiber"
+                                      , ntUnmeasuredTree = Nothing
+                                      }
+                              )
+                                :| [
+                                     ( Right FiberByWeight
+                                     , Just $
+                                        MNode $
+                                          NutTree
+                                            { ntFractions =
+                                                Single (Right HighMWFiber, Nothing)
+                                                  :| [ Single (Right LowMWFiber, Nothing)
+                                                     ]
+                                            , ntPrefix = Unity
+                                            , ntUnmeasuredHeader = "Other fiber"
+                                            , ntUnmeasuredTree = Nothing
+                                            }
+                                     )
+                                   ]
+                            )
+                         , Single (Left "Total Sugars", Just undefined)
+                         ]
+                , ntPrefix = Unity
+                , ntUnmeasuredHeader = "Other carbohydrates"
+                , ntUnmeasuredTree = Nothing
+                }
+    }
+
+data Aggregation a = Single a | Priority (NonEmpty a)
 
 data MTree a = MTree
   { mtMass :: Scientific
