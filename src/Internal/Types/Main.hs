@@ -557,98 +557,195 @@ class Displayable a where
 data Proximates = Water | Protein | Lipid | Ash
   deriving (Show)
 
--- instance Measurable MeasuredProximates where
---   toMeasuredInfo :: MeasuredProximates -> (Int, T.Text)
---   toMeasuredInfo n = case n of
---     Water -> (1051, tshow n)
---     Protein -> (1003, tshow n)
---     Lipid -> (1004, tshow n)
---     Ash -> (1007, tshow n)
-
--- instance Displayable MeasuredProximates where
---   toDisplayInfo :: MeasuredProximates -> (T.Text, Unit)
---   toDisplayInfo n = (toName n, Unit Unity Gram)
-
--- data AppNutrient
---   = Starch
---   | TotalSugar
---   | TotalFat
---   deriving (Show)
+instance Measurable Proximates where
+  toMeasuredInfo :: Proximates -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    Water -> (1051, tshow n)
+    Protein -> (1003, tshow n)
+    Lipid -> (1004, tshow n)
+    Ash -> (1007, tshow n)
 
 data Lipids
-  = FattyAcids
-  | Cholesterol
-  deriving (Show)
-
--- \| Phytosterols
-
-data FattyAcids
   = SaturatedFattyAcids
   | MonounsaturatedFattyAcids
   | PolyunsaturatedFattyAcids
   | TransFattyAcids
-  deriving (Show)
+  | Cholesterol
+  deriving (Show, Enum, Bounded)
+
+instance Measurable Lipids where
+  toMeasuredInfo :: Lipids -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    TransFattyAcids -> (1257, "Trans Fatty Acids")
+    MonounsaturatedFattyAcids -> (1292, "Monounsaturated Fatty Acids")
+    PolyunsaturatedFattyAcids -> (1293, "Polyunsaturated Fatty Acids")
+    SaturatedFattyAcids -> (1258, "Saturated Fatty Acids")
+    Cholesterol -> (1253, tshow n)
+
+data TransFattyAcids
+  = TFA_14_1
+  | TFA_16_1
+  | TFA_17_1
+  | TFA_18_1
+  | TFA_18_2
+  | TFA_18_3
+  | TFA_20_1
+  | TFA_22_1
+  deriving (Show, Enum, Bounded)
+
+instance Measurable TransFattyAcids where
+  toMeasuredInfo :: TransFattyAcids -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    TFA_14_1 -> (1281, tshow n)
+    TFA_16_1 -> (1303, tshow n)
+    TFA_17_1 -> (2011, tshow n)
+    TFA_18_1 -> (1304, tshow n)
+    TFA_18_2 -> (1306, tshow n)
+    -- TFA_18_2 -> (1310, tshow n)
+    -- TFA_18_2 -> (2017, tshow n)
+    TFA_18_3 -> (2019, tshow n)
+    TFA_20_1 -> (2013, tshow n)
+    TFA_22_1 -> (1305, tshow n)
+
+-- TODO move the more specific omega 3/6 into their own subcategories
+data PUFA
+  = PUFA_18_2
+  | PUFA_18_3
+  | PUFA_18_4
+  | PUFA_20_2_n6_cc -- Eicosadienoic acid
+  | PUFA_20_3
+  | PUFA_20_4
+  | PUFA_20_5_n3 -- Eicosapentaenoic acid (EPA)
+  | PUFA_22_2
+  | PUFA_22_3
+  | PUFA_22_4
+  deriving (Show, Enum, Bounded)
+
+instance Measurable PUFA where
+  toMeasuredInfo :: PUFA -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    PUFA_18_2 -> (1269, tshow n)
+    PUFA_18_3 -> (1270, tshow n)
+    PUFA_18_4 -> (1276, tshow n)
+    PUFA_20_2_n6_cc -> (1313, tshow n)
+    PUFA_20_3 -> (1325, tshow n)
+    PUFA_20_4 -> (1271, tshow n)
+    PUFA_20_5_n3 -> (1278, tshow n)
+    PUFA_22_2 -> (1334, tshow n)
+    PUFA_22_3 -> (2021, tshow n)
+    PUFA_22_4 -> (1411, tshow n)
+
+data PUFA_18_2
+  = PUFA_18_2_CLA
+  | PUFA_18_2_n6_cc
+  deriving (Show, Enum, Bounded)
+
+instance Measurable PUFA_18_2 where
+  toMeasuredInfo :: PUFA_18_2 -> (Int, T.Text)
+  toMeasuredInfo n = second (T.append "PUFA 18:2 ") $ case n of
+    -- note that this is separate from LA
+    PUFA_18_2_CLA -> (1311, "(conjugated linoleic acids)")
+    PUFA_18_2_n6_cc -> (1316, "ω-6 c,c (Linoleic Acid)")
+
+data PUFA_18_3
+  = PUFA_18_3i
+  | PUFA_18_3_n6_ccc
+  | PUFA_18_3_n3_ccc
+  deriving (Show, Enum, Bounded)
+
+instance Measurable PUFA_18_3 where
+  toMeasuredInfo :: PUFA_18_3 -> (Int, T.Text)
+  toMeasuredInfo n = second (T.append "PUFA 18:3 ") $ case n of
+    PUFA_18_3i -> (1409, "isomers") -- at least I think this is what "i" means
+    PUFA_18_3_n6_ccc -> (1321, "ω-6 c,c,c (Gamma-linolenic Acid)")
+    PUFA_18_3_n3_ccc -> (1404, "ω-3 c,c,c (Alpha-linolenic Acid)")
+
+data PUFA_20_3
+  = PUFA_20_3_n3
+  | PUFA_20_3_n6
+  | PUFA_20_3_n9
+  deriving (Show, Enum, Bounded)
+
+instance Measurable PUFA_20_3 where
+  toMeasuredInfo :: PUFA_20_3 -> (Int, T.Text)
+  toMeasuredInfo n = second (T.append "PUFA 20:3 ") $ case n of
+    PUFA_20_3_n3 -> (1405, "ω-3 c,c,c (Eicosatetraenoic Acid)")
+    PUFA_20_3_n6 -> (1406, "ω-6 c,c,c (Dihomo-gamma-linolenic Acid)")
+    PUFA_20_3_n9 -> (1414, "ω-9 c,c,c (Mead Acid)")
+
+data PUFA_22_5 = PUFA_22_5_n3
+
+instance Measurable PUFA_22_5 where
+  toMeasuredInfo :: PUFA_22_5 -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    PUFA_22_5_n3 -> (1280, "PUFA 22:5 ω-3 c,c,c,c,c (Docosapentaenoic Acid)")
+
+data PUFA_22_6 = PUFA_22_6_n3
+
+instance Measurable PUFA_22_6 where
+  toMeasuredInfo :: PUFA_22_6 -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    PUFA_22_6_n3 -> (1272, "PUFA 22:6 ω-3 c,c,c,c,c,c (Docosahexaenoic Acid)")
 
 data Carbohydrates
   = Fiber
   | BetaGlucan
   | Starch
-  deriving (Show)
-
-data Fiber
-  = FiberBySolubility
+  | FiberBySolubility
   | FiberByWeight
-  deriving (Show)
-
-data FiberBySolubility
-  = SolubleFiber
-  | InsolubleFiber
   deriving (Show, Enum, Bounded)
 
-data FiberByWeight
-  = HighMWFiber
-  | LowMWFiber
+instance Measurable Carbohydrates where
+  toMeasuredInfo :: Carbohydrates -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    Fiber -> (1079, "Soluble/Insoluble Fiber")
+    BetaGlucan -> (2058, "Beta Glucans")
+    Starch -> (1009, tshow n)
+    FiberBySolubility -> (1079, "Soluble/Insoluble Fiber")
+    FiberByWeight -> (2033, "High/Low Molecular Weight Fiber")
+
+data FiberBySolubility = SolubleFiber | InsolubleFiber
   deriving (Show, Enum, Bounded)
 
-data Sugars
-  = SimpleSugars
-  | OligoSaccharides
-  deriving (Show)
+instance Measurable FiberBySolubility where
+  toMeasuredInfo :: FiberBySolubility -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    SolubleFiber -> (1082, "Soluble Fiber")
+    InsolubleFiber -> (1084, "Insoluble Fiber")
 
-data SimpleSugar
+data FiberByWeight = HighMWFiber | LowMWFiber
+  deriving (Show, Enum, Bounded)
+
+instance Measurable FiberByWeight where
+  toMeasuredInfo :: FiberByWeight -> (Int, T.Text)
+  toMeasuredInfo n = case n of
+    HighMWFiber -> (2038, "High Molecular Weight Fiber")
+    LowMWFiber -> (2065, "Low Molecular Weight Fiber")
+
+data Sugar
   = Sucrose
   | Glucose
   | Fructose
   | Lactose
   | Maltose
   | Galactose
-  deriving (Show)
-
-data OligoSaccharides
-  = Raffinose
+  | Raffinose
   | Stachyose
   | Verbascose
-  deriving (Show)
+  deriving (Show, Enum, Bounded)
 
--- data TotalFiber1992
---   = SolubleFiber
---   | InsolubleFiber
---   deriving (Show)
-
--- data TotalFiber2011
---   = HighMWFiber
---   | LowMWFiber
---   deriving (Show)
-
--- data MeasuredNutrient
---   = Nitrogen
---   deriving (Show)
-
--- data CalcNutrient
---   = Energy
---   | CarbDiff
---   | CarbSum
---   deriving (Show)
+instance Measurable Sugar where
+  toMeasuredInfo :: Sugar -> (Int, T.Text)
+  toMeasuredInfo n = (,tshow n) $ case n of
+    Sucrose -> 1010
+    Glucose -> 1011
+    Fructose -> 1012
+    Lactose -> 1013
+    Maltose -> 1014
+    Galactose -> 1075
+    Raffinose -> 1076
+    Stachyose -> 1077
+    Verbascose -> 2063
 
 data AminoAcid
   = Tryptophan
@@ -675,99 +772,6 @@ data AminoAcid
   | Glutamine
   | Taurine
   deriving (Show, Enum, Bounded)
-
-data Mineral
-  = Calcium
-  | Iron
-  | Magnesium
-  | Phosphorus
-  | Potassium
-  | Sodium
-  | Zinc
-  | Copper
-  | Iodine
-  | Manganese
-  | Molybdenum
-  | Selenium
-  deriving (Show, Enum, Bounded)
-
-instance Measurable Carbohydrates where
-  toMeasuredInfo :: Carbohydrates -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    Fiber -> (1079, "Soluble/Insoluble Fiber")
-    BetaGlucan -> (2058, "Beta Glucans")
-    Starch -> (1009, tshow n)
-
-instance Measurable Mineral where
-  toMeasuredInfo :: Mineral -> (Int, T.Text)
-  toMeasuredInfo n = (,tshow n) $ case n of
-    Calcium -> 1087
-    Iron -> 1089
-    Magnesium -> 1090
-    Phosphorus -> 1091
-    Potassium -> 1092
-    Sodium -> 1093
-    Zinc -> 1095
-    Copper -> 1098
-    Iodine -> 1100
-    Manganese -> 1101
-    Molybdenum -> 1102
-    Selenium -> 1103
-
-instance Measurable Fiber where
-  toMeasuredInfo :: Fiber -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    FiberBySolubility -> (1079, "Soluble/Insoluble Fiber")
-    FiberByWeight -> (2033, "High/Low Molecular Weight Fiber")
-
-instance Measurable FiberBySolubility where
-  toMeasuredInfo :: FiberBySolubility -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    SolubleFiber -> (1082, "Soluble Fiber")
-    InsolubleFiber -> (1084, "Insoluble Fiber")
-
-instance Measurable FiberByWeight where
-  toMeasuredInfo :: FiberByWeight -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    HighMWFiber -> (2038, "High Molecular Weight Fiber")
-    LowMWFiber -> (2065, "Low Molecular Weight Fiber")
-
--- Sugars -> (1063, tshow n)
-
--- instance Measurable AppNutrient where
---   toMeasuredInfo :: AppNutrient -> (Int, T.Text)
---   toMeasuredInfo n = case n of
---     Starch -> (1009, tshow n)
---     TotalSugar -> (1063, "Total Sugar")
---     Sucrose -> (1010, tshow n)
---     Glucose -> (1011, tshow n)
---     Fructose -> (1012, tshow n)
---     Lactose -> (1013, tshow n)
---     Maltose -> (1014, tshow n)
---     Galactose -> (1075, tshow n)
---     Raffinose -> (1076, tshow n)
---     Stachyose -> (1077, tshow n)
---     Verbascose -> (2063, tshow n)
---     TotalFiber1992 -> (1079, "Soluble/Insoluble Fiber")
---     SolubleFiber -> (1082, "Soluble Fiber")
---     InsolubleFiber -> (1084, "Insoluble Fiber")
---     TotalFiber2011 -> (2033, "High/Low Molecular Weight Fiber")
---     HighMWFiber -> (2038, "High Molecular Weight Fiber")
---     LowMWFiber -> (2065, "Low Molecular Weight Fiber")
---     BetaGlucan -> (2058, "Beta Glucans")
---     TotalFat -> (1004, "Total Fat")
---     Calcium -> (1087, tshow n)
---     Iron -> (1089, tshow n)
---     Magnesium -> (1090, tshow n)
---     Phosphorus -> (1091, tshow n)
---     Potassium -> (1092, tshow n)
---     Sodium -> (1093, tshow n)
---     Zinc -> (1095, tshow n)
---     Copper -> (1098, tshow n)
---     Iodine -> (1100, tshow n)
---     Manganese -> (1101, tshow n)
---     Molybdenum -> (1102, tshow n)
---     Selenium -> (1103, tshow n)
 
 instance Measurable AminoAcid where
   toMeasuredInfo :: AminoAcid -> (Int, T.Text)
@@ -796,74 +800,39 @@ instance Measurable AminoAcid where
     Glutamine -> (1233, tshow n)
     Taurine -> (1234, tshow n)
 
--- instance Measurable MeasuredNutrient where
---   toMeasuredInfo :: MeasuredNutrient -> (Int, T.Text)
---   toMeasuredInfo Nitrogen = (1002, tshow Nitrogen)
+data Mineral
+  = Calcium
+  | Iron
+  | Magnesium
+  | Phosphorus
+  | Potassium
+  | Sodium
+  | Zinc
+  | Copper
+  | Iodine
+  | Manganese
+  | Molybdenum
+  | Selenium
+  deriving (Show, Enum, Bounded)
 
--- instance Displayable CalcNutrient where
---   toDisplayInfo :: CalcNutrient -> (T.Text, Unit)
---   toDisplayInfo n = case n of
---     Energy -> (tshow n, Unit Kilo Calorie)
---     CarbDiff -> ("Carbohydrates (by difference)", Unit Unity Gram)
---     CarbSum -> ("Carbohydrates (by summation)", Unit Unity Gram)
-
--- instance Displayable AppNutrient where
---   toDisplayInfo :: AppNutrient -> (T.Text, Unit)
---   toDisplayInfo n = (toName n,) $ case n of
---     Starch -> g
---     TotalSugar -> g
---     Sucrose -> g
---     Glucose -> g
---     Fructose -> g
---     Lactose -> g
---     Maltose -> g
---     Galactose -> g
---     Raffinose -> g
---     Stachyose -> g
---     Verbascose -> g
---     TotalFiber1992 -> g
---     SolubleFiber -> g
---     InsolubleFiber -> g
---     TotalFiber2011 -> g
---     HighMWFiber -> g
---     LowMWFiber -> g
---     BetaGlucan -> g
---     TotalFat -> g
---     Calcium -> mg
---     Iron -> mg
---     Magnesium -> mg
---     Phosphorus -> mg
---     Potassium -> mg
---     Sodium -> mg
---     Zinc -> mg
---     Copper -> mg
---     Iodine -> mg
---     Manganese -> mg
---     Molybdenum -> mg
---     Selenium -> mg
---     where
---       g = Unit Unity Gram
---       mg = Unit Milli Gram
-
--- data NutrientHierarchy
---   = forall n.
---     Displayable n =>
---     DBranch n (NonEmpty NutrientHierarchy) NutrientHierarchy
---   | forall n.
---     (Displayable n, Measurable n) =>
---     MBranch n (NonEmpty NutrientHierarchy)
---   | forall n. (Displayable n, Measurable n) => MLeaf n
---   | forall n. Displayable n => DLeaf n
-
--- data NutrientHierarchy a
---   = forall b. DBranch a (Node b)
---   | forall b. MBranch a (NonEmpty (NutrientHierarchy b))
---   | MLeaf a
---   | DLeaf T.Text
+instance Measurable Mineral where
+  toMeasuredInfo :: Mineral -> (Int, T.Text)
+  toMeasuredInfo n = (,tshow n) $ case n of
+    Calcium -> 1087
+    Iron -> 1089
+    Magnesium -> 1090
+    Phosphorus -> 1091
+    Potassium -> 1092
+    Sodium -> 1093
+    Zinc -> 1095
+    Copper -> 1098
+    Iodine -> 1100
+    Manganese -> 1101
+    Molybdenum -> 1102
+    Selenium -> 1103
 
 data NutTree a = NutTree
   { ntFractions :: Branches a
-  , ntPrefix :: Prefix
   , ntUnmeasuredHeader :: T.Text
   , ntUnmeasuredTree :: Maybe (Aggregation MNode)
   }
@@ -871,43 +840,31 @@ data NutTree a = NutTree
 enumToNonEmpty :: (Bounded a, Enum a) => NonEmpty a
 enumToNonEmpty = fromList [minBound ..]
 
-toLeaves :: (Bounded a, Enum a) => Branches a
-toLeaves = (\x -> Single (Right x, Nothing)) <$> enumToNonEmpty
-
 data MNode = forall a. Measurable a => MNode (NutTree a)
 
-type Branches a = NonEmpty (Aggregation (Either T.Text a, Maybe MNode))
+type Branches a = NonEmpty (Aggregation (Node a))
+
+data Node a
+  = MeasuredHeader a MNode
+  | forall b. Measurable b => UnmeasuredHeader T.Text (Branches b)
+  | Leaf a
 
 nutHierarchy :: NutTree Proximates
 nutHierarchy =
   NutTree
     { ntFractions =
-        Single (Right Water, Nothing)
-          :| [ Single (Right Lipid, Just undefined)
-             , Single
-                ( Right Protein
-                , Just $
-                    MNode $
-                      NutTree
-                        { ntFractions = toLeaves :: Branches AminoAcid
-                        , ntPrefix = Milli
-                        , ntUnmeasuredHeader = "Other Protein Mass"
-                        , ntUnmeasuredTree = Nothing
-                        }
-                )
-             , Single
-                ( Right Ash
-                , Just $
-                    MNode $
-                      NutTree
-                        { ntFractions = toLeaves :: Branches Mineral
-                        , ntPrefix = Milli
-                        , ntUnmeasuredHeader = "Other Inorganics"
-                        , ntUnmeasuredTree = Nothing
-                        }
-                )
+        leaf Water
+          :| [ Single $
+                MeasuredHeader Lipid $
+                  MNode $
+                    NutTree
+                      { ntFractions = leaf Cholesterol :| [undefined]
+                      , ntUnmeasuredHeader = "Other lipids"
+                      , ntUnmeasuredTree = Nothing
+                      }
+             , Single $ MeasuredHeader Protein $ MNode (toLeaves_ "Other Protein Mass" :: NutTree AminoAcid)
+             , Single $ MeasuredHeader Ash $ MNode (toLeaves_ "Other Inorganics" :: NutTree Mineral)
              ]
-    , ntPrefix = Unity
     , ntUnmeasuredHeader = "Carbohydrates (by difference)"
     , ntUnmeasuredTree =
         Just $
@@ -915,45 +872,33 @@ nutHierarchy =
             MNode $
               NutTree
                 { ntFractions =
-                    Single (Right Starch, Nothing)
-                      :| [ Single (Right BetaGlucan, Nothing)
+                    leaf Starch
+                      :| [ leaf BetaGlucan
                          , Priority
-                            ( ( Right FiberBySolubility
-                              , Just $
-                                  MNode $
-                                    NutTree
-                                      { ntFractions =
-                                          Single (Right SolubleFiber, Nothing)
-                                            :| [ Single (Right InsolubleFiber, Nothing)
-                                               ]
-                                      , ntPrefix = Unity
-                                      , ntUnmeasuredHeader = "Other fiber"
-                                      , ntUnmeasuredTree = Nothing
-                                      }
-                              )
-                                :| [
-                                     ( Right FiberByWeight
-                                     , Just $
-                                        MNode $
-                                          NutTree
-                                            { ntFractions =
-                                                Single (Right HighMWFiber, Nothing)
-                                                  :| [ Single (Right LowMWFiber, Nothing)
-                                                     ]
-                                            , ntPrefix = Unity
-                                            , ntUnmeasuredHeader = "Other fiber"
-                                            , ntUnmeasuredTree = Nothing
-                                            }
-                                     )
+                            ( MeasuredHeader
+                                FiberBySolubility
+                                (MNode (toLeaves_ "Other fiber" :: NutTree FiberBySolubility))
+                                :| [ MeasuredHeader FiberByWeight $
+                                      MNode (toLeaves_ "Other fiber" :: NutTree FiberByWeight)
                                    ]
                             )
-                         , Single (Left "Total Sugars", Just undefined)
+                         , Single $ UnmeasuredHeader "Total Sugars" (toLeaves :: Branches Sugar)
                          ]
-                , ntPrefix = Unity
                 , ntUnmeasuredHeader = "Other carbohydrates"
                 , ntUnmeasuredTree = Nothing
                 }
     }
+  where
+    leaf = Single . Leaf
+    toLeaves :: (Bounded a, Enum a) => Branches a
+    toLeaves = leaf <$> enumToNonEmpty
+    toLeaves_ :: (Bounded a, Enum a) => T.Text -> NutTree a
+    toLeaves_ h =
+      NutTree
+        { ntFractions = toLeaves
+        , ntUnmeasuredHeader = h
+        , ntUnmeasuredTree = Nothing
+        }
 
 data Aggregation a = Single a | Priority (NonEmpty a)
 
