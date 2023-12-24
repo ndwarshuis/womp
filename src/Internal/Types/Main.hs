@@ -16,7 +16,7 @@ import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
 import qualified RIO.Map as M
-import RIO.NonEmpty.Partial (fromList)
+import RIO.State
 import qualified RIO.Text as T
 
 data FoodItem
@@ -514,391 +514,715 @@ tunit Unit {unitName, unitBase} = T.append prefix unit
 instance C.ToField Unit where
   toField = encodeUtf8 . tunit
 
--- the good old heterogeneous list trick :)
-data Meas = forall n. Measurable n => Meas n
+type NutrientReader = MonadReader FoodMeta
 
-instance Show Meas where
-  show :: Meas -> String
-  show (Meas x) = show $ toMeasuredInfo x
+type FoodState = [FoodNutrient]
 
-data Disp = forall n. Displayable n => Disp n
+type NutrientState = MonadState FoodState
 
-data MeasDisp = forall n. (Displayable n, Measurable n) => MeasDisp n
+data MeasuredNutrient
+  = Direct DirectNutrient
+  | Computed ComputedNutrient
+  | Alternate AltNutrient
+  deriving (Show, Eq, Ord)
 
-instance Show Disp where
-  show :: Disp -> String
-  show (Disp x) = show $ toDisplayInfo x
+-- TODO augment this to include alternatively calculated nutrients (like protein
+-- and some MUFAs) which will required a monadic function that executes in a
+-- reader env with whatever data we need
+data DirectNutrient = DirectNutrient
+  { mnId :: Int
+  , mnName :: T.Text
+  , mnDisplayPrefix :: Prefix
+  }
+  deriving (Show, Eq, Ord)
+
+data AltNutrient = AltNutrient
+  { anName :: T.Text
+  , anDisplayPrefix :: Prefix
+  , anChoices :: NonEmpty Int
+  }
+  deriving (Show, Eq, Ord)
+
+data ComputedNutrient = ComputedNutrient
+  { cnName :: T.Text
+  , cnCompute :: FoodMeta -> FoodState -> Scientific
+  }
+
+-- TODO this is kinda hacky but there shouldn't be many of these to compare
+-- so it likely won't matter much
+instance Show ComputedNutrient where
+  show ComputedNutrient {cnName} = "ComputedNutrient(" ++ T.unpack cnName ++ ")"
+
+instance Eq ComputedNutrient where
+  (==) a b = cnName a == cnName b
+
+instance Ord ComputedNutrient where
+  compare a b = compare (cnName a) (cnName b)
+
+data SummedNutrient = SummedNutrient
+  { snName :: T.Text
+  , snDisplayPrefix :: Prefix
+  }
+  deriving (Show, Eq, Ord)
+
+data FoodMeta = FoodMeta
+  { fmDesc :: T.Text
+  , fmId :: Int
+  , fmNitrogenFactor :: Maybe Scientific
+  }
+  deriving (Show)
 
 data NutrientValue_ a = NutrientValue
   { nvValue :: a
-  , nvMembers :: NonEmpty Disp
+  , nvMembers :: NonEmpty FoodMeta
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
 
-class Measurable a where
-  toMeasuredInfo :: a -> (Int, T.Text)
+-- | Proximate level
+water :: MeasuredNutrient
+water = Direct $ DirectNutrient 1051 "Water" Unity
 
-  toId :: a -> Int
-  toId = fst . toMeasuredInfo
+-- TODO nitrogen = 1002
+protein :: MeasuredNutrient
+protein = Direct $ DirectNutrient 1003 "Protein" Unity
 
-  toName :: a -> T.Text
-  toName = snd . toMeasuredInfo
+lipid :: MeasuredNutrient
+lipid = Direct $ DirectNutrient 1004 "Lipids" Unity
 
-class Displayable a where
-  toDisplayInfo :: a -> (T.Text, Unit)
+ash :: MeasuredNutrient
+ash = Direct $ DirectNutrient 1007 "Ash" Unity
 
-  toDName :: a -> T.Text
-  toDName = fst . toDisplayInfo
+carbDiff :: SummedNutrient
+carbDiff = SummedNutrient "Carbohydrates (by difference)" Unity
 
-  toDUnit :: a -> Unit
-  toDUnit = snd . toDisplayInfo
+-- | Lipid level
+tfas :: MeasuredNutrient
+tfas = Direct $ DirectNutrient 1257 "Trans Fatty Acids" Unity
 
-data Proximates = Water | Protein | Lipid | Ash
-  deriving (Show)
+mufas :: MeasuredNutrient
+mufas = Direct $ DirectNutrient 1292 "Monounsaturated Fatty Acids" Unity
 
-instance Measurable Proximates where
-  toMeasuredInfo :: Proximates -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    Water -> (1051, tshow n)
-    Protein -> (1003, tshow n)
-    Lipid -> (1004, tshow n)
-    Ash -> (1007, tshow n)
+pufas :: MeasuredNutrient
+pufas = Direct $ DirectNutrient 1293 "Polyunsaturated Fatty Acids" Unity
 
-data Lipids
-  = SaturatedFattyAcids
-  | MonounsaturatedFattyAcids
-  | PolyunsaturatedFattyAcids
-  | TransFattyAcids
-  | Cholesterol
-  deriving (Show, Enum, Bounded)
+sfas :: MeasuredNutrient
+sfas = Direct $ DirectNutrient 1258 "Saturated Fatty Acids" Unity
 
-instance Measurable Lipids where
-  toMeasuredInfo :: Lipids -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    TransFattyAcids -> (1257, "Trans Fatty Acids")
-    MonounsaturatedFattyAcids -> (1292, "Monounsaturated Fatty Acids")
-    PolyunsaturatedFattyAcids -> (1293, "Polyunsaturated Fatty Acids")
-    SaturatedFattyAcids -> (1258, "Saturated Fatty Acids")
-    Cholesterol -> (1253, tshow n)
+cholesterol :: MeasuredNutrient
+cholesterol = Direct $ DirectNutrient 1253 "Cholesterol" Unity
 
-data TransFattyAcids
-  = TFA_14_1
-  | TFA_16_1
-  | TFA_17_1
-  | TFA_18_1
-  | TFA_18_2
-  | TFA_18_3
-  | TFA_20_1
-  | TFA_22_1
-  deriving (Show, Enum, Bounded)
+sfa_4_0 :: MeasuredNutrient
+sfa_4_0 = Direct $ DirectNutrient 1259 "SFA 4:0" Micro
 
-instance Measurable TransFattyAcids where
-  toMeasuredInfo :: TransFattyAcids -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    TFA_14_1 -> (1281, tshow n)
-    TFA_16_1 -> (1303, tshow n)
-    TFA_17_1 -> (2011, tshow n)
-    TFA_18_1 -> (1304, tshow n)
-    TFA_18_2 -> (1306, tshow n)
-    -- TFA_18_2 -> (1310, tshow n)
-    -- TFA_18_2 -> (2017, tshow n)
-    TFA_18_3 -> (2019, tshow n)
-    TFA_20_1 -> (2013, tshow n)
-    TFA_22_1 -> (1305, tshow n)
+sfa_5_0 :: MeasuredNutrient
+sfa_5_0 = Direct $ DirectNutrient 2003 "SFA 5:0" Micro
 
--- TODO move the more specific omega 3/6 into their own subcategories
-data PUFA
-  = PUFA_18_2
-  | PUFA_18_3
-  | PUFA_18_4
-  | PUFA_20_2_n6_cc -- Eicosadienoic acid
-  | PUFA_20_3
-  | PUFA_20_4
-  | PUFA_20_5_n3 -- Eicosapentaenoic acid (EPA)
-  | PUFA_22_2
-  | PUFA_22_3
-  | PUFA_22_4
-  deriving (Show, Enum, Bounded)
+sfa_6_0 :: MeasuredNutrient
+sfa_6_0 = Direct $ DirectNutrient 1260 "SFA 6:0" Micro
 
-instance Measurable PUFA where
-  toMeasuredInfo :: PUFA -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    PUFA_18_2 -> (1269, tshow n)
-    PUFA_18_3 -> (1270, tshow n)
-    PUFA_18_4 -> (1276, tshow n)
-    PUFA_20_2_n6_cc -> (1313, tshow n)
-    PUFA_20_3 -> (1325, tshow n)
-    PUFA_20_4 -> (1271, tshow n)
-    PUFA_20_5_n3 -> (1278, tshow n)
-    PUFA_22_2 -> (1334, tshow n)
-    PUFA_22_3 -> (2021, tshow n)
-    PUFA_22_4 -> (1411, tshow n)
+sfa_7_0 :: MeasuredNutrient
+sfa_7_0 = Direct $ DirectNutrient 2004 "SFA 7:0" Micro
 
-data PUFA_18_2
-  = PUFA_18_2_CLA
-  | PUFA_18_2_n6_cc
-  deriving (Show, Enum, Bounded)
+sfa_8_0 :: MeasuredNutrient
+sfa_8_0 = Direct $ DirectNutrient 1261 "SFA 8:0" Micro
 
-instance Measurable PUFA_18_2 where
-  toMeasuredInfo :: PUFA_18_2 -> (Int, T.Text)
-  toMeasuredInfo n = second (T.append "PUFA 18:2 ") $ case n of
-    -- note that this is separate from LA
-    PUFA_18_2_CLA -> (1311, "(conjugated linoleic acids)")
-    PUFA_18_2_n6_cc -> (1316, "ω-6 c,c (Linoleic Acid)")
+sfa_9_0 :: MeasuredNutrient
+sfa_9_0 = Direct $ DirectNutrient 2005 "SFA 9:0" Micro
 
-data PUFA_18_3
-  = PUFA_18_3i
-  | PUFA_18_3_n6_ccc
-  | PUFA_18_3_n3_ccc
-  deriving (Show, Enum, Bounded)
+sfa_10_0 :: MeasuredNutrient
+sfa_10_0 = Direct $ DirectNutrient 1262 "SFA 10:0" Micro
 
-instance Measurable PUFA_18_3 where
-  toMeasuredInfo :: PUFA_18_3 -> (Int, T.Text)
-  toMeasuredInfo n = second (T.append "PUFA 18:3 ") $ case n of
-    PUFA_18_3i -> (1409, "isomers") -- at least I think this is what "i" means
-    PUFA_18_3_n6_ccc -> (1321, "ω-6 c,c,c (Gamma-linolenic Acid)")
-    PUFA_18_3_n3_ccc -> (1404, "ω-3 c,c,c (Alpha-linolenic Acid)")
+sfa_11_0 :: MeasuredNutrient
+sfa_11_0 = Direct $ DirectNutrient 1335 "SFA 11:0" Micro
 
-data PUFA_20_3
-  = PUFA_20_3_n3
-  | PUFA_20_3_n6
-  | PUFA_20_3_n9
-  deriving (Show, Enum, Bounded)
+sfa_12_0 :: MeasuredNutrient
+sfa_12_0 = Direct $ DirectNutrient 1263 "SFA 12:0" Micro
 
-instance Measurable PUFA_20_3 where
-  toMeasuredInfo :: PUFA_20_3 -> (Int, T.Text)
-  toMeasuredInfo n = second (T.append "PUFA 20:3 ") $ case n of
-    PUFA_20_3_n3 -> (1405, "ω-3 c,c,c (Eicosatetraenoic Acid)")
-    PUFA_20_3_n6 -> (1406, "ω-6 c,c,c (Dihomo-gamma-linolenic Acid)")
-    PUFA_20_3_n9 -> (1414, "ω-9 c,c,c (Mead Acid)")
+sfa_14_0 :: MeasuredNutrient
+sfa_14_0 = Direct $ DirectNutrient 1264 "SFA 14:0" Micro
 
-data PUFA_22_5 = PUFA_22_5_n3
+sfa_15_0 :: MeasuredNutrient
+sfa_15_0 = Direct $ DirectNutrient 1299 "SFA 15:0" Micro
 
-instance Measurable PUFA_22_5 where
-  toMeasuredInfo :: PUFA_22_5 -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    PUFA_22_5_n3 -> (1280, "PUFA 22:5 ω-3 c,c,c,c,c (Docosapentaenoic Acid)")
+sfa_16_0 :: MeasuredNutrient
+sfa_16_0 = Direct $ DirectNutrient 1265 "SFA 16:0" Micro
 
-data PUFA_22_6 = PUFA_22_6_n3
+sfa_17_0 :: MeasuredNutrient
+sfa_17_0 = Direct $ DirectNutrient 1300 "SFA 17:0" Micro
 
-instance Measurable PUFA_22_6 where
-  toMeasuredInfo :: PUFA_22_6 -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    PUFA_22_6_n3 -> (1272, "PUFA 22:6 ω-3 c,c,c,c,c,c (Docosahexaenoic Acid)")
+sfa_18_0 :: MeasuredNutrient
+sfa_18_0 = Direct $ DirectNutrient 1266 "SFA 18:0" Micro
 
-data Carbohydrates
-  = Fiber
-  | BetaGlucan
-  | Starch
-  | FiberBySolubility
-  | FiberByWeight
-  deriving (Show, Enum, Bounded)
+sfa_20_0 :: MeasuredNutrient
+sfa_20_0 = Direct $ DirectNutrient 1267 "SFA 20:0" Micro
 
-instance Measurable Carbohydrates where
-  toMeasuredInfo :: Carbohydrates -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    Fiber -> (1079, "Soluble/Insoluble Fiber")
-    BetaGlucan -> (2058, "Beta Glucans")
-    Starch -> (1009, tshow n)
-    FiberBySolubility -> (1079, "Soluble/Insoluble Fiber")
-    FiberByWeight -> (2033, "High/Low Molecular Weight Fiber")
+sfa_21_0 :: MeasuredNutrient
+sfa_21_0 = Direct $ DirectNutrient 2006 "SFA 21:0" Micro
 
-data FiberBySolubility = SolubleFiber | InsolubleFiber
-  deriving (Show, Enum, Bounded)
+sfa_22_0 :: MeasuredNutrient
+sfa_22_0 = Direct $ DirectNutrient 1273 "SFA 22:0" Micro
 
-instance Measurable FiberBySolubility where
-  toMeasuredInfo :: FiberBySolubility -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    SolubleFiber -> (1082, "Soluble Fiber")
-    InsolubleFiber -> (1084, "Insoluble Fiber")
+sfa_23_0 :: MeasuredNutrient
+sfa_23_0 = Direct $ DirectNutrient 2007 "SFA 23:0" Micro
 
-data FiberByWeight = HighMWFiber | LowMWFiber
-  deriving (Show, Enum, Bounded)
+sfa_24_0 :: MeasuredNutrient
+sfa_24_0 = Direct $ DirectNutrient 1301 "SFA 24:0" Micro
 
-instance Measurable FiberByWeight where
-  toMeasuredInfo :: FiberByWeight -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    HighMWFiber -> (2038, "High Molecular Weight Fiber")
-    LowMWFiber -> (2065, "Low Molecular Weight Fiber")
+mufa_12_1 :: MeasuredNutrient
+mufa_12_1 = Direct $ DirectNutrient 2008 "MUFA 12:1" Micro
 
-data Sugar
-  = Sucrose
-  | Glucose
-  | Fructose
-  | Lactose
-  | Maltose
-  | Galactose
-  | Raffinose
-  | Stachyose
-  | Verbascose
-  deriving (Show, Enum, Bounded)
+-- NOTE: it seems most of the MUFAs are not characterized further other than
+-- number of carbons. In this case, several of the MUFAs are redundant (ie the
+-- one's that end in c and the ones that don't). Rather than have multiple
+-- levels for each, collapse them into single layer to keep my code less lame
 
-instance Measurable Sugar where
-  toMeasuredInfo :: Sugar -> (Int, T.Text)
-  toMeasuredInfo n = (,tshow n) $ case n of
-    Sucrose -> 1010
-    Glucose -> 1011
-    Fructose -> 1012
-    Lactose -> 1013
-    Maltose -> 1014
-    Galactose -> 1075
-    Raffinose -> 1076
-    Stachyose -> 1077
-    Verbascose -> 2063
+-- TODO not sure how this one works, it is almost always analytical but
+-- sometimes summed in which case I have no idea what the inputs are because
+-- there are no other 14C MUFAs in the db)
+mufa_14_1 :: MeasuredNutrient
+mufa_14_1 = Direct $ DirectNutrient 2009 "MUFA 14:1" Micro
 
-data AminoAcid
-  = Tryptophan
-  | Threonine
-  | Isoleucine
-  | Leucine
-  | Lysine
-  | Methionine
-  | Cystine
-  | Phenylalanine
-  | Tyrosine
-  | Valine
-  | Arginine
-  | Histidine
-  | Alanine
-  | AsparticAcid
-  | GlutamicAcid
-  | Glycine
-  | Proline
-  | Serine
-  | Hydroxyproline
-  | Asparagine
-  | Cysteine
-  | Glutamine
-  | Taurine
-  deriving (Show, Enum, Bounded)
+mufa_15_1 :: MeasuredNutrient
+mufa_15_1 = Direct $ DirectNutrient 1333 "MUFA 15:1" Micro
 
-instance Measurable AminoAcid where
-  toMeasuredInfo :: AminoAcid -> (Int, T.Text)
-  toMeasuredInfo n = case n of
-    Tryptophan -> (1210, tshow n)
-    Threonine -> (1211, tshow n)
-    Isoleucine -> (1212, tshow n)
-    Leucine -> (1213, tshow n)
-    Lysine -> (1214, tshow n)
-    Methionine -> (1215, tshow n)
-    Cystine -> (1216, tshow n)
-    Phenylalanine -> (1217, tshow n)
-    Tyrosine -> (1218, tshow n)
-    Valine -> (1219, tshow n)
-    Arginine -> (1220, tshow n)
-    Histidine -> (1221, tshow n)
-    Alanine -> (1222, tshow n)
-    AsparticAcid -> (1223, "Aspartic Acid")
-    GlutamicAcid -> (1224, "Glutamic Acid")
-    Glycine -> (1225, tshow n)
-    Proline -> (1226, tshow n)
-    Serine -> (1227, tshow n)
-    Hydroxyproline -> (1228, tshow n)
-    Asparagine -> (1231, tshow n)
-    Cysteine -> (1232, tshow n)
-    Glutamine -> (1233, tshow n)
-    Taurine -> (1234, tshow n)
+mufa_16_1 :: MeasuredNutrient
+mufa_16_1 = Direct $ DirectNutrient 1314 "MUFA 16:1" Micro
 
-data Mineral
-  = Calcium
-  | Iron
-  | Magnesium
-  | Phosphorus
-  | Potassium
-  | Sodium
-  | Zinc
-  | Copper
-  | Iodine
-  | Manganese
-  | Molybdenum
-  | Selenium
-  deriving (Show, Enum, Bounded)
+mufa_17_1 :: MeasuredNutrient
+mufa_17_1 = Direct $ DirectNutrient 1323 "MUFA 17:1" Micro
 
-instance Measurable Mineral where
-  toMeasuredInfo :: Mineral -> (Int, T.Text)
-  toMeasuredInfo n = (,tshow n) $ case n of
-    Calcium -> 1087
-    Iron -> 1089
-    Magnesium -> 1090
-    Phosphorus -> 1091
-    Potassium -> 1092
-    Sodium -> 1093
-    Zinc -> 1095
-    Copper -> 1098
-    Iodine -> 1100
-    Manganese -> 1101
-    Molybdenum -> 1102
-    Selenium -> 1103
+mufa_18_1 :: MeasuredNutrient
+mufa_18_1 = Alternate $ AltNutrient "MUFA 18:1" Micro $ 1315 :| [1268]
 
-data NutTree a = NutTree
-  { ntFractions :: Branches a
-  , ntUnmeasuredHeader :: T.Text
-  , ntUnmeasuredTree :: Maybe (Aggregation MNode)
+mufa_20_1 :: MeasuredNutrient
+mufa_20_1 = Alternate $ AltNutrient "MUFA 20:1" Micro $ 2012 :| [1277]
+
+mufa_22_1 :: MeasuredNutrient
+mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Micro $ 1317 :| [2012]
+
+mufa_22_1_n9 :: MeasuredNutrient
+mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 ω-9 (Erucic Acid)" Micro
+
+mufa_22_1_n11 :: MeasuredNutrient
+mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 ω-11" Micro
+
+mufa_24_1_c :: MeasuredNutrient
+mufa_24_1_c = Direct $ DirectNutrient 1312 "MUFA 24:1 c" Micro
+
+tfa_14_1 :: MeasuredNutrient
+tfa_14_1 = Direct $ DirectNutrient 1281 "TFA 14:1" Unity
+
+tfa_16_1 :: MeasuredNutrient
+tfa_16_1 = Direct $ DirectNutrient 1303 "TFA 16:1" Unity
+
+tfa_17_1 :: MeasuredNutrient
+tfa_17_1 = Direct $ DirectNutrient 2011 "TFA 17:1" Unity
+
+tfa_18_1 :: MeasuredNutrient
+tfa_18_1 = Direct $ DirectNutrient 1304 "TFA 18:1" Unity
+
+tfa_18_2 :: MeasuredNutrient
+tfa_18_2 = Direct $ DirectNutrient 1306 "TFA 18:2" Unity
+
+tfa_18_3 :: MeasuredNutrient
+tfa_18_3 = Direct $ DirectNutrient 2019 "TFA 18:3" Unity
+
+tfa_20_1 :: MeasuredNutrient
+tfa_20_1 = Direct $ DirectNutrient 2013 "TFA 20:1" Unity
+
+tfa_22_1 :: MeasuredNutrient
+tfa_22_1 = Direct $ DirectNutrient 1305 "TFA 22:1" Unity
+
+pufa_18_2 :: MeasuredNutrient
+pufa_18_2 = Direct $ DirectNutrient 1269 "PUFA 18:2" Unity
+
+pufa_18_2_CLA :: MeasuredNutrient
+pufa_18_2_CLA = Direct $ DirectNutrient 1311 "PUFA 18:2 (conjugated linoleic acids)" Unity
+
+pufa_18_2_n6_cc :: MeasuredNutrient
+pufa_18_2_n6_cc = Direct $ DirectNutrient 1316 "PUFA 18:2 ω-6 c,c (Linoleic Acid)" Unity
+
+pufa_18_3 :: MeasuredNutrient
+pufa_18_3 = Direct $ DirectNutrient 1270 "PUFA 18:3" Unity
+
+-- at least I think this is what "i" means
+pufa_18_3i :: MeasuredNutrient
+pufa_18_3i = Direct $ DirectNutrient 1409 "PUFA 18:2 isomers" Unity
+
+pufa_18_3_n6_ccc :: MeasuredNutrient
+pufa_18_3_n6_ccc = Direct $ DirectNutrient 1321 "PUFA 18:3 ω-6 c,c,c (Gamma-linolenic Acid)" Unity
+
+pufa_18_3_n3_ccc :: MeasuredNutrient
+pufa_18_3_n3_ccc = Direct $ DirectNutrient 1404 "PUFA 18:3 ω-3 c,c,c (Alpha-linolenic Acid)" Unity
+
+pufa_18_4 :: MeasuredNutrient
+pufa_18_4 = Direct $ DirectNutrient 1276 "PUFA 18:4" Unity
+
+pufa_20_2 :: SummedNutrient
+pufa_20_2 = SummedNutrient "PUFA 20:2" Unity
+
+pufa_20_2_n6_cc :: MeasuredNutrient
+pufa_20_2_n6_cc = Direct $ DirectNutrient 1313 "PUFA 20:2_n6_cc" Unity
+
+pufa_20_3 :: MeasuredNutrient
+pufa_20_3 = Direct $ DirectNutrient 1325 "PUFA 20:3" Unity
+
+pufa_20_3_n3 :: MeasuredNutrient
+pufa_20_3_n3 = Direct $ DirectNutrient 1405 "PUFA 20:3 ω-3 c,c,c (Eicosatetraenoic Acid)" Unity
+
+pufa_20_3_n6 :: MeasuredNutrient
+pufa_20_3_n6 = Direct $ DirectNutrient 1406 "PUFA 20:3 ω-6 c,c,c (Dihomo-gamma-linolenic Acid)" Unity
+
+pufa_20_3_n9 :: MeasuredNutrient
+pufa_20_3_n9 = Direct $ DirectNutrient 1414 "PUFA 20:3 ω-9 c,c,c (Mead Acid)" Unity
+
+pufa_20_4 :: MeasuredNutrient
+pufa_20_4 = Direct $ DirectNutrient 1271 "PUFA 20:4" Unity
+
+pufa_20_5 :: SummedNutrient
+pufa_20_5 = SummedNutrient "PUFA 20:5" Unity
+
+pufa_20_5_n3 :: MeasuredNutrient
+pufa_20_5_n3 = Direct $ DirectNutrient 1278 "PUFA 20:5_n3" Unity
+
+pufa_22_2 :: MeasuredNutrient
+pufa_22_2 = Direct $ DirectNutrient 1334 "PUFA 22:2" Unity
+
+pufa_22_3 :: MeasuredNutrient
+pufa_22_3 = Direct $ DirectNutrient 2021 "PUFA 22:3" Unity
+
+pufa_22_4 :: MeasuredNutrient
+pufa_22_4 = Direct $ DirectNutrient 1411 "PUFA 22:4" Unity
+
+pufa_22_5 :: SummedNutrient
+pufa_22_5 = SummedNutrient "PUFA 22:5" Unity
+
+pufa_22_5_n3 :: MeasuredNutrient
+pufa_22_5_n3 = Direct $ DirectNutrient 1280 "PUFA 22:5 ω-3 c,c,c,c,c (Docosapentaenoic Acid)" Unity
+
+pufa_22_6 :: SummedNutrient
+pufa_22_6 = SummedNutrient "PUFA 22:5" Unity
+
+pufa_22_6_n3 :: MeasuredNutrient
+pufa_22_6_n3 = Direct $ DirectNutrient 1272 "PUFA 22:6 ω-3 c,c,c,c,c,c (Docosahexaenoic Acid)" Unity
+
+-- | Carbohydrate level
+fiber :: MeasuredNutrient
+fiber = Direct $ DirectNutrient 1079 "Soluble/Insoluble Fiber" Unity
+
+betaGlucan :: MeasuredNutrient
+betaGlucan = Direct $ DirectNutrient 2058 "Beta Glucans" Unity
+
+starch :: MeasuredNutrient
+starch = Direct $ DirectNutrient 1009 "Starch" Unity
+
+fiberBySolubility :: MeasuredNutrient
+fiberBySolubility = Direct $ DirectNutrient 1079 "Soluble/Insoluble Fiber" Unity
+
+fiberByWeight :: MeasuredNutrient
+fiberByWeight = Direct $ DirectNutrient 2033 "High/Low Molecular Weight Fiber" Unity
+
+highMWFiber :: MeasuredNutrient
+highMWFiber = Direct $ DirectNutrient 2038 "High Molecular Weight Fiber" Unity
+
+lowMWFiber :: MeasuredNutrient
+lowMWFiber = Direct $ DirectNutrient 2065 "Low Molecular Weight Fiber" Unity
+
+solubleFiber :: MeasuredNutrient
+solubleFiber = Direct $ DirectNutrient 1082 "Soluble Fiber" Unity
+
+insolubleFiber :: MeasuredNutrient
+insolubleFiber = Direct $ DirectNutrient 1084 "Insoluble Fiber" Unity
+
+-- | Sugar level
+sucrose :: MeasuredNutrient
+sucrose = Direct $ DirectNutrient 1010 "Sucrose" Unity
+
+glucose :: MeasuredNutrient
+glucose = Direct $ DirectNutrient 1011 "Glucose" Unity
+
+fructose :: MeasuredNutrient
+fructose = Direct $ DirectNutrient 1012 "Fructose" Unity
+
+lactose :: MeasuredNutrient
+lactose = Direct $ DirectNutrient 1013 "Lactose" Unity
+
+maltose :: MeasuredNutrient
+maltose = Direct $ DirectNutrient 1014 "maltose" Unity
+
+galactose :: MeasuredNutrient
+galactose = Direct $ DirectNutrient 1075 "Galactose" Unity
+
+raffinose :: MeasuredNutrient
+raffinose = Direct $ DirectNutrient 1076 "Raffinose" Unity
+
+stachyose :: MeasuredNutrient
+stachyose = Direct $ DirectNutrient 1077 "Stachyose" Unity
+
+verbascose :: MeasuredNutrient
+verbascose = Direct $ DirectNutrient 2063 "Verbascose" Unity
+
+tryptophan :: MeasuredNutrient
+tryptophan = Direct $ DirectNutrient 1210 "Tryptophan" Unity
+
+threonine :: MeasuredNutrient
+threonine = Direct $ DirectNutrient 1211 "Threonine" Unity
+
+isoleucine :: MeasuredNutrient
+isoleucine = Direct $ DirectNutrient 1212 "Isoleucine" Unity
+
+leucine :: MeasuredNutrient
+leucine = Direct $ DirectNutrient 1213 "Leucine" Unity
+
+lysine :: MeasuredNutrient
+lysine = Direct $ DirectNutrient 1214 "Lysine" Unity
+
+methionine :: MeasuredNutrient
+methionine = Direct $ DirectNutrient 1215 "Methionine" Unity
+
+cystine :: MeasuredNutrient
+cystine = Direct $ DirectNutrient 1216 "Cystine" Unity
+
+phenylalanine :: MeasuredNutrient
+phenylalanine = Direct $ DirectNutrient 1217 "Phenylalanine" Unity
+
+tyrosine :: MeasuredNutrient
+tyrosine = Direct $ DirectNutrient 1218 "Tyrosine" Unity
+
+valine :: MeasuredNutrient
+valine = Direct $ DirectNutrient 1219 "Valine" Unity
+
+arginine :: MeasuredNutrient
+arginine = Direct $ DirectNutrient 1220 "Arginine" Unity
+
+histidine :: MeasuredNutrient
+histidine = Direct $ DirectNutrient 1221 "Histidine" Unity
+
+alanine :: MeasuredNutrient
+alanine = Direct $ DirectNutrient 1222 "Alanine" Unity
+
+asparticAcid :: MeasuredNutrient
+asparticAcid = Direct $ DirectNutrient 1223 "Aspartic Acid" Unity
+
+glutamicAcid :: MeasuredNutrient
+glutamicAcid = Direct $ DirectNutrient 1224 "Glutamic Acid" Unity
+
+glycine :: MeasuredNutrient
+glycine = Direct $ DirectNutrient 1225 "Glycine" Unity
+
+proline :: MeasuredNutrient
+proline = Direct $ DirectNutrient 1226 "Proline" Unity
+
+serine :: MeasuredNutrient
+serine = Direct $ DirectNutrient 1227 "Serine" Unity
+
+hydroxyproline :: MeasuredNutrient
+hydroxyproline = Direct $ DirectNutrient 1228 "Hydroxyproline" Unity
+
+asparagine :: MeasuredNutrient
+asparagine = Direct $ DirectNutrient 1231 "Asparagine" Unity
+
+cysteine :: MeasuredNutrient
+cysteine = Direct $ DirectNutrient 1232 "Cysteine" Unity
+
+glutamine :: MeasuredNutrient
+glutamine = Direct $ DirectNutrient 1233 "Glutamine" Unity
+
+taurine :: MeasuredNutrient
+taurine = Direct $ DirectNutrient 1234 "Taurine" Unity
+
+calcium :: MeasuredNutrient
+calcium = Direct $ DirectNutrient 1087 "Calcium" Unity
+
+iron :: MeasuredNutrient
+iron = Direct $ DirectNutrient 1089 "Iron" Unity
+
+magnesium :: MeasuredNutrient
+magnesium = Direct $ DirectNutrient 1090 "Magnesium" Unity
+
+phosphorus :: MeasuredNutrient
+phosphorus = Direct $ DirectNutrient 1091 "Phosphorus" Unity
+
+potassium :: MeasuredNutrient
+potassium = Direct $ DirectNutrient 1092 "Potassium" Unity
+
+sodium :: MeasuredNutrient
+sodium = Direct $ DirectNutrient 1093 "Sodium" Unity
+
+zinc :: MeasuredNutrient
+zinc = Direct $ DirectNutrient 1095 "Zinc" Unity
+
+copper :: MeasuredNutrient
+copper = Direct $ DirectNutrient 1098 "Copper" Unity
+
+iodine :: MeasuredNutrient
+iodine = Direct $ DirectNutrient 1100 "Iodine" Unity
+
+manganese :: MeasuredNutrient
+manganese = Direct $ DirectNutrient 1101 "Manganese" Unity
+
+molybdenum :: MeasuredNutrient
+molybdenum = Direct $ DirectNutrient 1102 "Molybdenum" Unity
+
+selenium :: MeasuredNutrient
+selenium = Direct $ DirectNutrient 1103 "Selenium" Unity
+
+data NutTree = NutTree
+  { ntFractions :: Branches
+  , ntUnmeasuredHeader :: SummedNutrient
+  , ntUnmeasuredTree :: Maybe (Aggregation NutTree)
   }
 
-enumToNonEmpty :: (Bounded a, Enum a) => NonEmpty a
-enumToNonEmpty = fromList [minBound ..]
+type Branches = NonEmpty (Aggregation Node)
 
-data MNode = forall a. Measurable a => MNode (NutTree a)
+data Node
+  = MeasuredHeader MeasuredNutrient NutTree
+  | UnmeasuredHeader SummedNutrient Branches
+  | Leaf MeasuredNutrient
 
-type Branches a = NonEmpty (Aggregation (Node a))
+otherSFAs :: SummedNutrient
+otherSFAs = SummedNutrient "Other SFAs" Unity
 
-data Node a
-  = MeasuredHeader a MNode
-  | forall b. Measurable b => UnmeasuredHeader T.Text (Branches b)
-  | Leaf a
+otherTFAs :: SummedNutrient
+otherTFAs = SummedNutrient "Other TFAs" Unity
 
-nutHierarchy :: NutTree Proximates
+otherMUFAs :: SummedNutrient
+otherMUFAs = SummedNutrient "Other MUFAs" Unity
+
+otherPUFAs :: SummedNutrient
+otherPUFAs = SummedNutrient "Other PUFAs" Unity
+
+otherLipids :: SummedNutrient
+otherLipids = SummedNutrient "Other Lipids" Unity
+
+otherProteinMass :: SummedNutrient
+otherProteinMass = SummedNutrient "Other Protein Mass" Milli
+
+otherCarbs :: SummedNutrient
+otherCarbs = SummedNutrient "Other Carbs" Unity
+
+otherFiberBySolubility :: SummedNutrient
+otherFiberBySolubility = SummedNutrient "Other Fiber (unclassified solubility)" Unity
+
+otherFiberByWeight :: SummedNutrient
+otherFiberByWeight = SummedNutrient "Other Fiber (unclassified weight)" Unity
+
+otherInorganics :: SummedNutrient
+otherInorganics = SummedNutrient "Other Inorganics" Unity
+
+totalSugars :: SummedNutrient
+totalSugars = SummedNutrient "Total Sugars" Unity
+
+pufa_18_2_other :: SummedNutrient
+pufa_18_2_other = SummedNutrient "PUFA 18:2 (unclassified)" Unity
+
+pufa_18_3_other :: SummedNutrient
+pufa_18_3_other = SummedNutrient "PUFA 18:3 (unclassified)" Unity
+
+pufa_20_2_other :: SummedNutrient
+pufa_20_2_other = SummedNutrient "PUFA 20:2 (unclassified)" Unity
+
+pufa_20_3_other :: SummedNutrient
+pufa_20_3_other = SummedNutrient "PUFA 20:3 (unclassified)" Unity
+
+pufa_20_5_other :: SummedNutrient
+pufa_20_5_other = SummedNutrient "PUFA 20:5 (unclassified)" Unity
+
+pufa_22_5_other :: SummedNutrient
+pufa_22_5_other = SummedNutrient "PUFA 22:5 (unclassified)" Unity
+
+pufa_22_6_other :: SummedNutrient
+pufa_22_6_other = SummedNutrient "PUFA 22:6 (unclassified)" Unity
+
+mufa_22_1_other :: SummedNutrient
+mufa_22_1_other = SummedNutrient "MUFA 22:1 (unclassified)" Unity
+
+allAminoAcids :: NonEmpty MeasuredNutrient
+allAminoAcids =
+  tryptophan
+    :| [ threonine
+       , isoleucine
+       , leucine
+       , lysine
+       , methionine
+       , cystine
+       , phenylalanine
+       , tyrosine
+       , valine
+       , arginine
+       , histidine
+       , alanine
+       , asparticAcid
+       , glutamicAcid
+       , glycine
+       , proline
+       , serine
+       , hydroxyproline
+       , asparagine
+       , cysteine
+       , glutamine
+       ]
+
+allMinerals :: NonEmpty MeasuredNutrient
+allMinerals =
+  calcium
+    :| [ iron
+       , magnesium
+       , phosphorus
+       , potassium
+       , sodium
+       , zinc
+       , copper
+       , iodine
+       , manganese
+       , molybdenum
+       , selenium
+       ]
+
+allTFAs :: NonEmpty MeasuredNutrient
+allTFAs =
+  tfa_14_1
+    :| [ tfa_16_1
+       , tfa_17_1
+       , tfa_18_1
+       , tfa_18_2
+       , tfa_18_3
+       , tfa_20_1
+       , tfa_22_1
+       ]
+
+allSugars :: NonEmpty MeasuredNutrient
+allSugars =
+  sucrose
+    :| [ glucose
+       , fructose
+       , lactose
+       , maltose
+       , galactose
+       , raffinose
+       , stachyose
+       , verbascose
+       ]
+
+allSFAs :: NonEmpty MeasuredNutrient
+allSFAs =
+  sfa_4_0
+    :| [ sfa_5_0
+       , sfa_6_0
+       , sfa_7_0
+       , sfa_8_0
+       , sfa_9_0
+       , sfa_10_0
+       , sfa_11_0
+       , sfa_12_0
+       , sfa_14_0
+       , sfa_15_0
+       , sfa_16_0
+       , sfa_17_0
+       , sfa_18_0
+       , sfa_20_0
+       , sfa_21_0
+       , sfa_22_0
+       , sfa_23_0
+       , sfa_24_0
+       ]
+
+nutHierarchy :: NutTree
 nutHierarchy =
   NutTree
     { ntFractions =
-        leaf Water
-          :| [ Single $
-                MeasuredHeader Lipid $
-                  MNode $
-                    NutTree
-                      { ntFractions = leaf Cholesterol :| [undefined]
-                      , ntUnmeasuredHeader = "Other lipids"
-                      , ntUnmeasuredTree = Nothing
-                      }
-             , Single $ MeasuredHeader Protein $ MNode (toLeaves_ "Other Protein Mass" :: NutTree AminoAcid)
-             , Single $ MeasuredHeader Ash $ MNode (toLeaves_ "Other Inorganics" :: NutTree Mineral)
+        leaf water
+          :| [ measuredLeaves protein otherProteinMass allAminoAcids
+             , measuredLeaves ash otherInorganics allMinerals
+             , measured lipid $
+                nutTree
+                  otherLipids
+                  ( leaf cholesterol
+                      :| [ measuredLeaves tfas otherTFAs allTFAs
+                         , measuredLeaves sfas otherSFAs allSFAs
+                         , measured pufas $
+                            nutTree otherPUFAs $
+                              measuredLeaves
+                                pufa_18_2
+                                pufa_18_2_other
+                                (pufa_18_2_CLA :| [pufa_18_2_n6_cc])
+                                :| [ measuredLeaves
+                                      pufa_18_3
+                                      pufa_18_3_other
+                                      (pufa_18_3_n3_ccc :| [pufa_18_3_n6_ccc, pufa_18_3i])
+                                   , leaf pufa_18_4
+                                   , unmeasuredLeaves
+                                      pufa_20_2
+                                      (pufa_20_2_n6_cc :| [])
+                                   , measuredLeaves
+                                      pufa_20_3
+                                      pufa_20_3_other
+                                      (pufa_20_3_n3 :| [pufa_20_3_n6, pufa_20_3_n9])
+                                   , leaf pufa_20_4
+                                   , unmeasuredLeaves
+                                      pufa_20_5
+                                      (pufa_20_5_n3 :| [])
+                                   , leaf pufa_22_2
+                                   , leaf pufa_22_3
+                                   , leaf pufa_22_4
+                                   , unmeasuredLeaves
+                                      pufa_22_5
+                                      (pufa_22_5_n3 :| [])
+                                   , unmeasuredLeaves
+                                      pufa_22_6
+                                      (pufa_22_6_n3 :| [])
+                                   ]
+                         , measured mufas $
+                            nutTree otherMUFAs $
+                              leaf mufa_12_1
+                                :| [ leaf mufa_14_1
+                                   , leaf mufa_15_1
+                                   , leaf mufa_16_1
+                                   , leaf mufa_17_1
+                                   , leaf mufa_18_1
+                                   , leaf mufa_20_1
+                                   , measuredLeaves mufa_22_1 mufa_22_1_other $
+                                      mufa_22_1_n11 :| [mufa_22_1_n9]
+                                   ]
+                         ]
+                  )
              ]
-    , ntUnmeasuredHeader = "Carbohydrates (by difference)"
+    , ntUnmeasuredHeader = carbDiff
     , ntUnmeasuredTree =
         Just $
           Single $
-            MNode $
-              NutTree
-                { ntFractions =
-                    leaf Starch
-                      :| [ leaf BetaGlucan
-                         , Priority
-                            ( MeasuredHeader
-                                FiberBySolubility
-                                (MNode (toLeaves_ "Other fiber" :: NutTree FiberBySolubility))
-                                :| [ MeasuredHeader FiberByWeight $
-                                      MNode (toLeaves_ "Other fiber" :: NutTree FiberByWeight)
-                                   ]
-                            )
-                         , Single $ UnmeasuredHeader "Total Sugars" (toLeaves :: Branches Sugar)
-                         ]
-                , ntUnmeasuredHeader = "Other carbohydrates"
-                , ntUnmeasuredTree = Nothing
-                }
+            nutTree otherCarbs $
+              leaf starch
+                :| [ leaf betaGlucan
+                   , unmeasured totalSugars $ leaf <$> allSugars
+                   , Priority
+                      ( MeasuredHeader
+                          fiberBySolubility
+                          ( nutTree otherFiberBySolubility $
+                              fmap leaf (solubleFiber :| [insolubleFiber])
+                          )
+                          :| [ MeasuredHeader
+                                fiberByWeight
+                                ( nutTree otherFiberByWeight $
+                                    fmap leaf (highMWFiber :| [lowMWFiber])
+                                )
+                             ]
+                      )
+                   ]
     }
   where
     leaf = Single . Leaf
-    toLeaves :: (Bounded a, Enum a) => Branches a
-    toLeaves = leaf <$> enumToNonEmpty
-    toLeaves_ :: (Bounded a, Enum a) => T.Text -> NutTree a
-    toLeaves_ h =
+    measured h = Single . MeasuredHeader h
+    unmeasured h = Single . UnmeasuredHeader h
+    nutTree u xs =
       NutTree
-        { ntFractions = toLeaves
-        , ntUnmeasuredHeader = h
+        { ntFractions = xs
+        , ntUnmeasuredHeader = u
         , ntUnmeasuredTree = Nothing
         }
+    measuredLeaves h u xs = measured h $ nutTree u (leaf <$> xs)
+    unmeasuredLeaves h xs = unmeasured h (leaf <$> xs)
 
 data Aggregation a = Single a | Priority (NonEmpty a)
 
@@ -925,7 +1249,7 @@ data Prefix
   | Kilo
   | Mega
   | Giga
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 instance Exception AppException
 
@@ -944,7 +1268,7 @@ data AppError
   | UnitParseError !T.Text
   | DaySpanError !Int
   | -- TODO store FDC id/name and nutrient name here too
-    NutrientError !Meas
+    NutrientError
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)
