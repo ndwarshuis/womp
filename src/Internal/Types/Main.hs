@@ -612,6 +612,54 @@ sfas = Direct $ DirectNutrient 1258 "Saturated Fatty Acids" Unity
 cholesterol :: MeasuredNutrient
 cholesterol = Direct $ DirectNutrient 1253 "Cholesterol" Unity
 
+phytosterols :: SummedNutrient
+phytosterols = SummedNutrient "Phytosterols" Unity
+
+-- this doesn't strictly seem like a phytosterol but is still included in the
+-- same section along with the rest (whatever)
+stigmastadiene :: MeasuredNutrient
+stigmastadiene = Direct $ DirectNutrient 2052 "Stigmastadiene" Micro
+
+stigmasterol :: MeasuredNutrient
+stigmasterol = Direct $ DirectNutrient 1285 "Stigmasterol" Micro
+
+campesterol :: MeasuredNutrient
+campesterol = Direct $ DirectNutrient 1286 "Campesterol" Micro
+
+brassicasterol :: MeasuredNutrient
+brassicasterol = Direct $ DirectNutrient 1287 "Brassicasterol" Micro
+
+betaSitosterol :: MeasuredNutrient
+betaSitosterol = Direct $ DirectNutrient 1288 "BetaSitosterol" Micro
+
+campestanol :: MeasuredNutrient
+campestanol = Direct $ DirectNutrient 1289 "Campestanol" Micro
+
+betaSitostanol :: MeasuredNutrient
+betaSitostanol = Direct $ DirectNutrient 1294 "BetaSitostanol" Micro
+
+delta_5_avenasterol :: MeasuredNutrient
+delta_5_avenasterol = Direct $ DirectNutrient 1296 "Delta5Avenasterol" Micro
+
+delta_7_stigmastenol :: MeasuredNutrient
+delta_7_stigmastenol = Direct $ DirectNutrient 2052 "Delta7Stigmastenol" Micro
+
+ergosterol :: MeasuredNutrient
+ergosterol = Direct $ DirectNutrient 1284 "Ergosterol" Micro
+
+ergosta_7_enol :: MeasuredNutrient
+ergosta_7_enol = Direct $ DirectNutrient 2060 "Ergosta-7-enol" Micro
+
+ergosta_7_22_dienol :: MeasuredNutrient
+ergosta_7_22_dienol = Direct $ DirectNutrient 2061 "Ergosta-7,22-dienol" Micro
+
+ergosta_5_7_dienol :: MeasuredNutrient
+ergosta_5_7_dienol = Direct $ DirectNutrient 2062 "Ergosta-5,7-dienol" Micro
+
+-- TODO not exactly sure what this means, but hopefully it means "not the above"
+otherPhytosterols :: MeasuredNutrient
+otherPhytosterols = Direct $ DirectNutrient 1298 "Other Phytosterols" Unity
+
 sfa_4_0 :: MeasuredNutrient
 sfa_4_0 = Direct $ DirectNutrient 1259 "SFA 4:0" Micro
 
@@ -864,109 +912,133 @@ verbascose :: MeasuredNutrient
 verbascose = Direct $ DirectNutrient 2063 "Verbascose" Unity
 
 tryptophan :: MeasuredNutrient
-tryptophan = Direct $ DirectNutrient 1210 "Tryptophan" Unity
+tryptophan = Direct $ DirectNutrient 1210 "Tryptophan" Milli
 
 threonine :: MeasuredNutrient
-threonine = Direct $ DirectNutrient 1211 "Threonine" Unity
+threonine = Direct $ DirectNutrient 1211 "Threonine" Milli
 
 isoleucine :: MeasuredNutrient
-isoleucine = Direct $ DirectNutrient 1212 "Isoleucine" Unity
+isoleucine = Direct $ DirectNutrient 1212 "Isoleucine" Milli
 
 leucine :: MeasuredNutrient
-leucine = Direct $ DirectNutrient 1213 "Leucine" Unity
+leucine = Direct $ DirectNutrient 1213 "Leucine" Milli
 
 lysine :: MeasuredNutrient
-lysine = Direct $ DirectNutrient 1214 "Lysine" Unity
+lysine = Direct $ DirectNutrient 1214 "Lysine" Milli
 
 methionine :: MeasuredNutrient
-methionine = Direct $ DirectNutrient 1215 "Methionine" Unity
+methionine = Direct $ DirectNutrient 1215 "Methionine" Milli
 
 cystine :: MeasuredNutrient
-cystine = Direct $ DirectNutrient 1216 "Cystine" Unity
+cystine = Direct $ DirectNutrient 1216 "Cystine" Milli
 
 phenylalanine :: MeasuredNutrient
-phenylalanine = Direct $ DirectNutrient 1217 "Phenylalanine" Unity
+phenylalanine = Direct $ DirectNutrient 1217 "Phenylalanine" Milli
 
 tyrosine :: MeasuredNutrient
-tyrosine = Direct $ DirectNutrient 1218 "Tyrosine" Unity
+tyrosine = Direct $ DirectNutrient 1218 "Tyrosine" Milli
 
 valine :: MeasuredNutrient
-valine = Direct $ DirectNutrient 1219 "Valine" Unity
+valine = Direct $ DirectNutrient 1219 "Valine" Milli
 
 arginine :: MeasuredNutrient
-arginine = Direct $ DirectNutrient 1220 "Arginine" Unity
+arginine = Direct $ DirectNutrient 1220 "Arginine" Milli
 
 histidine :: MeasuredNutrient
-histidine = Direct $ DirectNutrient 1221 "Histidine" Unity
+histidine = Direct $ DirectNutrient 1221 "Histidine" Milli
 
 alanine :: MeasuredNutrient
-alanine = Direct $ DirectNutrient 1222 "Alanine" Unity
+alanine = Direct $ DirectNutrient 1222 "Alanine" Milli
 
 asparticAcid :: MeasuredNutrient
-asparticAcid = Direct $ DirectNutrient 1223 "Aspartic Acid" Unity
+asparticAcid = Direct $ DirectNutrient 1223 "Aspartic Acid" Milli
 
 glutamicAcid :: MeasuredNutrient
-glutamicAcid = Direct $ DirectNutrient 1224 "Glutamic Acid" Unity
+glutamicAcid = Direct $ DirectNutrient 1224 "Glutamic Acid" Milli
 
 glycine :: MeasuredNutrient
-glycine = Direct $ DirectNutrient 1225 "Glycine" Unity
+glycine = Direct $ DirectNutrient 1225 "Glycine" Milli
 
 proline :: MeasuredNutrient
-proline = Direct $ DirectNutrient 1226 "Proline" Unity
+proline = Direct $ DirectNutrient 1226 "Proline" Milli
 
 serine :: MeasuredNutrient
-serine = Direct $ DirectNutrient 1227 "Serine" Unity
+serine = Direct $ DirectNutrient 1227 "Serine" Milli
 
 hydroxyproline :: MeasuredNutrient
-hydroxyproline = Direct $ DirectNutrient 1228 "Hydroxyproline" Unity
+hydroxyproline = Direct $ DirectNutrient 1228 "Hydroxyproline" Milli
 
 asparagine :: MeasuredNutrient
-asparagine = Direct $ DirectNutrient 1231 "Asparagine" Unity
+asparagine = Direct $ DirectNutrient 1231 "Asparagine" Milli
 
 cysteine :: MeasuredNutrient
-cysteine = Direct $ DirectNutrient 1232 "Cysteine" Unity
+cysteine = Direct $ DirectNutrient 1232 "Cysteine" Milli
 
 glutamine :: MeasuredNutrient
-glutamine = Direct $ DirectNutrient 1233 "Glutamine" Unity
+glutamine = Direct $ DirectNutrient 1233 "Glutamine" Milli
 
 taurine :: MeasuredNutrient
-taurine = Direct $ DirectNutrient 1234 "Taurine" Unity
+taurine = Direct $ DirectNutrient 1234 "Taurine" Milli
 
 calcium :: MeasuredNutrient
-calcium = Direct $ DirectNutrient 1087 "Calcium" Unity
+calcium = Direct $ DirectNutrient 1087 "Calcium" Milli
 
 iron :: MeasuredNutrient
-iron = Direct $ DirectNutrient 1089 "Iron" Unity
+iron = Direct $ DirectNutrient 1089 "Iron" Milli
 
 magnesium :: MeasuredNutrient
-magnesium = Direct $ DirectNutrient 1090 "Magnesium" Unity
+magnesium = Direct $ DirectNutrient 1090 "Magnesium" Milli
 
 phosphorus :: MeasuredNutrient
-phosphorus = Direct $ DirectNutrient 1091 "Phosphorus" Unity
+phosphorus = Direct $ DirectNutrient 1091 "Phosphorus" Milli
 
 potassium :: MeasuredNutrient
-potassium = Direct $ DirectNutrient 1092 "Potassium" Unity
+potassium = Direct $ DirectNutrient 1092 "Potassium" Milli
 
 sodium :: MeasuredNutrient
-sodium = Direct $ DirectNutrient 1093 "Sodium" Unity
+sodium = Direct $ DirectNutrient 1093 "Sodium" Milli
 
 zinc :: MeasuredNutrient
-zinc = Direct $ DirectNutrient 1095 "Zinc" Unity
+zinc = Direct $ DirectNutrient 1095 "Zinc" Milli
 
 copper :: MeasuredNutrient
-copper = Direct $ DirectNutrient 1098 "Copper" Unity
+copper = Direct $ DirectNutrient 1098 "Copper" Milli
 
 iodine :: MeasuredNutrient
-iodine = Direct $ DirectNutrient 1100 "Iodine" Unity
+iodine = Direct $ DirectNutrient 1100 "Iodine" Milli
 
 manganese :: MeasuredNutrient
-manganese = Direct $ DirectNutrient 1101 "Manganese" Unity
+manganese = Direct $ DirectNutrient 1101 "Manganese" Milli
 
 molybdenum :: MeasuredNutrient
-molybdenum = Direct $ DirectNutrient 1102 "Molybdenum" Unity
+molybdenum = Direct $ DirectNutrient 1102 "Molybdenum" Milli
 
 selenium :: MeasuredNutrient
-selenium = Direct $ DirectNutrient 1103 "Selenium" Unity
+selenium = Direct $ DirectNutrient 1103 "Selenium" Milli
+
+vitaminB1 :: MeasuredNutrient
+vitaminB1 = Direct $ DirectNutrient 1165 "Vitamin B1 (thiamine)" Milli
+
+vitaminB2 :: MeasuredNutrient
+vitaminB2 = Direct $ DirectNutrient 1166 "Vitamin B2 (riboflavin)" Milli
+
+vitaminB3 :: MeasuredNutrient
+vitaminB3 = Direct $ DirectNutrient 1167 "Vitamin B3 (niacin)" Milli
+
+vitaminB5 :: MeasuredNutrient
+vitaminB5 = Direct $ DirectNutrient 1170 "Vitamin B5 (Pantathenic acid)" Milli
+
+vitaminB6 :: MeasuredNutrient
+vitaminB6 = Direct $ DirectNutrient 1175 "Vitamin B6 (pyridoxine)" Milli
+
+vitaminB7 :: MeasuredNutrient
+vitaminB7 = Direct $ DirectNutrient 1176 "Vitamin B7 (biotin)" Milli
+
+vitaminB9 :: MeasuredNutrient
+vitaminB9 = Direct $ DirectNutrient 1177 "Vitamin B9 (folate)" Micro
+
+vitaminB12 :: MeasuredNutrient
+vitaminB12 = Direct $ DirectNutrient 1178 "Vitamin B12 (cobalamins)" Micro
 
 data NutTree = NutTree
   { ntFractions :: Branches
@@ -1037,6 +1109,27 @@ pufa_22_6_other = SummedNutrient "PUFA 22:6 (unclassified)" Unity
 
 mufa_22_1_other :: SummedNutrient
 mufa_22_1_other = SummedNutrient "MUFA 22:1 (unclassified)" Unity
+
+-- TODO add Ergothioneine (which is technically an animo acid although likely not in proteins)
+
+allPhytosterols :: NonEmpty MeasuredNutrient
+allPhytosterols =
+  stigmastadiene
+    :| [ stigmastadiene
+       , stigmasterol
+       , campesterol
+       , brassicasterol
+       , betaSitosterol
+       , campestanol
+       , betaSitostanol
+       , delta_5_avenasterol
+       , delta_7_stigmastenol
+       , otherPhytosterols
+       , ergosterol
+       , ergosta_7_enol
+       , ergosta_7_22_dienol
+       , ergosta_5_7_dienol
+       ]
 
 allAminoAcids :: NonEmpty MeasuredNutrient
 allAminoAcids =
@@ -1135,6 +1228,7 @@ nutHierarchy =
         leaf water
           :| [ measuredLeaves protein otherProteinMass allAminoAcids
              , measuredLeaves ash otherInorganics allMinerals
+             , unmeasuredLeaves phytosterols allPhytosterols
              , measured lipid $
                 nutTree
                   otherLipids
