@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Internal.Nutrient
+      Internal.NutrientTree
       Internal.Types.Dhall
       Internal.Types.Main
       Internal.Types.TH
