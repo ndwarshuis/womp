@@ -1,11 +1,10 @@
-module Internal.NutrientTree (nutHierarchy) where
+module Internal.NutrientTree (nutHierarchy, entireTree) where
 
 import Data.Monoid
 import Data.Scientific
 import Internal.Types.Main
 import Internal.Utils
 import RIO
-import RIO.NonEmpty ((<|))
 import qualified RIO.NonEmpty as N
 import RIO.State
 import qualified RIO.Text as T
@@ -36,7 +35,7 @@ findMass i = do
   where
     getFoodNutrient s =
       second (\x -> s {fsNutrients = x}) $
-        (findRemove (\x -> (nId =<< fnNutrient x) == Just i) $ fsNutrients s)
+        findRemove (\x -> (nId =<< fnNutrient x) == Just i) (fsNutrients s)
     -- if food has a given nutrient but it has no amount or the wrong unit,
     -- skip and throw a warning since this is not supposed to happen (ideally)
     -- but won't necessarily compromise the final result
@@ -52,9 +51,9 @@ findMass i = do
 findMeasured :: NutrientState m => MeasuredNutrient -> m (Maybe Grams)
 findMeasured n = case n of
   Direct m -> findMass $ mnId m
-  Alternate (AltNutrient {anChoices}) -> foldM go Nothing anChoices
+  Alternate AltNutrient {anChoices} -> foldM go Nothing anChoices
   where
-    go Nothing (i, s) = (liftA2 (*) s) <$> findMass i
+    go Nothing (i, s) = liftA2 (*) s <$> findMass i
     go m _ = pure m
 
 protein :: Scientific -> MeasuredNutrient
@@ -1066,11 +1065,11 @@ nutHierarchy n2Factor =
              , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
              ]
 
-nv :: NutrientReader m => Grams -> m NutrientValue
-nv m = (NutrientValue (Sum m) . pure) <$> ask
+-- nv :: NutrientReader m => Grams -> m NutrientValue
+-- nv m = (NutrientValue (Sum m) . pure) <$> ask
 
 fromNutTreeWithMass
-  :: (NutrientReader m, NutrientState m)
+  :: NutrientState m
   => Scientific
   -> DisplayNutrient
   -> NutTree
@@ -1125,7 +1124,7 @@ fromNutTreeWithMass mass dn NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasur
     umh = summedToDisplay ntUnmeasuredHeader
 
 fromNutTreeWithoutMass
-  :: (NutrientReader m, NutrientState m)
+  :: NutrientState m
   => NutTree
   -> m ([FoodTreeNode Scientific], NonEmpty UnknownTree)
 fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
@@ -1141,7 +1140,7 @@ fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTre
     go uks = FoodTreeNode (sumTrees uks) umh (toList uks) []
 
 readBranches
-  :: (NutrientReader m, NutrientState m)
+  :: NutrientState m
   => Branches
   -> m
       ( Either
@@ -1162,19 +1161,20 @@ readBranches bs = do
     combineRes (Left (ks0, us0)) (Left (ks1, us1)) = Left (ks0 ++ ks1, us0 <> us1)
 
     fromAgg (Single x) = fromHeader x
-    fromAgg (Priority (x :| xs)) = fromAgg_ xs =<< fromHeader x
-
-    -- TODO there's a better way than this
-    fromAgg_ (r : rs) (Left ([], _)) = fromAgg_ rs =<< fromHeader r
-    fromAgg_ _ res = return res
+    fromAgg (Priority (x :| xs)) = do
+      init <- fromHeader x
+      foldM go init xs
+      where
+        go (Left ([], _)) next = fromHeader next
+        go acc _ = return acc
 
     fromHeader (MeasuredHeader h nt) = do
       let dh = measToDisplay h
       mass <- findMeasured h
       case mass of
-        Just m -> (Right . pure) <$> fromNutTreeWithMass m dh nt
+        Just m -> Right . pure <$> fromNutTreeWithMass m dh nt
         Nothing ->
-          (Left . bimap (fromKnowns dh) (fromUnknowns dh))
+          Left . bimap (fromKnowns dh) (fromUnknowns dh)
             <$> fromNutTreeWithoutMass nt
     fromHeader (UnmeasuredHeader h bs') = do
       let dh = summedToDisplay h
@@ -1196,12 +1196,6 @@ readBranches bs = do
 sumTrees :: NonEmpty (FoodTreeNode Scientific) -> Scientific
 sumTrees (f :| fs) = foldr (+) (ftValue f) $ fmap ftValue fs
 
-sumTrees0 :: [FoodTreeNode Scientific] -> Maybe Scientific
-sumTrees0 = (fmap sumTrees) . N.nonEmpty
-
--- nvDiff :: Scientific -> Scientific -> Scientific
--- nvDiff a b = a <> (fmap (fmap negate) b)
-
 summedToDisplay :: SummedNutrient -> DisplayNutrient
 summedToDisplay (SummedNutrient x y) = DisplayNutrient x y
 
@@ -1209,45 +1203,5 @@ measToDisplay :: MeasuredNutrient -> DisplayNutrient
 measToDisplay (Direct (DirectNutrient _ n p)) = DisplayNutrient n p
 measToDisplay (Alternate (AltNutrient n p _)) = DisplayNutrient n p
 
--- fromNutTreeWithMass_
---   :: (NutrientReader m, NutrientState m)
---   => Scientific
---   -> SummedNutrient
---   -> NutTree
---   -> m FoodTreeNode
--- fromNutTreeWithMass_ mass n nt = do
---   (ts, ms) <- fromNutTreeWithMass mass nt
---   fm <- ask
---   let knownMass = undefined ts
---   let unknownMass = mass - knownMass
---   let unk = (NutrientValue unknownMass $ pure fm,) <$> N.nonEmpty ms
---   return $ FoodTreeNode (NutrientValue knownMass $ pure fm) (Left n) ts unk
-
--- fromNutTreeWithoutMass
---   :: (NutrientReader m, NutrientState m)
---   => NutTree
---   -> m ([FoodTree], [UnknownTree])
--- fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
---   (ts, ms) <- L.unzip <$> (mapM readBranch $ toList ntFractions)
---   fm <- ask
---   (uts, ums) <- case ntUnmeasuredTree of
---     -- if there is an unmeasured tree
---     Just ut -> do
---       -- get a list of all unknowns and known trees underneath the unmeasured category
---       (uts, ums) <- fromNutTreeWithoutMass ut
---       case uts of
---         -- if knowns is empty, collect all the unknowns under the unmeasured header
---         [] -> return ([], [UnknownTree ntUnmeasuredHeader ums])
---         -- otherwise, create a new tree with the knowns corresponding to their known
---         -- mass, and ALSO replicate the unknowns under the unmeasured header
---         (x : xs) -> do
---           let mass = sumTrees uts
---           return
---             ( FoodTreeNode (NutrientValue (Sum mass) $ pure fm) (Left ntUnmeasuredHeader) uts Nothing
---             , [UnknownTree ntUnmeasuredHeader ums]
---             )
---     Nothing -> return ([], [UnknownTree ntUnmeasuredHeader []])
---   return (ts ++ uts, ms ++ ums)
---   where
---     readBranch = undefined
---     sumTrees = undefined
+entireTree :: NutrientState m => Scientific -> m (FoodTreeNode Scientific)
+entireTree = fromNutTreeWithMass 100 (DisplayNutrient "All" Unity) . nutHierarchy
