@@ -567,22 +567,23 @@ data FoodMeta = FoodMeta
   }
   deriving (Show)
 
-data FoodTreeNode = FoodTreeNode
-  { ftValue :: NutrientValue
+data FoodTreeNode a = FoodTreeNode
+  { ftValue :: a
   -- ^ Mass of this node
   , ftNut :: DisplayNutrient
   -- ^ Nutrient associated with this node
-  , ftKnown :: [FoodTree]
+  , ftKnown :: [FoodTreeNode a]
   -- ^ Subnutrients underneath this node with known mass
-  , ftUnknown :: Maybe (NutrientValue, NonEmpty UnknownTree)
+  , ftUnknown :: [UnknownTree]
   -- ^ Subnutrients underneath this node with no known individual masses but
   -- known collective masses. This mass and all those under the "known" field
   -- must sum to that of the "value" field
   }
+  deriving (Functor)
 
 data UnknownTree = UnknownTree DisplayNutrient [UnknownTree]
 
-data FoodTree = NutrientNode FoodTreeNode | GroupNode T.Text [FoodTree]
+-- data FoodTree a = NutrientNode (FoodTreeNode a) | GroupNode T.Text [FoodTree a]
 
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 

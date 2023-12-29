@@ -5,7 +5,6 @@ import Data.Scientific
 import Internal.Types.Main
 import Internal.Utils
 import RIO
-import qualified RIO.List as L
 import RIO.NonEmpty ((<|))
 import qualified RIO.NonEmpty as N
 import RIO.State
@@ -50,10 +49,7 @@ findMass i = do
         (Just _, Nothing) -> throwAppWarning NoUnit >> return Nothing
         (Nothing, _) -> throwAppWarning NoAmount >> return Nothing
 
-findMeasured
-  :: (NutrientReader m, NutrientState m)
-  => MeasuredNutrient
-  -> m (Maybe Scientific)
+findMeasured :: NutrientState m => MeasuredNutrient -> m (Maybe Grams)
 findMeasured n = case n of
   Direct m -> findMass $ mnId m
   Alternate (AltNutrient {anChoices}) -> foldM go Nothing anChoices
@@ -1070,96 +1066,6 @@ nutHierarchy n2Factor =
              , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
              ]
 
-data TreeCalcResult
-  = MissingNutrient MeasuredNutrient
-  | FinishedMeasured FoodTree
-  | FinishedUnmeasured FoodTree [MeasuredNutrient]
-  | Passthrough FoodTree [MeasuredNutrient]
-
--- nutrientsToTree
---   :: (NutrientReader m, NutrientState m)
---   => Aggregation Node
---   -> m TreeCalcResult
--- nutrientsToTree node = do
---   case node of
---     Single node_ -> case node_ of
---       MeasuredHeader m NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} -> do
---         -- scenarios:
---         -- 1) this mass is None, unmeasured tree is None -> mass must be summed
---         --    from branches, anything unknown in branches + the unmeasured leaf
---         --    will need to propagate up since we can't assign any mass to it
---         -- 2) this mass is X, unmeasured tree is None -> create unmeasured leaf
---         --    using difference/unmeasured nutrient and set known/unknown to
---         --    empty, if there are any unknowns in the branches, will need to
---         --    add these to the unmeasured leaf since they are all of unknown
---         --    mass. If all in branches are unknown then this collapes to (1)
---         -- 3) mass is X, tree is X -> like 2 but calculate unmeasured subtree
---         --    and include unknown measures at this level
---         -- 4) mass is None, tree is not None -> mass must be summed, but since
---         --    we don't have any difference without the total all in the unmeasured
---         --    tree become unknowns
---         mass <- findMeasured m
---         (ts, ms) <- fromRes <$> (mapM nutrientsToTree $ toList ntFractions)
---         let cmass = sum $ fmap sumTree ts
---         fm <- ask
---         case mass of
---           Just mass' -> do
---             let diffMass = mass' - cmass
---             u <- mapM nutrientsToTree ntUnmeasuredTree
---             return $
---               FinishedMeasured $
---                 NutrientNode $
---                   FoodTreeNode
---                     { ftValue = NutrientValue mass' $ pure fm
---                     , ftNut = Right m
---                     , ftKnown = ts -- TODO replace this with whatever the result of unmeasuredTrees is
---                     , ftUnknown = Just ((NutrientValue diffMass $ pure fm), ms)
---                     }
---       UnmeasuredHeader s bs -> do
---         -- TODO what to do with missing here?
---         (ts, ms) <- fromRes <$> (mapM nutrientsToTree $ toList bs)
---         let cmass = sum $ fmap sumTree ts
---         fm <- ask
---         return $
---           FinishedUnmeasured
---             ( NutrientNode $
---                 FoodTreeNode
---                   { ftValue = NutrientValue cmass $ pure fm
---                   , ftNut = Left s
---                   , ftKnown = ts
---                   , ftUnknown = Nothing
---                   }
---             )
---             ms
---       GroupHeader h bs -> do
---         (ts, ms) <- fromRes <$> (mapM nutrientsToTree $ toList bs)
---         return $ Passthrough (GroupNode h ts) ms
---       Leaf m -> do
---         fm <- ask
---         mass <- findMeasured m
---         return $ case mass of
---           Just x ->
---             FinishedMeasured $
---               NutrientNode $
---                 FoodTreeNode
---                   { ftValue = NutrientValue x $ pure fm
---                   , ftNut = Right m
---                   , ftKnown = []
---                   , ftUnknown = Nothing
---                   }
---           Nothing -> MissingNutrient m
---   where
---     fromRes = go ([], [])
---       where
---         go acc [] = acc
---         go (ts, ms) ((MissingNutrient m) : rest) = go (ts, m : ms) rest
---         go (ts, ms) ((FinishedMeasured t) : rest) = go (t : ts, ms) rest
---         go (ts, ms) ((FinishedUnmeasured t ms') : rest) = go (t : ts, ms' ++ ms) rest
---         go (ts, ms) ((Passthrough t ms') : rest) = go (t : ts, ms' ++ ms) rest
---     -- TODO use semigroup instance here to clean this up
---     sumTree (NutrientNode n) = nvValue $ ftValue n
---     sumTree (GroupNode _ fs) = sum $ fmap sumTree fs
-
 nv :: NutrientReader m => Grams -> m NutrientValue
 nv m = (NutrientValue (Sum m) . pure) <$> ask
 
@@ -1168,71 +1074,60 @@ fromNutTreeWithMass
   => Scientific
   -> DisplayNutrient
   -> NutTree
-  -> m FoodTreeNode
+  -> m (FoodTreeNode Scientific)
 fromNutTreeWithMass mass dn NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
   -- possible results from this operation:
   -- 1) all known -> we know the mass of the unmeasured tree
   -- 2) at least one unknown -> we don't know the mass of the unknown tree
   res <- readBranches ntFractions
-  nv0 <- nv mass
-  let toNode = FoodTreeNode nv0 dn
+  let toNode = FoodTreeNode mass dn
   case res of
     -- at least one unknown
     Left (ks, ms) -> do
-      let knownMass = sumTrees0 ks
-      let diffMass = maybe nv0 (nvDiff nv0) knownMass
-      (uMass, umk, umus) <- case ntUnmeasuredTree of
+      (umk, umus) <- case ntUnmeasuredTree of
         -- no unmeasured tree -> the unmeasured header just gets put with the
         -- other unknowns
-        Nothing -> return (diffMass, Nothing, [])
+        Nothing -> return (Nothing, [])
         -- unmeasured tree present. Where will at least be one unknown by
         -- by definition, since this tree has an unmeasured category. There
         -- may or may not be any knowns. Any knowns (if present) get put under
-        -- the unmeasured header in their own mass. The unknowns get aggregated
-        -- and assigned a value of the total mass - known mass (including from
-        -- the unmeasured tree if present). Note that the unmeasured header will
-        -- appear twice if the unmeasured tree has a known component, since the
-        -- header will only be partly explained.
+        -- the unmeasured header in their own mass. The unknowns get aggregated.
+        -- Note that the unmeasured header will appear twice if the unmeasured
+        -- tree has a known component, since the header will only be partly
+        -- explained.
         Just ut -> do
           (kRes, u :| us) <- fromNutTreeWithoutMass ut
-          case kRes of
-            [] -> return (diffMass, Nothing, u : us)
-            (uk : uks) -> do
-              let unmeasuredMass = sumTrees (uk :| uks)
-              -- NOTE by definition there cannot be unknowns in this tree; since
-              -- we don't know the total mass this tree should represent all
-              -- the unknowns must "propagate up a level"
+          -- NOTE by definition there cannot be unknowns in this tree;
+          -- since we don't know the total mass this tree should represent
+          -- all the unknowns must "propagate up a level"
 
-              -- TODO it seems like the types should forbid this combination
-              -- from happening; ie if we don't have a mass then the resulting
-              -- trees cannot have unknowns in them since there is no total from
-              -- which to subtract
-              return
-                ( nvDiff diffMass unmeasuredMass
-                , Just $
-                    NutrientNode $
-                      FoodTreeNode unmeasuredMass umh (fmap NutrientNode (uk : uks)) Nothing
-                , u : us
-                )
-      let ks' = NutrientNode <$> ks
-      return $ toNode (maybe ks' (: ks') umk) $ Just (uMass, (UnknownTree umh umus) <| ms)
+          -- TODO it seems like the types should forbid this combination
+          -- from happening; ie if we don't have a mass then the resulting
+          -- trees cannot have unknowns in them since there is no total
+          -- from which to subtract
+          let umk =
+                (\ks' -> FoodTreeNode (sumTrees ks') umh (toList ks') [])
+                  <$> N.nonEmpty kRes
+          return (umk, u : us)
+      return $ toNode (maybe ks (: ks) umk) (UnknownTree umh umus : toList ms)
     -- all known
     Right ks -> do
-      let knownMass = sumTrees ks
-      let diffMass = nvDiff nv0 knownMass
+      let diffMass = mass - sumTrees ks
       -- make a leaf or a tree depending on if we have an unmeasured tree
       -- to put under the header
-      um <- case ntUnmeasuredTree of
-        Nothing -> return $ FoodTreeNode diffMass umh [] Nothing
-        Just ut -> fromNutTreeWithMass (getSum $ nvValue diffMass) umh ut
-      return $ toNode ((NutrientNode um) : (fmap NutrientNode $ toList ks)) Nothing
+      um <-
+        maybe
+          (return $ FoodTreeNode diffMass umh [] [])
+          (fromNutTreeWithMass diffMass umh)
+          ntUnmeasuredTree
+      return $ toNode (um : toList ks) []
   where
     umh = summedToDisplay ntUnmeasuredHeader
 
 fromNutTreeWithoutMass
   :: (NutrientReader m, NutrientState m)
   => NutTree
-  -> m ([FoodTreeNode], NonEmpty UnknownTree)
+  -> m ([FoodTreeNode Scientific], NonEmpty UnknownTree)
 fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
   (umk, umu) <- case ntUnmeasuredTree of
     Nothing -> return (Nothing, [])
@@ -1243,12 +1138,18 @@ fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTre
   return (maybe ks (: ks) umk, UnknownTree umh umu :| us)
   where
     umh = summedToDisplay ntUnmeasuredHeader
-    go uks = FoodTreeNode (sumTrees uks) umh (fmap NutrientNode $ toList uks) Nothing
+    go uks = FoodTreeNode (sumTrees uks) umh (toList uks) []
 
 readBranches
   :: (NutrientReader m, NutrientState m)
   => Branches
-  -> m (Either ([FoodTreeNode], NonEmpty UnknownTree) (NonEmpty FoodTreeNode))
+  -> m
+      ( Either
+          ( [FoodTreeNode Scientific]
+          , NonEmpty UnknownTree
+          )
+          (NonEmpty (FoodTreeNode Scientific))
+      )
 readBranches bs = do
   (r :| rs) <- mapM fromAgg bs
   return $ foldr combineRes r rs
@@ -1269,11 +1170,9 @@ readBranches bs = do
 
     fromHeader (MeasuredHeader h nt) = do
       let dh = measToDisplay h
-      -- TODO clean this up
-      mass_ <- findMeasured h
-      mass <- mapM nv mass_
+      mass <- findMeasured h
       case mass of
-        Just m -> (Right . pure) <$> fromNutTreeWithMass (getSum $ nvValue m) dh nt
+        Just m -> (Right . pure) <$> fromNutTreeWithMass m dh nt
         Nothing ->
           (Left . bimap (fromKnowns dh) (fromUnknowns dh))
             <$> fromNutTreeWithoutMass nt
@@ -1282,27 +1181,26 @@ readBranches bs = do
       bimap (bimap (fromKnowns dh) (fromUnknowns dh)) (toKnownTree dh) <$> readBranches bs'
     fromHeader (Leaf h) = do
       let dh = measToDisplay h
-      mass_ <- findMeasured h
-      mass <- mapM nv mass_
+      mass <- findMeasured h
       return $ case mass of
-        Just m -> Right $ pure $ FoodTreeNode m dh [] Nothing
+        Just m -> Right $ pure $ FoodTreeNode m dh [] []
         Nothing -> Left ([], pure $ UnknownTree dh [])
 
     fromKnowns _ [] = []
-    fromKnowns dh (k : ks) = [FoodTreeNode (sumTrees (k :| ks)) dh (fmap NutrientNode ks) Nothing]
+    fromKnowns dh (k : ks) = [FoodTreeNode (sumTrees (k :| ks)) dh ks []]
 
     fromUnknowns dh us = pure $ UnknownTree dh $ toList us
 
-    toKnownTree dh ks = pure $ FoodTreeNode (sumTrees ks) dh (fmap NutrientNode $ toList ks) Nothing
+    toKnownTree dh ks = pure $ FoodTreeNode (sumTrees ks) dh (toList ks) []
 
-sumTrees :: NonEmpty FoodTreeNode -> NutrientValue
-sumTrees (f :| fs) = foldr (<>) (ftValue f) $ fmap ftValue fs
+sumTrees :: NonEmpty (FoodTreeNode Scientific) -> Scientific
+sumTrees (f :| fs) = foldr (+) (ftValue f) $ fmap ftValue fs
 
-sumTrees0 :: [FoodTreeNode] -> Maybe NutrientValue
+sumTrees0 :: [FoodTreeNode Scientific] -> Maybe Scientific
 sumTrees0 = (fmap sumTrees) . N.nonEmpty
 
-nvDiff :: NutrientValue -> NutrientValue -> NutrientValue
-nvDiff a b = a <> (fmap (fmap negate) b)
+-- nvDiff :: Scientific -> Scientific -> Scientific
+-- nvDiff a b = a <> (fmap (fmap negate) b)
 
 summedToDisplay :: SummedNutrient -> DisplayNutrient
 summedToDisplay (SummedNutrient x y) = DisplayNutrient x y
