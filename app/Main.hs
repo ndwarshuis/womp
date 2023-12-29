@@ -460,43 +460,6 @@ parseDimensional n u = do
   let n' = raisePower n (prefixValue $ unitBase u')
   return $ Dimensional n' u'
 
-parseUnit :: MonadAppError m => T.Text -> m Unit
-parseUnit s = catchError nonUnity (const def)
-  where
-    def = parseName Unity s
-    nonUnity = case T.splitAt 1 s of
-      ("G", rest) -> parseName Giga rest
-      ("M", rest) -> parseName Mega rest
-      ("k", rest) -> parseName Kilo rest
-      ("h", rest) -> parseName Hecto rest
-      ("d", rest) -> parseName Deci rest
-      ("c", rest) -> parseName Centi rest
-      ("m", rest) -> parseName Milli rest
-      ("µ", rest) -> parseName Micro rest
-      ("n", rest) -> parseName Nano rest
-      _ -> case T.splitAt 2 s of
-        ("da", rest) -> parseName Deca rest
-        _ -> def
-    parseName p r = case r of
-      "cal" -> return $ Unit Calorie p
-      "g" -> return $ Unit Gram p
-      "J" -> return $ Unit Joule p
-      "IU" -> return $ Unit IU p
-      _ -> throwAppError $ UnitParseError s
-
-prefixValue :: Prefix -> Int
-prefixValue Nano = -9
-prefixValue Micro = -6
-prefixValue Milli = -3
-prefixValue Centi = -2
-prefixValue Deci = -1
-prefixValue Unity = 0
-prefixValue Deca = 1
-prefixValue Hecto = 2
-prefixValue Kilo = 3
-prefixValue Mega = 6
-prefixValue Giga = 9
-
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
 runSummarize co SummarizeOptions {soConfig, soDateInterval} = do
   dayspan <- dateIntervalToDaySpan soDateInterval

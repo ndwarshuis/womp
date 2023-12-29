@@ -279,6 +279,7 @@ nutrientsToMinerals =
 -- totalFiber2011Id :: Int
 -- totalFiber2011Id = 2033
 
+-- TODO nitrogen = 1002
 -- highMWFiberId :: Int
 -- highMWFiberId = 2038
 
@@ -329,6 +330,18 @@ nutrientsToMinerals =
 
 -- seleniumId :: Int
 -- seleniumId = 1103
+
+findRemove :: (a -> Bool) -> [a] -> (Maybe a, [a])
+findRemove f = go []
+  where
+    -- TODO this reverse isn't really necessary (this would only be necessary if
+    -- I wanted more speed, in which case this would be an ordered set on which
+    -- I could perform binary search, since that isn't the case, order doesn't
+    -- matter)
+    go acc [] = (Nothing, reverse acc)
+    go acc (x : xs)
+      | f x = (Just x, reverse acc ++ xs)
+      | otherwise = go (x : acc) xs
 
 findId :: Int -> [FoodNutrient] -> (Maybe FoodNutrient, [FoodNutrient])
 findId i = go []

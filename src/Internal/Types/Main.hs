@@ -516,14 +516,22 @@ instance C.ToField Unit where
 
 type NutrientReader = MonadReader FoodMeta
 
-type FoodState = [FoodNutrient]
+data FoodState = FoodState
+  { fsNutrients :: [FoodNutrient]
+  , fsWarnings :: [AppWarning]
+  }
+
+data AppWarning
+  = NotGram
+  | NoUnit
+  | NoAmount
 
 type NutrientState = MonadState FoodState
 
 data MeasuredNutrient
   = Direct DirectNutrient
-  | Computed ComputedNutrient
-  | Alternate AltNutrient
+  | -- | Computed ComputedNutrient
+    Alternate AltNutrient
   deriving (Show, Eq, Ord)
 
 -- TODO augment this to include alternatively calculated nutrients (like protein
@@ -539,25 +547,9 @@ data DirectNutrient = DirectNutrient
 data AltNutrient = AltNutrient
   { anName :: T.Text
   , anDisplayPrefix :: Prefix
-  , anChoices :: NonEmpty Int
+  , anChoices :: NonEmpty (Int, Maybe Scientific)
   }
   deriving (Show, Eq, Ord)
-
-data ComputedNutrient = ComputedNutrient
-  { cnName :: T.Text
-  , cnCompute :: FoodMeta -> FoodState -> Scientific
-  }
-
--- TODO this is kinda hacky but there shouldn't be many of these to compare
--- so it likely won't matter much
-instance Show ComputedNutrient where
-  show ComputedNutrient {cnName} = "ComputedNutrient(" ++ T.unpack cnName ++ ")"
-
-instance Eq ComputedNutrient where
-  (==) a b = cnName a == cnName b
-
-instance Ord ComputedNutrient where
-  compare a b = compare (cnName a) (cnName b)
 
 data SummedNutrient = SummedNutrient
   { snName :: T.Text
@@ -565,24 +557,59 @@ data SummedNutrient = SummedNutrient
   }
   deriving (Show, Eq, Ord)
 
+data DisplayNutrient = DisplayNutrient {dnName :: T.Text, dnPrefix :: Prefix}
+  deriving (Show, Eq, Ord)
+
 data FoodMeta = FoodMeta
   { fmDesc :: T.Text
   , fmId :: Int
-  , fmNitrogenFactor :: Maybe Scientific
+  , fmNitrogenFactor :: Scientific
   }
   deriving (Show)
 
+data FoodTreeNode = FoodTreeNode
+  { ftValue :: NutrientValue
+  -- ^ Mass of this node
+  , ftNut :: DisplayNutrient
+  -- ^ Nutrient associated with this node
+  , ftKnown :: [FoodTree]
+  -- ^ Subnutrients underneath this node with known mass
+  , ftUnknown :: Maybe (NutrientValue, NonEmpty UnknownTree)
+  -- ^ Subnutrients underneath this node with no known individual masses but
+  -- known collective masses. This mass and all those under the "known" field
+  -- must sum to that of the "value" field
+  }
+
+data UnknownTree = UnknownTree DisplayNutrient [UnknownTree]
+
+data FoodTree = NutrientNode FoodTreeNode | GroupNode T.Text [FoodTree]
+
+data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
+
+type NutrientValue = NutrientValue_ (Sum Scientific)
+
 data NutrientValue_ a = NutrientValue
   { nvValue :: a
-  , nvMembers :: NonEmpty FoodMeta
+  , -- TODO non empty set here
+    nvMembers :: NonEmpty FoodMeta
   }
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
 
+-- | A group of nutrient categories that represent an aggregate mass
 data NutTree = NutTree
   { ntFractions :: Branches
+  -- ^ Categories (at least one) that sum to a known mass. The mass of these
+  -- categories may be 1) a known mass 2) a known mass with additional
+  -- subcategories underneath 3) an unknown mass determined by subcategories
+  -- beneath it or 4) a placeholder with at least one of 1-3 underneath it.
   , ntUnmeasuredHeader :: SummedNutrient
-  , ntUnmeasuredTree :: Maybe (Aggregation NutTree)
+  -- ^ The header for the one unmeasured category (ie the total mass represented
+  -- by this entire type minus the sum of all fractions)
+  , ntUnmeasuredTree :: Maybe NutTree
+  -- ^ An optional tree by which the unmeasured category may be subdivided. If
+  -- there is no tree, then the unmeasured category is simply a "leaf" (ie
+  -- nothing under it)
   }
 
 type Branches = NonEmpty (Aggregation Node)
@@ -590,8 +617,8 @@ type Branches = NonEmpty (Aggregation Node)
 data Node
   = MeasuredHeader MeasuredNutrient NutTree
   | UnmeasuredHeader SummedNutrient Branches
-  | GroupHeader T.Text Branches
-  | Leaf MeasuredNutrient
+  | -- | GroupHeader SummedNutrient Branches
+    Leaf MeasuredNutrient
 
 data Aggregation a = Single a | Priority (NonEmpty a)
 

@@ -1,9 +1,11 @@
 module Internal.Utils where
 
 import Control.Monad.Error.Class
+import Data.Scientific
 import Internal.Types.Main
 import RIO
 import qualified RIO.List as L
+import RIO.State
 import qualified RIO.Text as T
 
 throwAppError :: MonadAppError m => AppError -> m a
@@ -11,6 +13,9 @@ throwAppError e = throwError $ AppException [e]
 
 throwAppErrorIO :: MonadUnliftIO m => AppError -> m a
 throwAppErrorIO = fromEither . throwAppError
+
+throwAppWarning :: NutrientState m => AppWarning -> m ()
+throwAppWarning w = modify $ \s -> s {fsWarnings = w : fsWarnings s}
 
 combineError3
   :: (Semigroup e, MonadError e m)
@@ -70,7 +75,7 @@ mapErrorsIO f xs = mapM go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
-  (NutrientError i) -> [T.unwords ["could not parse valud for nutrient id:", tshow i]]
+  (NutrientError) -> undefined -- [T.unwords ["could not parse valud for nutrient id:", tshow i]]
   (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
   (UnitParseError u) -> [T.append "could not parse unit: " u]
   (UnitMatchError x y) ->
@@ -98,3 +103,67 @@ keyVals = T.intercalate "; " . fmap (uncurry keyVal)
 
 keyVal :: T.Text -> T.Text -> T.Text
 keyVal a b = T.concat [a, "=", b]
+
+parseUnit :: T.Text -> Maybe Unit
+parseUnit s = catchError nonUnity (const def)
+  where
+    def = parseName Unity s
+    nonUnity = case T.splitAt 1 s of
+      ("G", rest) -> parseName Giga rest
+      ("M", rest) -> parseName Mega rest
+      ("k", rest) -> parseName Kilo rest
+      ("h", rest) -> parseName Hecto rest
+      ("d", rest) -> parseName Deci rest
+      ("c", rest) -> parseName Centi rest
+      ("m", rest) -> parseName Milli rest
+      ("µ", rest) -> parseName Micro rest
+      ("n", rest) -> parseName Nano rest
+      _ -> case T.splitAt 2 s of
+        ("da", rest) -> parseName Deca rest
+        _ -> def
+    parseName p r = case r of
+      "cal" -> return $ Unit p Calorie
+      "g" -> return $ Unit p Gram
+      "J" -> return $ Unit p Joule
+      "IU" -> return $ Unit p IU
+      _ -> Nothing
+
+-- parseUnit :: MonadAppError m => T.Text -> m Unit
+-- parseUnit s = catchError nonUnity (const def)
+--   where
+--     def = parseName Unity s
+--     nonUnity = case T.splitAt 1 s of
+--       ("G", rest) -> parseName Giga rest
+--       ("M", rest) -> parseName Mega rest
+--       ("k", rest) -> parseName Kilo rest
+--       ("h", rest) -> parseName Hecto rest
+--       ("d", rest) -> parseName Deci rest
+--       ("c", rest) -> parseName Centi rest
+--       ("m", rest) -> parseName Milli rest
+--       ("µ", rest) -> parseName Micro rest
+--       ("n", rest) -> parseName Nano rest
+--       _ -> case T.splitAt 2 s of
+--         ("da", rest) -> parseName Deca rest
+--         _ -> def
+--     parseName p r = case r of
+--       "cal" -> return $ Unit p Calorie
+--       "g" -> return $ Unit p Gram
+--       "J" -> return $ Unit p Joule
+--       "IU" -> return $ Unit p IU
+--       _ -> throwAppError $ UnitParseError s
+
+prefixValue :: Prefix -> Int
+prefixValue Nano = -9
+prefixValue Micro = -6
+prefixValue Milli = -3
+prefixValue Centi = -2
+prefixValue Deci = -1
+prefixValue Unity = 0
+prefixValue Deca = 1
+prefixValue Hecto = 2
+prefixValue Kilo = 3
+prefixValue Mega = 6
+prefixValue Giga = 9
+
+raisePower :: Int -> Scientific -> Scientific
+raisePower x s = scientific (coefficient s) (base10Exponent s + x)
