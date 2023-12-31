@@ -4,6 +4,7 @@ module Internal.NutrientTree
   , lookupTree
   , summedToDisplay
   , measToDisplay
+  , fmtTree
   )
 where
 
@@ -518,3 +519,40 @@ displayTree = fmap fullToDisplayTree . entireTree
 lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
+
+-- TODO add some options to control how this works
+fmtTree :: DisplayNode NutrientValue -> T.Text
+fmtTree (DisplayNode v ks us) = T.unlines (header : rest)
+  where
+    header = T.append "Total mass: " (tshow v)
+    rest = go 0 ks us
+    go level ks' us' =
+      indentLines level $
+        (withMap (fmtKnown level) ks') ++ (withMap (fmtUnknown level) us')
+
+    withMap f = concatMap (uncurry f) . M.assocs
+
+    indentLines n = fmap (addIndent n)
+
+    addIndent n = T.append (T.replicate n " ")
+
+    fmtKnown level dn (DisplayNode v' ks' us') =
+      fmtDisplayNutrient dn v' : go (1 + level) ks' us'
+
+    -- TODO add unit to this somehow (majority vote from other headers?)
+    fmtUnknown level ts (NutrientValue (Sum v') _) =
+      T.concat ["Unknown: ", tshow v'] : concatMap (fmtUnknownTree (1 + level)) ts
+
+    fmtUnknownTree level (UnknownTree (DisplayNutrient n _) ts) =
+      indentLines level $ n : concatMap (fmtUnknownTree (1 + level)) ts
+
+-- TODO add nutrient value stuff later
+fmtDisplayNutrient :: DisplayNutrient -> NutrientValue -> T.Text
+fmtDisplayNutrient (DisplayNutrient n p) (NutrientValue (Sum v) _) =
+  T.concat
+    [ n
+    , ": "
+    , tshow $ raisePower (-(prefixValue p)) v
+    , " "
+    , tunit (Unit p Gram)
+    ]

@@ -429,27 +429,6 @@ fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
 raisePower :: Scientific -> Int -> Scientific
 raisePower s x = scientific (coefficient s) (base10Exponent s + x)
 
-tunit :: Unit -> Text
-tunit Unit {unitName, unitBase} = T.append prefix unit
-  where
-    unit = case unitName of
-      Calorie -> "cal"
-      Joule -> "J"
-      Gram -> "g"
-      IU -> "IU"
-    prefix = case unitBase of
-      Nano -> "n"
-      Micro -> "µ"
-      Milli -> "m"
-      Centi -> "c"
-      Deci -> "d"
-      Unity -> ""
-      Deca -> "da"
-      Hecto -> "h"
-      Kilo -> "k"
-      Mega -> "M"
-      Giga -> "G"
-
 parseDimensional
   :: MonadAppError m
   => Scientific

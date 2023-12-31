@@ -152,18 +152,5 @@ parseUnit s = catchError nonUnity (const def)
 --       "IU" -> return $ Unit p IU
 --       _ -> throwAppError $ UnitParseError s
 
-prefixValue :: Prefix -> Int
-prefixValue Nano = -9
-prefixValue Micro = -6
-prefixValue Milli = -3
-prefixValue Centi = -2
-prefixValue Deci = -1
-prefixValue Unity = 0
-prefixValue Deca = 1
-prefixValue Hecto = 2
-prefixValue Kilo = 3
-prefixValue Mega = 6
-prefixValue Giga = 9
-
 raisePower :: Int -> Scientific -> Scientific
 raisePower x s = scientific (coefficient s) (base10Exponent s + x)
