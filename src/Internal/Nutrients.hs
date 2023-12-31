@@ -93,64 +93,64 @@ otherPhytosterols :: MeasuredNutrient
 otherPhytosterols = Direct $ DirectNutrient 1298 "Other Phytosterols" Unity
 
 sfa_4_0 :: MeasuredNutrient
-sfa_4_0 = Direct $ DirectNutrient 1259 "SFA 4:0" Micro
+sfa_4_0 = Direct $ DirectNutrient 1259 "SFA 4:0" Unity
 
 sfa_5_0 :: MeasuredNutrient
-sfa_5_0 = Direct $ DirectNutrient 2003 "SFA 5:0" Micro
+sfa_5_0 = Direct $ DirectNutrient 2003 "SFA 5:0" Unity
 
 sfa_6_0 :: MeasuredNutrient
-sfa_6_0 = Direct $ DirectNutrient 1260 "SFA 6:0" Micro
+sfa_6_0 = Direct $ DirectNutrient 1260 "SFA 6:0" Unity
 
 sfa_7_0 :: MeasuredNutrient
-sfa_7_0 = Direct $ DirectNutrient 2004 "SFA 7:0" Micro
+sfa_7_0 = Direct $ DirectNutrient 2004 "SFA 7:0" Unity
 
 sfa_8_0 :: MeasuredNutrient
-sfa_8_0 = Direct $ DirectNutrient 1261 "SFA 8:0" Micro
+sfa_8_0 = Direct $ DirectNutrient 1261 "SFA 8:0" Unity
 
 sfa_9_0 :: MeasuredNutrient
-sfa_9_0 = Direct $ DirectNutrient 2005 "SFA 9:0" Micro
+sfa_9_0 = Direct $ DirectNutrient 2005 "SFA 9:0" Unity
 
 sfa_10_0 :: MeasuredNutrient
-sfa_10_0 = Direct $ DirectNutrient 1262 "SFA 10:0" Micro
+sfa_10_0 = Direct $ DirectNutrient 1262 "SFA 10:0" Unity
 
 sfa_11_0 :: MeasuredNutrient
-sfa_11_0 = Direct $ DirectNutrient 1335 "SFA 11:0" Micro
+sfa_11_0 = Direct $ DirectNutrient 1335 "SFA 11:0" Unity
 
 sfa_12_0 :: MeasuredNutrient
-sfa_12_0 = Direct $ DirectNutrient 1263 "SFA 12:0" Micro
+sfa_12_0 = Direct $ DirectNutrient 1263 "SFA 12:0" Unity
 
 sfa_14_0 :: MeasuredNutrient
-sfa_14_0 = Direct $ DirectNutrient 1264 "SFA 14:0" Micro
+sfa_14_0 = Direct $ DirectNutrient 1264 "SFA 14:0" Unity
 
 sfa_15_0 :: MeasuredNutrient
-sfa_15_0 = Direct $ DirectNutrient 1299 "SFA 15:0" Micro
+sfa_15_0 = Direct $ DirectNutrient 1299 "SFA 15:0" Unity
 
 sfa_16_0 :: MeasuredNutrient
-sfa_16_0 = Direct $ DirectNutrient 1265 "SFA 16:0" Micro
+sfa_16_0 = Direct $ DirectNutrient 1265 "SFA 16:0" Unity
 
 sfa_17_0 :: MeasuredNutrient
-sfa_17_0 = Direct $ DirectNutrient 1300 "SFA 17:0" Micro
+sfa_17_0 = Direct $ DirectNutrient 1300 "SFA 17:0" Unity
 
 sfa_18_0 :: MeasuredNutrient
-sfa_18_0 = Direct $ DirectNutrient 1266 "SFA 18:0" Micro
+sfa_18_0 = Direct $ DirectNutrient 1266 "SFA 18:0" Unity
 
 sfa_20_0 :: MeasuredNutrient
-sfa_20_0 = Direct $ DirectNutrient 1267 "SFA 20:0" Micro
+sfa_20_0 = Direct $ DirectNutrient 1267 "SFA 20:0" Unity
 
 sfa_21_0 :: MeasuredNutrient
-sfa_21_0 = Direct $ DirectNutrient 2006 "SFA 21:0" Micro
+sfa_21_0 = Direct $ DirectNutrient 2006 "SFA 21:0" Unity
 
 sfa_22_0 :: MeasuredNutrient
-sfa_22_0 = Direct $ DirectNutrient 1273 "SFA 22:0" Micro
+sfa_22_0 = Direct $ DirectNutrient 1273 "SFA 22:0" Unity
 
 sfa_23_0 :: MeasuredNutrient
-sfa_23_0 = Direct $ DirectNutrient 2007 "SFA 23:0" Micro
+sfa_23_0 = Direct $ DirectNutrient 2007 "SFA 23:0" Unity
 
 sfa_24_0 :: MeasuredNutrient
-sfa_24_0 = Direct $ DirectNutrient 1301 "SFA 24:0" Micro
+sfa_24_0 = Direct $ DirectNutrient 1301 "SFA 24:0" Unity
 
 mufa_12_1 :: MeasuredNutrient
-mufa_12_1 = Direct $ DirectNutrient 2008 "MUFA 12:1" Micro
+mufa_12_1 = Direct $ DirectNutrient 2008 "MUFA 12:1" Unity
 
 -- NOTE: it seems most of the MUFAs are not characterized further other than
 -- number of carbons. In this case, several of the MUFAs are redundant (ie the
@@ -161,34 +161,34 @@ mufa_12_1 = Direct $ DirectNutrient 2008 "MUFA 12:1" Micro
 -- sometimes summed in which case I have no idea what the inputs are because
 -- there are no other 14C MUFAs in the db)
 mufa_14_1 :: MeasuredNutrient
-mufa_14_1 = Direct $ DirectNutrient 2009 "MUFA 14:1" Micro
+mufa_14_1 = Direct $ DirectNutrient 2009 "MUFA 14:1" Unity
 
 mufa_15_1 :: MeasuredNutrient
-mufa_15_1 = Direct $ DirectNutrient 1333 "MUFA 15:1" Micro
+mufa_15_1 = Direct $ DirectNutrient 1333 "MUFA 15:1" Unity
 
 mufa_16_1 :: MeasuredNutrient
-mufa_16_1 = Direct $ DirectNutrient 1314 "MUFA 16:1" Micro
+mufa_16_1 = Direct $ DirectNutrient 1314 "MUFA 16:1" Unity
 
 mufa_17_1 :: MeasuredNutrient
-mufa_17_1 = Direct $ DirectNutrient 1323 "MUFA 17:1" Micro
+mufa_17_1 = Direct $ DirectNutrient 1323 "MUFA 17:1" Unity
 
 mufa_18_1 :: MeasuredNutrient
-mufa_18_1 = Alternate $ AltNutrient "MUFA 18:1" Micro $ (1315, Nothing) :| [(1268, Nothing)]
+mufa_18_1 = Alternate $ AltNutrient "MUFA 18:1" Unity $ (1315, Nothing) :| [(1268, Nothing)]
 
 mufa_20_1 :: MeasuredNutrient
-mufa_20_1 = Alternate $ AltNutrient "MUFA 20:1" Micro $ (2012, Nothing) :| [(1277, Nothing)]
+mufa_20_1 = Alternate $ AltNutrient "MUFA 20:1" Unity $ (2012, Nothing) :| [(1277, Nothing)]
 
 mufa_22_1 :: MeasuredNutrient
-mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Micro $ (1317, Nothing) :| [(2012, Nothing)]
+mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Unity $ (1317, Nothing) :| [(2012, Nothing)]
 
 mufa_22_1_n9 :: MeasuredNutrient
-mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 ω-9 (Erucic Acid)" Micro
+mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 ω-9 (Erucic Acid)" Unity
 
 mufa_22_1_n11 :: MeasuredNutrient
-mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 ω-11" Micro
+mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 ω-11" Unity
 
 mufa_24_1 :: MeasuredNutrient
-mufa_24_1 = Direct $ DirectNutrient 1312 "MUFA 24:1" Micro
+mufa_24_1 = Direct $ DirectNutrient 1312 "MUFA 24:1" Unity
 
 tfa_14_1 :: MeasuredNutrient
 tfa_14_1 = Direct $ DirectNutrient 1281 "TFA 14:1" Unity

@@ -248,10 +248,10 @@ runExport = undefined
 -- readTree = undefined
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soMealPath, soDateInterval} = do
+runSummarize co SummarizeOptions {soMealPath, soDateInterval, soDisplay} = do
   dayspan <- dateIntervalToDaySpan soDateInterval
   ts <- readTrees co soMealPath dayspan
-  maybe (return ()) (liftIO . TI.putStr . fmtFullTree) ts
+  maybe (return ()) (liftIO . TI.putStr . fmtFullTree soDisplay) ts
 
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)

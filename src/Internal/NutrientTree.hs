@@ -10,6 +10,7 @@ where
 
 import Data.Monoid
 import Data.Scientific
+import Data.Semigroup
 import Internal.Nutrients
 import Internal.Types.Main
 import Internal.Utils
@@ -516,37 +517,42 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
-fmtFullTree :: FinalFood -> T.Text
-fmtFullTree (FinalFood_ m (NutrientValue (Sum v) _)) =
-  T.unlines [T.unwords ["Energy:", tshow v, "kcal"], fmtTree m]
+fmtFullTree :: DisplayOptions -> FinalFood -> T.Text
+fmtFullTree o (FinalFood_ m (NutrientValue (Sum v) _)) =
+  T.unlines [T.unwords ["Energy:", tshow v, "kcal"], fmtTree o m]
 
 -- TODO add some options to control how this works
-fmtTree :: DisplayNode NutrientValue -> T.Text
-fmtTree (DisplayNode v ks us) = T.unlines (header : rest)
+fmtTree :: DisplayOptions -> DisplayNode NutrientValue -> T.Text
+fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
   where
     header = T.append "Total mass: " (tshow $ getSum $ nvValue v)
     rest = go ks us
     go ks' us' =
-      withMap fmtKnown ks' ++ withMap fmtUnknown us'
+      withMap fmtKnown ks' ++ if u then withMap fmtUnknown us' else fmtUnknownTotal us'
 
     withMap f = concatMap (uncurry f) . M.assocs
 
     -- TODO configure indent level
-    addIndent n = T.append (T.replicate (2 * n) " ")
+    addIndent n = T.append (T.replicate (i * n) " ")
 
     fmtKnown dn (DisplayNode v' ks' us') =
       fmtHeader (fmtDisplayNutrient dn v') $ go ks' us'
 
-    fmtUnknown ts (NutrientValue (Sum v') _) =
+    fmtUnknownTotal =
+      maybeToList . fmap (fmtUnknownHeader . sconcat) . N.nonEmpty . M.elems
+
+    fmtUnknown ts v' =
+      let h = fmtUnknownHeader v'
+       in fmtHeader h $ if u then concatMap fmtUnknownTree ts else []
+
+    fmtUnknownHeader (NutrientValue (Sum v') _) =
       let p = autoPrefix v'
-          h =
-            T.concat
-              [ "Unknown: "
-              , tshow $ raisePower (-prefixValue p) v'
-              , " "
-              , tunit $ Unit p Gram
-              ]
-       in fmtHeader h $ concatMap fmtUnknownTree ts
+       in T.concat
+            [ "Unknown: "
+            , tshow $ raisePower (-prefixValue p) v'
+            , " "
+            , tunit $ Unit p Gram
+            ]
 
     fmtUnknownTree (UnknownTree (DisplayNutrient n _) ts) =
       fmtHeader n $ concatMap fmtUnknownTree ts
