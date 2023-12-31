@@ -28,9 +28,11 @@ data CommonOptions = CommonOptions
   , coVerbosity :: !Bool
   }
 
-type FID = Int
+newtype FID = FID {unFID :: Int}
+  deriving (Read, Show, FromJSON) via Int
 
--- newtype FID = FID Int deriving (Read, Show)
+newtype NID = NID {unNID :: Int}
+  deriving (Read, Show, FromJSON, Eq, Ord, Num) via Int
 
 newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
 
@@ -166,7 +168,7 @@ instance FromJSON SRLegacyFoodItem where
       <*> parseFoundationLegacyCommon v
 
 data FoodRequiredMeta = FoodRequiredMeta
-  { frmId :: Int
+  { frmId :: FID
   , frmDescription :: T.Text
   }
   deriving (Show)
@@ -316,7 +318,7 @@ instance FromJSON InputFoodFoundation where
 
 -- TODO missing foodGroup, foodAttributeTypes, totalRefuse
 data SampleFoodItem = SampleFoodItem
-  { sfiFdcId :: Int
+  { sfiFdcId :: FID
   , sfiDescription :: T.Text
   , sfiFoodClass :: Maybe T.Text
   , sfiPublicationDate :: Maybe T.Text
@@ -375,7 +377,7 @@ instance FromJSON NutrientDerivation where
   parseJSON = recordParseJSON "nd"
 
 data Nutrient = Nutrient
-  { nId :: Maybe Int
+  { nId :: Maybe NID
   , nNumber :: Maybe T.Text
   , nName :: Maybe T.Text
   , nRank :: Maybe Int
@@ -434,7 +436,7 @@ instance FromJSON NutrientAnalysisDetails where
 --   parseJSON = recordParseJSON "ncd"
 
 data FoodUpdateLog = FoodUpdateLog
-  { fulFdcId :: Maybe Int
+  { fulFdcId :: Maybe FID
   , fulAvailableDate :: Maybe T.Text
   , fulBrandOwner :: Maybe T.Text
   , fulDataSource :: Maybe T.Text
@@ -492,26 +494,6 @@ recordOptions x =
 
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
 recordParseJSON s = genericParseJSON (recordOptions s)
-
-data RowNutrient = RowNutrient
-  { rnNutrientId :: Int
-  , rnNutrientName :: T.Text
-  , rnAmount :: Scientific
-  , rnUnit :: Unit
-  }
-  deriving (Generic, Show)
-
-data RowSum = RowSum
-  { rsNutrientName :: T.Text
-  , rsNutrientId :: Int
-  , rsAmount :: Scientific
-  , rsUnit :: T.Text
-  }
-  deriving (Generic, Show)
-
-instance C.ToRecord RowNutrient
-
-instance C.ToRecord RowSum
 
 data UnitName
   = Gram
@@ -587,7 +569,7 @@ data MeasuredNutrient
   deriving (Show, Eq, Ord)
 
 data DirectNutrient = DirectNutrient
-  { mnId :: Int
+  { mnId :: NID
   , mnName :: T.Text
   , mnDisplayPrefix :: Prefix
   }
@@ -596,7 +578,7 @@ data DirectNutrient = DirectNutrient
 data AltNutrient = AltNutrient
   { anName :: T.Text
   , anDisplayPrefix :: Prefix
-  , anChoices :: NonEmpty (Int, Maybe Scientific)
+  , anChoices :: NonEmpty (NID, Maybe Scientific)
   }
   deriving (Show, Eq, Ord)
 
@@ -611,7 +593,7 @@ data DisplayNutrient = DisplayNutrient {dnName :: T.Text, dnPrefix :: Prefix}
 
 data FoodMeta = FoodMeta
   { fmDesc :: T.Text
-  , fmId :: Int
+  , fmId :: FID
   }
   deriving (Show)
 
@@ -711,17 +693,6 @@ data Node
     Leaf MeasuredNutrient
 
 data Aggregation a = AggIdentity a | Priority (NonEmpty a)
-
-data MTree a = MTree
-  { mtMass :: Scientific
-  , mtKnown :: M.Map a (MTree a)
-  , mtUnknown :: M.Map a (UTree a)
-  }
-
-data UTree a = UTree
-  { utKnown :: M.Map a (MTree a)
-  , utUnknown :: M.Map a (UTree a)
-  }
 
 data Prefix
   = Nano

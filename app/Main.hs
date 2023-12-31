@@ -300,7 +300,7 @@ ingredientToTable CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifi
     -- TODO throw a real error here
     Nothing -> logError "well crap" >> return Nothing
     Just k -> do
-      j <- runFetch_ False (fromIntegral ingFID) k
+      j <- runFetch_ False (FID $ fromIntegral ingFID) k
       let p = A.eitherDecodeStrict $ encodeUtf8 j
       case p of
         Right r -> do

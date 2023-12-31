@@ -35,7 +35,7 @@ findRemove f = go []
 type Grams = Scientific
 
 -- TODO make these warnings actually say something
-findMass :: NutrientState m => Int -> m (Maybe Grams)
+findMass :: NutrientState m => NID -> m (Maybe Grams)
 findMass i = do
   f <- state getFoodNutrient
   maybe (return Nothing) go f
