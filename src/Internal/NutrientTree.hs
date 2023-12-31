@@ -352,9 +352,6 @@ nutHierarchy n2Factor =
              , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
              ]
 
--- nv :: NutrientReader m => Grams -> m NutrientValue
--- nv m = (NutrientValue (Sum m) . pure) <$> ask
-
 fromNutTreeWithMass
   :: NutrientState m
   => Scientific
@@ -534,15 +531,12 @@ fmtTree (DisplayNode v ks us) = T.unlines (header : rest)
 
     withMap f = concatMap (uncurry f) . M.assocs
 
-    -- indentLines n = fmap (addIndent n)
-
     -- TODO configure indent level
     addIndent n = T.append (T.replicate (2 * n) " ")
 
     fmtKnown dn (DisplayNode v' ks' us') =
       fmtHeader (fmtDisplayNutrient dn v') $ go ks' us'
 
-    -- TODO add unit to this somehow (majority vote from other headers?)
     fmtUnknown ts (NutrientValue (Sum v') _) =
       let p = autoPrefix v'
           h =

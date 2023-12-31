@@ -57,13 +57,13 @@ subcommand =
     ( command
         "fetch"
         ( info
-            (Fetch <$> fetch)
+            (Fetch <$> fetchDump)
             (progDesc "fetch a food by ID")
         )
         <> command
           "dump"
           ( info
-              (Dump <$> dump)
+              (Dump <$> fetchDump)
               (progDesc "dump JSON for food by ID")
           )
         <> command
@@ -81,21 +81,9 @@ subcommand =
     )
 
 -- TODO need to get this to an int somehow
-fetch :: Parser FetchOptions
-fetch =
-  FetchOptions
-    <$> option
-      auto
-      ( long "fid"
-          <> short 'i'
-          <> metavar "FOODID"
-          <> help "ID for the food to pull from the database"
-      )
-    <*> flag False True (long "force" <> short 'f' <> help "force retrieve")
-
-dump :: Parser DumpOptions
-dump =
-  DumpOptions
+fetchDump :: Parser FetchDumpOptions
+fetchDump =
+  FetchDumpOptions
     <$> option
       auto
       ( long "fid"
@@ -128,6 +116,7 @@ summarize =
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
+    <*> displayOptions
 
 dateInterval :: Parser DateIntervalOptions
 dateInterval =
@@ -141,6 +130,23 @@ dateInterval =
           <> metavar "DAYS"
           <> help "length of interval in days within which summary will be calculated (ignored if END is present)"
           <> value 7
+      )
+
+displayOptions :: Parser DisplayOptions
+displayOptions =
+  DisplayOptions
+    <$> switch
+      ( long "unknowns"
+          <> short 'u'
+          <> help "display unknown nutrients in output"
+      )
+    <*> option
+      auto
+      ( long "indent"
+          <> short 'i'
+          <> metavar "INDENT"
+          <> help "indent level for output"
+          <> value 2
       )
 
 startDay :: Parser (Maybe Day)
@@ -186,51 +192,11 @@ parse (Options c@CommonOptions {coVerbosity} s) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
       exitFailure
 
-data Options = Options CommonOptions SubCommand
-
-data CommonOptions = CommonOptions
-  { coKey :: !(Maybe APIKey)
-  , coVerbosity :: !Bool
-  }
-
-type FID = Int
-
--- newtype FID = FID Int deriving (Read, Show)
-
-newtype APIKey = APIKey {unAPIKey :: T.Text} deriving (IsString)
-
-data SubCommand
-  = Fetch !FetchOptions
-  | Dump !DumpOptions
-  | Export !ExportOptions
-  | Summarize !SummarizeOptions
-
-data FetchOptions = FetchOptions {foID :: !FID, foForce :: !Bool}
-
-data DumpOptions = DumpOptions {doID :: !FID, doForce :: !Bool}
-
-data ExportOptions = ExportOptions
-
--- { eoConfig :: !FilePath
--- , eoDateInterval :: !DateIntervalOptions
--- }
-
-data SummarizeOptions = SummarizeOptions
-  { soConfig :: !FilePath
-  , soDateInterval :: !DateIntervalOptions
-  }
-
-data DateIntervalOptions = DateIntervalOptions
-  { dioStart :: Maybe Day
-  , dioEnd :: Maybe Day
-  , dioDays :: Int
-  }
-
 readDay :: String -> Day
 readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
 
-runFetch :: CommonOptions -> FetchOptions -> RIO SimpleApp ()
-runFetch CommonOptions {coKey} FetchOptions {foID, foForce} = do
+runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
+runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   res <- getStoreAPIKey coKey
   case res of
     -- TODO throw a real error here
@@ -254,15 +220,15 @@ runFetch_ frc i k = do
         Nothing -> undefined
         Just j' -> return j'
 
-runDump :: CommonOptions -> DumpOptions -> RIO SimpleApp ()
-runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
+runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
+runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   -- TODO not DRY
   res <- getStoreAPIKey coKey
   case res of
     -- TODO throw a real error here
     Nothing -> undefined
     Just k -> do
-      j <- runFetch_ doForce doID k
+      j <- runFetch_ foForce foID k
       liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
@@ -281,127 +247,11 @@ runExport = undefined
 --   -> m FinalFood
 -- readTree = undefined
 
--- BL.putStr $ C.encodeWith tsvOptions rs
-
--- scaleRowNutrient :: Scientific -> RowNutrient -> RowNutrient
--- scaleRowNutrient x r@RowNutrient {rnAmount} = r {rnAmount = (* x) <$> rnAmount}
-
--- TODO not sure if this ever changes
-
--- applyModification :: Modification -> RowNutrient -> RowNutrient
--- applyModification
---   Modification {modNutID, modScale}
---   r@RowNutrient {rnNutrientId, rnAmount}
---     | Just (fromIntegral modNutID) == rnNutrientId =
---         r {rnAmount = (* fromFloatDigits modScale) <$> rnAmount}
---     | otherwise = r
-
--- toRowNutrients :: T.Text -> FoodItem -> [RowNutrient]
--- toRowNutrients n i = case i of
---   (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
---     go ffiMeta (flcCommon ffiCommon)
---   -- (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
---   --   go bfiMeta bfiCommon
---   (SRLegacy SRLegacyFoodItem {srlMeta, srlCommon}) ->
---     go srlMeta (flcCommon srlCommon)
---   where
---     go m c = go' m <$> fcFoodNutrients c
---     go' m FoodNutrient {fnNutrient, fnAmount, fnFoodNutrientDerivation} =
---       RowNutrient
---         { rnDesc = frmDescription m
---         , rnMealName = n
---         , rnId = frmId m
---         , rnDerivation = ndDescription =<< fnFoodNutrientDerivation
---         , rnNutrientId = nId =<< fnNutrient
---         , rnNutrientName = nName =<< fnNutrient
---         , rnUnit = nUnitName =<< fnNutrient
---         , rnAmount = fnAmount
---         }
-
--- sumRowNutrients :: MonadAppError m => [RowNutrient] -> m [RowSum]
--- sumRowNutrients rs =
---   mapM go $
---     N.groupAllWith rsNutrientId $
---       [ RowSum
---         { rsAmount = v
---         , rsUnit = u
---         , rsNutrientName = n
---         , rsNutrientId = i
---         }
---       | RowNutrient
---           { rnAmount = Just v
---           , rnUnit = Just u
---           , rnNutrientId = Just i
---           , rnNutrientName = Just n
---           } <-
---           rs
---       ]
---   where
---     go ys@(y :| _) = do
---       ds <- mapM (\x -> parseDimensional (rsAmount x) (rsUnit x)) ys
---       d <- sumDimensionals ds
---       let (newValue, newUnit) = fromDimensional d
---       return $ y {rsAmount = newValue, rsUnit = newUnit}
-
--- sumDimensionals :: MonadAppError m => NonEmpty Dimensional -> m Dimensional
--- sumDimensionals alld@(d :| ds) = do
---   d' <- foldM addDimensional d ds
---   return $
---     d'
---       { dimUnit =
---           Unit
---             { unitBase = majorityBase
---             , unitName = unitName $ dimUnit d
---             }
---       }
---   where
---     majorityBase = majority $ fmap (unitBase . dimUnit) alld
-
--- majority :: Eq a => NonEmpty a -> a
--- majority = fst . N.head . N.reverse . N.sortWith snd . count
-
--- count :: Eq a => NonEmpty a -> NonEmpty (a, Int)
--- count (x :| xs) =
---   let (xs', ys) = L.partition (x ==) xs
---       thisCount = (x, length xs')
---    in case N.nonEmpty ys of
---         Nothing -> thisCount :| []
---         Just ys' -> thisCount :| N.toList (count ys')
-
--- addDimensional :: MonadAppError m => Dimensional -> Dimensional -> m Dimensional
--- addDimensional x@(Dimensional v0 u0) y@(Dimensional v1 _)
---   | uname x == uname y = return $ Dimensional (v0 + v1) u0
---   | otherwise = throwAppError $ UnitMatchError x y
---   where
---     uname = unitName . dimUnit
-
--- fromDimensional :: Dimensional -> (Scientific, T.Text)
--- fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
---   (raisePower dimValue (-(prefixValue unitBase)), tunit u)
-
--- tdimensional :: Dimensional -> T.Text
--- tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
-
--- raisePower :: Scientific -> Int -> Scientific
--- raisePower s x = scientific (coefficient s) (base10Exponent s + x)
-
--- parseDimensional
---   :: MonadAppError m
---   => Scientific
---   -> Text
---   -> m Dimensional
--- parseDimensional n u = do
---   u' <- parseUnit u
---   let n' = raisePower n (prefixValue $ unitBase u')
---   return $ Dimensional n' u'
-
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soConfig, soDateInterval} = do
+runSummarize co SummarizeOptions {soMealPath, soDateInterval} = do
   dayspan <- dateIntervalToDaySpan soDateInterval
-  ts <- readTrees co soConfig dayspan
+  ts <- readTrees co soMealPath dayspan
   maybe (return ()) (liftIO . TI.putStr . fmtFullTree) ts
-
--- BL.putStr $ C.encodeWith tsvOptions ss
 
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)

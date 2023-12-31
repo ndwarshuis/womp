@@ -6,7 +6,7 @@ module Internal.Types.Main where
 import Control.Monad.Error.Class
 import Control.Monad.Trans.Except
 import Data.Aeson
-import Data.Aeson.Types
+import Data.Aeson.Types as AT
 import qualified Data.Csv as C
 import qualified Data.Map.Merge.Strict as MMS
 import Data.Monoid
@@ -19,6 +19,51 @@ import qualified RIO.List as L
 import qualified RIO.Map as M
 import RIO.State
 import qualified RIO.Text as T
+import RIO.Time
+
+data Options = Options CommonOptions SubCommand
+
+data CommonOptions = CommonOptions
+  { coKey :: !(Maybe APIKey)
+  , coVerbosity :: !Bool
+  }
+
+type FID = Int
+
+-- newtype FID = FID Int deriving (Read, Show)
+
+newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
+
+data SubCommand
+  = Fetch !FetchDumpOptions
+  | Dump !FetchDumpOptions
+  | Export !ExportOptions
+  | Summarize !SummarizeOptions
+
+data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
+
+data ExportOptions = ExportOptions
+
+-- { eoConfig :: !FilePath
+-- , eoDateInterval :: !DateIntervalOptions
+-- }
+
+data SummarizeOptions = SummarizeOptions
+  { soMealPath :: !FilePath
+  , soDateInterval :: !DateIntervalOptions
+  , soDisplay :: !DisplayOptions
+  }
+
+data DateIntervalOptions = DateIntervalOptions
+  { dioStart :: Maybe Day
+  , dioEnd :: Maybe Day
+  , dioDays :: Int
+  }
+
+data DisplayOptions = DisplayOptions
+  { doUnknowns :: !Bool
+  , doIndent :: !Int
+  }
 
 data FoodItem
   = -- = Branded BrandedFoodItem
@@ -438,7 +483,7 @@ stripRecordPrefix prefix = maybe [] go . L.stripPrefix prefix
     go [] = []
     go (x : xs) = C.toLower x : xs
 
-recordOptions :: String -> Options
+recordOptions :: String -> AT.Options
 recordOptions x =
   defaultOptions
     { fieldLabelModifier = stripRecordPrefix x
@@ -447,18 +492,6 @@ recordOptions x =
 
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
 recordParseJSON s = genericParseJSON (recordOptions s)
-
--- data RowNutrient = RowNutrient
---   { rnId :: Int
---   , rnMealName :: T.Text
---   , rnDesc :: T.Text
---   , rnNutrientName :: Maybe T.Text
---   , rnNutrientId :: Maybe Int
---   , rnDerivation :: Maybe T.Text
---   , rnAmount :: Maybe Scientific
---   , rnUnit :: Maybe T.Text
---   }
---   deriving (Generic, Show)
 
 data RowNutrient = RowNutrient
   { rnNutrientId :: Int
@@ -479,12 +512,6 @@ data RowSum = RowSum
 instance C.ToRecord RowNutrient
 
 instance C.ToRecord RowSum
-
--- data Dimensional = Dimensional
---   { dimValue :: Scientific
---   , dimUnit :: Unit
---   }
---   deriving (Show, Eq)
 
 data UnitName
   = Gram
@@ -559,9 +586,6 @@ data MeasuredNutrient
     Alternate AltNutrient
   deriving (Show, Eq, Ord)
 
--- TODO augment this to include alternatively calculated nutrients (like protein
--- and some MUFAs) which will required a monadic function that executes in a
--- reader env with whatever data we need
 data DirectNutrient = DirectNutrient
   { mnId :: Int
   , mnName :: T.Text
@@ -649,8 +673,6 @@ instance Semigroup a => Semigroup (DisplayNode a) where
           MMS.preserveMissing
           MMS.preserveMissing
           (MMS.zipWithMatched (\_ x y -> x <> y))
-
--- data FoodTree a = NutrientNode (FoodTreeNode a) | GroupNode T.Text [FoodTree a]
 
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
