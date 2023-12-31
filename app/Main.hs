@@ -1,13 +1,13 @@
 module Main (main) where
 
-import Control.Monad.Error.Class
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
-import qualified Data.Csv as C
 import Data.Scientific
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Nutrient
+import Internal.NutrientTree
+import Internal.Nutrients
 import Internal.Types.Dhall
 import Internal.Types.Main
 import Internal.Utils
@@ -15,12 +15,8 @@ import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
 import RIO
--- import qualified RIO.ByteString as B
-import qualified RIO.ByteString.Lazy as BL
-import RIO.Char
 import RIO.FilePath
-import qualified RIO.List as L
-import qualified RIO.NonEmpty as N
+import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
 import UnliftIO.Directory
@@ -113,14 +109,15 @@ dump =
 -- TODO not dry
 export :: Parser ExportOptions
 export =
-  ExportOptions
-    <$> strOption
-      ( long "config"
-          <> short 'c'
-          <> metavar "CONFIG"
-          <> help "path to config with schedules and meals"
-      )
-    <*> dateInterval
+  pure ExportOptions
+
+-- <$> strOption
+--   ( long "config"
+--       <> short 'c'
+--       <> metavar "CONFIG"
+--       <> help "path to config with schedules and meals"
+--   )
+-- <*> dateInterval
 
 summarize :: Parser SummarizeOptions
 summarize =
@@ -214,9 +211,10 @@ data FetchOptions = FetchOptions {foID :: !FID, foForce :: !Bool}
 data DumpOptions = DumpOptions {doID :: !FID, doForce :: !Bool}
 
 data ExportOptions = ExportOptions
-  { eoConfig :: !FilePath
-  , eoDateInterval :: !DateIntervalOptions
-  }
+
+-- { eoConfig :: !FilePath
+-- , eoDateInterval :: !DateIntervalOptions
+-- }
 
 data SummarizeOptions = SummarizeOptions
   { soConfig :: !FilePath
@@ -269,32 +267,171 @@ runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
       liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
-runExport co ExportOptions {eoConfig, eoDateInterval} = do
-  dayspan <- dateIntervalToDaySpan eoDateInterval
-  rs <- readRowNutrients co eoConfig dayspan
-  BL.putStr $ C.encodeWith tsvOptions rs
+runExport = undefined
 
-readRowNutrients
+-- runExport co ExportOptions {eoConfig, eoDateInterval} = do
+--   dayspan <- dateIntervalToDaySpan eoDateInterval
+--   t <- readTree co eoConfig dayspan
+--   TI.putStr t
+
+-- readTree
+--   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+--   => CommonOptions
+--   -> FilePath
+--   -> DaySpan
+--   -> m FinalFood
+-- readTree = undefined
+
+-- BL.putStr $ C.encodeWith tsvOptions rs
+
+-- scaleRowNutrient :: Scientific -> RowNutrient -> RowNutrient
+-- scaleRowNutrient x r@RowNutrient {rnAmount} = r {rnAmount = (* x) <$> rnAmount}
+
+-- TODO not sure if this ever changes
+
+-- applyModification :: Modification -> RowNutrient -> RowNutrient
+-- applyModification
+--   Modification {modNutID, modScale}
+--   r@RowNutrient {rnNutrientId, rnAmount}
+--     | Just (fromIntegral modNutID) == rnNutrientId =
+--         r {rnAmount = (* fromFloatDigits modScale) <$> rnAmount}
+--     | otherwise = r
+
+-- toRowNutrients :: T.Text -> FoodItem -> [RowNutrient]
+-- toRowNutrients n i = case i of
+--   (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
+--     go ffiMeta (flcCommon ffiCommon)
+--   -- (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
+--   --   go bfiMeta bfiCommon
+--   (SRLegacy SRLegacyFoodItem {srlMeta, srlCommon}) ->
+--     go srlMeta (flcCommon srlCommon)
+--   where
+--     go m c = go' m <$> fcFoodNutrients c
+--     go' m FoodNutrient {fnNutrient, fnAmount, fnFoodNutrientDerivation} =
+--       RowNutrient
+--         { rnDesc = frmDescription m
+--         , rnMealName = n
+--         , rnId = frmId m
+--         , rnDerivation = ndDescription =<< fnFoodNutrientDerivation
+--         , rnNutrientId = nId =<< fnNutrient
+--         , rnNutrientName = nName =<< fnNutrient
+--         , rnUnit = nUnitName =<< fnNutrient
+--         , rnAmount = fnAmount
+--         }
+
+-- sumRowNutrients :: MonadAppError m => [RowNutrient] -> m [RowSum]
+-- sumRowNutrients rs =
+--   mapM go $
+--     N.groupAllWith rsNutrientId $
+--       [ RowSum
+--         { rsAmount = v
+--         , rsUnit = u
+--         , rsNutrientName = n
+--         , rsNutrientId = i
+--         }
+--       | RowNutrient
+--           { rnAmount = Just v
+--           , rnUnit = Just u
+--           , rnNutrientId = Just i
+--           , rnNutrientName = Just n
+--           } <-
+--           rs
+--       ]
+--   where
+--     go ys@(y :| _) = do
+--       ds <- mapM (\x -> parseDimensional (rsAmount x) (rsUnit x)) ys
+--       d <- sumDimensionals ds
+--       let (newValue, newUnit) = fromDimensional d
+--       return $ y {rsAmount = newValue, rsUnit = newUnit}
+
+-- sumDimensionals :: MonadAppError m => NonEmpty Dimensional -> m Dimensional
+-- sumDimensionals alld@(d :| ds) = do
+--   d' <- foldM addDimensional d ds
+--   return $
+--     d'
+--       { dimUnit =
+--           Unit
+--             { unitBase = majorityBase
+--             , unitName = unitName $ dimUnit d
+--             }
+--       }
+--   where
+--     majorityBase = majority $ fmap (unitBase . dimUnit) alld
+
+-- majority :: Eq a => NonEmpty a -> a
+-- majority = fst . N.head . N.reverse . N.sortWith snd . count
+
+-- count :: Eq a => NonEmpty a -> NonEmpty (a, Int)
+-- count (x :| xs) =
+--   let (xs', ys) = L.partition (x ==) xs
+--       thisCount = (x, length xs')
+--    in case N.nonEmpty ys of
+--         Nothing -> thisCount :| []
+--         Just ys' -> thisCount :| N.toList (count ys')
+
+-- addDimensional :: MonadAppError m => Dimensional -> Dimensional -> m Dimensional
+-- addDimensional x@(Dimensional v0 u0) y@(Dimensional v1 _)
+--   | uname x == uname y = return $ Dimensional (v0 + v1) u0
+--   | otherwise = throwAppError $ UnitMatchError x y
+--   where
+--     uname = unitName . dimUnit
+
+-- fromDimensional :: Dimensional -> (Scientific, T.Text)
+-- fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
+--   (raisePower dimValue (-(prefixValue unitBase)), tunit u)
+
+-- tdimensional :: Dimensional -> T.Text
+-- tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
+
+-- raisePower :: Scientific -> Int -> Scientific
+-- raisePower s x = scientific (coefficient s) (base10Exponent s + x)
+
+-- parseDimensional
+--   :: MonadAppError m
+--   => Scientific
+--   -> Text
+--   -> m Dimensional
+-- parseDimensional n u = do
+--   u' <- parseUnit u
+--   let n' = raisePower n (prefixValue $ unitBase u')
+--   return $ Dimensional n' u'
+
+runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
+runSummarize co SummarizeOptions {soConfig, soDateInterval} = do
+  dayspan <- dateIntervalToDaySpan soDateInterval
+  ts <- readTrees co soConfig dayspan
+  maybe (return ()) (liftIO . TI.putStr . fmtFullTree) ts
+
+-- BL.putStr $ C.encodeWith tsvOptions ss
+
+readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
   -> FilePath
   -> DaySpan
-  -> m [RowNutrient]
-readRowNutrients co p ds = do
-  sch <- readConfig p
-  concat <$> mapErrorsIO (scheduleToTable co ds) sch
+  -> m (Maybe FinalFood)
+readTrees co p ds = do
+  ss <- readMealPlan p
+  case ss of
+    (x : xs) -> do
+      init <- scheduleToTree co ds x
+      ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree co ds) init xs
+      return $ Just ts
+    [] -> return Nothing
 
-scheduleToTable
+scheduleToTree
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
   -> DaySpan
   -> Schedule
-  -> m [RowNutrient]
-scheduleToTable co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+  -> m FinalFood
+scheduleToTree co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   days <- fromEither $ expandCronPat ds schWhen
-  rs <- concat <$> mapM (ingredientToTable co mlName) mlIngs
+  rs <- catMaybes <$> mapM (ingredientToTable co mlName) mlIngs
   let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
-  return $ fmap (scaleRowNutrient scale) rs
+  case rs of
+    [] -> error "TODO prevent this from happening"
+    (x : xs) -> return $ fmap (fmap (fmap (* scale))) $ foldr (<>) x xs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 ingredientToTable
@@ -302,149 +439,29 @@ ingredientToTable
   => CommonOptions
   -> T.Text
   -> Ingredient
-  -> m [RowNutrient]
-ingredientToTable CommonOptions {coKey} n Ingredient {ingFID, ingMass, ingModifications} = do
+  -> m (Maybe FinalFood)
+ingredientToTable CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifications} = do
   res <- getStoreAPIKey coKey
   case res of
     -- TODO throw a real error here
-    Nothing -> logError "well crap" >> return []
+    Nothing -> logError "well crap" >> return Nothing
     Just k -> do
       j <- runFetch_ False (fromIntegral ingFID) k
       let p = A.eitherDecodeStrict $ encodeUtf8 j
       case p of
-        Right r ->
-          return $
-            fmap applyScale $
-              applyMods ingModifications $
-                toRowNutrients n r
+        Right r -> do
+          -- TODO throw warnings at user
+          let (t, _) = runState (ingredientToTree ingModifications ingMass r) []
+          -- TODO scale a number nested way down in there...but better
+          return $ Just $ fmap (fmap (fmap (* scale))) t
         Left e -> do
           logError $ displayBytesUtf8 $ BC.pack e
-          return []
+          return Nothing
   where
     scale = fromFloatDigits ingMass / standardMass
-    applyScale = scaleRowNutrient scale
-    applyMods ms rs = fmap (\r -> foldr applyModification r ms) rs
 
-scaleRowNutrient :: Scientific -> RowNutrient -> RowNutrient
-scaleRowNutrient x r@RowNutrient {rnAmount} = r {rnAmount = (* x) <$> rnAmount}
-
--- TODO not sure if this ever changes
-standardMass :: Scientific
-standardMass = 100
-
-applyModification :: Modification -> RowNutrient -> RowNutrient
-applyModification
-  Modification {modNutID, modScale}
-  r@RowNutrient {rnNutrientId, rnAmount}
-    | Just (fromIntegral modNutID) == rnNutrientId =
-        r {rnAmount = (* fromFloatDigits modScale) <$> rnAmount}
-    | otherwise = r
-
-toRowNutrients :: T.Text -> FoodItem -> [RowNutrient]
-toRowNutrients n i = case i of
-  (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
-    go ffiMeta (flcCommon ffiCommon)
-  -- (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
-  --   go bfiMeta bfiCommon
-  (SRLegacy SRLegacyFoodItem {srlMeta, srlCommon}) ->
-    go srlMeta (flcCommon srlCommon)
-  where
-    go m c = go' m <$> fcFoodNutrients c
-    go' m FoodNutrient {fnNutrient, fnAmount, fnFoodNutrientDerivation} =
-      RowNutrient
-        { rnDesc = frmDescription m
-        , rnMealName = n
-        , rnId = frmId m
-        , rnDerivation = ndDescription =<< fnFoodNutrientDerivation
-        , rnNutrientId = nId =<< fnNutrient
-        , rnNutrientName = nName =<< fnNutrient
-        , rnUnit = nUnitName =<< fnNutrient
-        , rnAmount = fnAmount
-        }
-
-sumRowNutrients :: MonadAppError m => [RowNutrient] -> m [RowSum]
-sumRowNutrients rs =
-  mapM go $
-    N.groupAllWith rsNutrientId $
-      [ RowSum
-        { rsAmount = v
-        , rsUnit = u
-        , rsNutrientName = n
-        , rsNutrientId = i
-        }
-      | RowNutrient
-          { rnAmount = Just v
-          , rnUnit = Just u
-          , rnNutrientId = Just i
-          , rnNutrientName = Just n
-          } <-
-          rs
-      ]
-  where
-    go ys@(y :| _) = do
-      ds <- mapM (\x -> parseDimensional (rsAmount x) (rsUnit x)) ys
-      d <- sumDimensionals ds
-      let (newValue, newUnit) = fromDimensional d
-      return $ y {rsAmount = newValue, rsUnit = newUnit}
-
-sumDimensionals :: MonadAppError m => NonEmpty Dimensional -> m Dimensional
-sumDimensionals alld@(d :| ds) = do
-  d' <- foldM addDimensional d ds
-  return $
-    d'
-      { dimUnit =
-          Unit
-            { unitBase = majorityBase
-            , unitName = unitName $ dimUnit d
-            }
-      }
-  where
-    majorityBase = majority $ fmap (unitBase . dimUnit) alld
-
-majority :: Eq a => NonEmpty a -> a
-majority = fst . N.head . N.reverse . N.sortWith snd . count
-
-count :: Eq a => NonEmpty a -> NonEmpty (a, Int)
-count (x :| xs) =
-  let (xs', ys) = L.partition (x ==) xs
-      thisCount = (x, length xs')
-   in case N.nonEmpty ys of
-        Nothing -> thisCount :| []
-        Just ys' -> thisCount :| N.toList (count ys')
-
-addDimensional :: MonadAppError m => Dimensional -> Dimensional -> m Dimensional
-addDimensional x@(Dimensional v0 u0) y@(Dimensional v1 _)
-  | uname x == uname y = return $ Dimensional (v0 + v1) u0
-  | otherwise = throwAppError $ UnitMatchError x y
-  where
-    uname = unitName . dimUnit
-
-fromDimensional :: Dimensional -> (Scientific, T.Text)
-fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
-  (raisePower dimValue (-(prefixValue unitBase)), tunit u)
-
--- tdimensional :: Dimensional -> T.Text
--- tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
-
-raisePower :: Scientific -> Int -> Scientific
-raisePower s x = scientific (coefficient s) (base10Exponent s + x)
-
-parseDimensional
-  :: MonadAppError m
-  => Scientific
-  -> Text
-  -> m Dimensional
-parseDimensional n u = do
-  u' <- parseUnit u
-  let n' = raisePower n (prefixValue $ unitBase u')
-  return $ Dimensional n' u'
-
-runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soConfig, soDateInterval} = do
-  dayspan <- dateIntervalToDaySpan soDateInterval
-  rs <- readRowNutrients co soConfig dayspan
-  ss <- fromEither $ sumRowNutrients rs
-  BL.putStr $ C.encodeWith tsvOptions ss
+-- applyScale = scaleRowNutrient scale
+-- applyMods ms rs = fmap (\r -> foldr modifyItem r ms) rs
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m DaySpan
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays} = do
@@ -508,11 +525,11 @@ readAndCache p x = do
       writeFileUtf8 p t
       return $ Just t
 
-readConfig
+readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => FilePath
   -> m [Schedule]
-readConfig f = do
+readMealPlan f = do
   logDebug $
     displayBytesUtf8 $
       encodeUtf8 $
@@ -520,12 +537,12 @@ readConfig f = do
           T.pack f
   liftIO $ D.inputFile D.auto f
 
-tsvOptions :: C.EncodeOptions
-tsvOptions =
-  C.defaultEncodeOptions
-    { C.encDelimiter = fromIntegral (ord '\t')
-    , C.encIncludeHeader = True
-    }
+-- tsvOptions :: C.EncodeOptions
+-- tsvOptions =
+--   C.defaultEncodeOptions
+--     { C.encDelimiter = fromIntegral (ord '\t')
+--     , C.encIncludeHeader = True
+--     }
 
 type DaySpan = (Day, Int)
 

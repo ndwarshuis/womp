@@ -4,6 +4,9 @@ import Data.Scientific
 import Internal.Types.Main
 import RIO
 
+standardMass :: Scientific
+standardMass = 100
+
 water :: MeasuredNutrient
 water = Direct $ DirectNutrient 1051 "Water" Unity
 

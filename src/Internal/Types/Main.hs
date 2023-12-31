@@ -161,8 +161,8 @@ data ProteinConversion = ProteinConversion
 parseFoundationLegacyCommon :: Object -> Parser FoundationLegacyCommon
 parseFoundationLegacyCommon v = do
   ncf <- v .: "nutrientConversionFactors"
-  c <- firstM caloreConv ncf
-  p <- firstM proteinConv ncf
+  c <- firstM parseCalorieConversion ncf
+  p <- firstM parseProteinConversion ncf
   FoundationLegacyCommon
     <$> parseFoodCommon v
     <*> v .:? "isHistoricalReference"
@@ -172,20 +172,28 @@ parseFoundationLegacyCommon v = do
     <*> pure (fromMaybe defCalorie c)
     <*> pure (fromMaybe defProtein p)
   where
-    caloreConv t = case (t :: T.Text) of
-      ".CalorieConversionFactor" -> do
-        f <- v .: "fatValue"
-        p <- v .: "proteinValue"
-        c <- v .: "carbohydrateValue"
-        return $ Just $ CalorieConversion f p c False
-      _ -> return Nothing
-    proteinConv t = case (t :: T.Text) of
-      ".ProteinConversionFactor" -> do
-        p <- v .: "value"
-        return $ Just $ ProteinConversion p False
-      _ -> return Nothing
     defCalorie = CalorieConversion {ccFat = 9, ccProtein = 4, ccCarbs = 4, ccAssumed = True}
     defProtein = ProteinConversion 6.25 True
+
+parseCalorieConversion :: Object -> Parser (Maybe CalorieConversion)
+parseCalorieConversion v = do
+  t <- v .: "type"
+  case (t :: Text) of
+    ".CalorieConversionFactor" -> do
+      f <- v .: "fatValue"
+      p <- v .: "proteinValue"
+      c <- v .: "carbohydrateValue"
+      return $ Just $ CalorieConversion f p c False
+    _ -> return Nothing
+
+parseProteinConversion :: Object -> Parser (Maybe ProteinConversion)
+parseProteinConversion v = do
+  t <- v .: "type"
+  case (t :: Text) of
+    ".ProteinConversionFactor" -> do
+      p <- v .: "Value"
+      return $ Just $ ProteinConversion p False
+    _ -> return Nothing
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM _ [] = return Nothing
@@ -472,11 +480,11 @@ instance C.ToRecord RowNutrient
 
 instance C.ToRecord RowSum
 
-data Dimensional = Dimensional
-  { dimValue :: Scientific
-  , dimUnit :: Unit
-  }
-  deriving (Show, Eq)
+-- data Dimensional = Dimensional
+--   { dimValue :: Scientific
+--   , dimUnit :: Unit
+--   }
+--   deriving (Show, Eq)
 
 data UnitName
   = Gram
@@ -680,7 +688,7 @@ data Node
   | -- | GroupHeader SummedNutrient Branches
     Leaf MeasuredNutrient
 
-data Aggregation a = Single a | Priority (NonEmpty a)
+data Aggregation a = AggIdentity a | Priority (NonEmpty a)
 
 data MTree a = MTree
   { mtMass :: Scientific
@@ -720,8 +728,8 @@ type AppExceptT = ExceptT AppException
 
 data AppError
   = DatePatternError !Natural !Natural !(Maybe Natural) !PatternSuberr
-  | UnitMatchError !Dimensional !Dimensional
-  | UnitParseError !T.Text
+  | -- | UnitMatchError !Dimensional !Dimensional
+    UnitParseError !T.Text
   | DaySpanError !Int
   | -- TODO store FDC id/name and nutrient name here too
     NutrientError

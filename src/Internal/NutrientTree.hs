@@ -4,7 +4,7 @@ module Internal.NutrientTree
   , lookupTree
   , summedToDisplay
   , measToDisplay
-  , fmtTree
+  , fmtFullTree
   )
 where
 
@@ -224,11 +224,11 @@ nutHierarchy n2Factor =
     , ntUnmeasuredTree = Just carbs
     }
   where
-    leaf = Single . Leaf
+    leaf = AggIdentity . Leaf
     -- TODO use the right unit here
-    group n = Single . UnmeasuredHeader (SummedNutrient n Micro)
-    measured h = Single . MeasuredHeader h
-    unmeasured h = Single . UnmeasuredHeader h
+    group n = AggIdentity . UnmeasuredHeader (SummedNutrient n Micro)
+    measured h = AggIdentity . MeasuredHeader h
+    unmeasured h = AggIdentity . UnmeasuredHeader h
     nutTree u xs =
       NutTree
         { ntFractions = xs
@@ -442,7 +442,7 @@ readBranches bs = do
     combineRes (Left (ks0, us)) (Right ks1) = Left (ks0 ++ toList ks1, us)
     combineRes (Left (ks0, us0)) (Left (ks1, us1)) = Left (ks0 ++ ks1, us0 <> us1)
 
-    fromAgg (Single x) = fromHeader x
+    fromAgg (AggIdentity x) = fromHeader x
     fromAgg (Priority (x :| xs)) = do
       init <- fromHeader x
       foldM go init xs
@@ -520,15 +520,19 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
+fmtFullTree :: FinalFood -> T.Text
+fmtFullTree (FinalFood_ m (NutrientValue (Sum v) _)) =
+  T.unlines [T.unwords ["Energy:", tshow v, "kcal"], fmtTree m]
+
 -- TODO add some options to control how this works
 fmtTree :: DisplayNode NutrientValue -> T.Text
 fmtTree (DisplayNode v ks us) = T.unlines (header : rest)
   where
-    header = T.append "Total mass: " (tshow v)
+    header = T.append "Total mass: " (tshow $ getSum $ nvValue v)
     rest = go 0 ks us
     go level ks' us' =
       indentLines level $
-        (withMap (fmtKnown level) ks') ++ (withMap (fmtUnknown level) us')
+        withMap (fmtKnown level) ks' ++ withMap (fmtUnknown level) us'
 
     withMap f = concatMap (uncurry f) . M.assocs
 

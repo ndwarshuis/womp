@@ -78,11 +78,11 @@ showError other = case other of
   (NutrientError) -> undefined -- [T.unwords ["could not parse valud for nutrient id:", tshow i]]
   (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
   (UnitParseError u) -> [T.append "could not parse unit: " u]
-  (UnitMatchError x y) ->
-    [ T.append
-        (T.unwords ["could not add", tshow x, "and", tshow y])
-        ": units don't match"
-    ]
+  -- (UnitMatchError x y) ->
+  --   [ T.append
+  --       (T.unwords ["could not add", tshow x, "and", tshow y])
+  --       ": units don't match"
+  --   ]
   (DatePatternError s b r p) -> [T.unwords [msg, "in pattern: ", pat]]
     where
       pat =
