@@ -225,8 +225,7 @@ nutHierarchy n2Factor =
     }
   where
     leaf = AggIdentity . Leaf
-    -- TODO use the right unit here
-    group n = AggIdentity . UnmeasuredHeader (SummedNutrient n Micro)
+    group n p = AggIdentity . UnmeasuredHeader (SummedNutrient n p)
     measured h = AggIdentity . MeasuredHeader h
     unmeasured h = AggIdentity . UnmeasuredHeader h
     nutTree u xs =
@@ -237,7 +236,7 @@ nutHierarchy n2Factor =
         }
     measuredLeaves h u xs = measured h $ nutTree u (leaf <$> xs)
     unmeasuredLeaves h xs = unmeasured h (leaf <$> xs)
-    groupLeaves h xs = group h (leaf <$> xs)
+    groupLeaves h u xs = group h u (leaf <$> xs)
     unclassified x u = SummedNutrient (T.append x " (unclassified)") u
 
     carbs =
@@ -266,7 +265,7 @@ nutHierarchy n2Factor =
         )
 
     organics =
-      group "Organics" $
+      group "Organics" Milli $
         lycopene_
           :| [ luteins_
              , unmeasuredLeaves isoflavones allIsoflavones
@@ -292,9 +291,9 @@ nutHierarchy n2Factor =
         transLutein :| [cisLutein, zeaxanthin]
 
     vitamins =
-      group "Vitamins" $
-        groupLeaves "Vitamin A" allVitaminA
-          :| [ group "Vitamin B" $
+      group "Vitamins" Milli $
+        groupLeaves "Vitamin A" Micro allVitaminA
+          :| [ group "Vitamin B" Milli $
                 leaf vitaminB1
                   :| [ leaf vitaminB2
                      , leaf vitaminB3
@@ -308,8 +307,8 @@ nutHierarchy n2Factor =
              , unmeasured vitaminD $
                 fmap leaf $
                   vitaminD2 :| [vitaminD3, calcifediol, vitaminD4]
-             , groupLeaves "Vitamin E" allVitaminE
-             , group "Vitamin K" $
+             , groupLeaves "Vitamin E" Milli allVitaminE
+             , group "Vitamin K" Micro $
                 fmap leaf $
                   vitaminK1 :| [vitaminK2, dihydrophylloquinone]
              ]
@@ -497,9 +496,9 @@ fullToDisplayTree FullNode_ {fnValue, fnNut, fnKnown, fnUnknown} =
   where
     unpackNodes mass ks u = case u of
       Left uts -> case N.nonEmpty ks of
-        Nothing -> (mempty, M.singleton uts mass)
+        Nothing -> (mempty, withNonEmpty (`M.singleton` mass) mempty uts)
         Just ks' ->
-          (toMap $ toList ks', M.singleton uts $ sumTrees ks')
+          (toMap $ toList ks', M.singleton uts (mass - sumTrees ks'))
       Right fn -> (toMap (FullNode fn : ks), mempty)
 
     partialToDisplayTree PartialNode_ {pnNut, pnKnown} =
@@ -529,26 +528,36 @@ fmtTree :: DisplayNode NutrientValue -> T.Text
 fmtTree (DisplayNode v ks us) = T.unlines (header : rest)
   where
     header = T.append "Total mass: " (tshow $ getSum $ nvValue v)
-    rest = go 0 ks us
-    go level ks' us' =
-      indentLines level $
-        withMap (fmtKnown level) ks' ++ withMap (fmtUnknown level) us'
+    rest = go ks us
+    go ks' us' =
+      withMap fmtKnown ks' ++ withMap fmtUnknown us'
 
     withMap f = concatMap (uncurry f) . M.assocs
 
-    indentLines n = fmap (addIndent n)
+    -- indentLines n = fmap (addIndent n)
 
-    addIndent n = T.append (T.replicate n " ")
+    -- TODO configure indent level
+    addIndent n = T.append (T.replicate (2 * n) " ")
 
-    fmtKnown level dn (DisplayNode v' ks' us') =
-      fmtDisplayNutrient dn v' : go (1 + level) ks' us'
+    fmtKnown dn (DisplayNode v' ks' us') =
+      fmtHeader (fmtDisplayNutrient dn v') $ go ks' us'
 
     -- TODO add unit to this somehow (majority vote from other headers?)
-    fmtUnknown level ts (NutrientValue (Sum v') _) =
-      T.concat ["Unknown: ", tshow v'] : concatMap (fmtUnknownTree (1 + level)) ts
+    fmtUnknown ts (NutrientValue (Sum v') _) =
+      let p = autoPrefix v'
+          h =
+            T.concat
+              [ "Unknown: "
+              , tshow $ raisePower (-prefixValue p) v'
+              , " "
+              , tunit $ Unit p Gram
+              ]
+       in fmtHeader h $ concatMap fmtUnknownTree ts
 
-    fmtUnknownTree level (UnknownTree (DisplayNutrient n _) ts) =
-      indentLines level $ n : concatMap (fmtUnknownTree (1 + level)) ts
+    fmtUnknownTree (UnknownTree (DisplayNutrient n _) ts) =
+      fmtHeader n $ concatMap fmtUnknownTree ts
+
+    fmtHeader h = (h :) . fmap (addIndent 1)
 
 -- TODO add nutrient value stuff later
 fmtDisplayNutrient :: DisplayNutrient -> NutrientValue -> T.Text

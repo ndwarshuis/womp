@@ -16,8 +16,8 @@ protein n2Factor =
     AltNutrient "Protein" Unity $
       (proteinId, Nothing) :| [(nitrogenId, Just n2Factor)]
   where
-    proteinId = 1002
-    nitrogenId = 1003
+    nitrogenId = 1002
+    proteinId = 1003
 
 lipid :: MeasuredNutrient
 lipid = Direct $ DirectNutrient 1004 "Lipids" Unity
@@ -518,7 +518,7 @@ vitaminB12 :: MeasuredNutrient
 vitaminB12 = Direct $ DirectNutrient 1178 "Vitamin B12 (cobalamins)" Micro
 
 vitaminC :: MeasuredNutrient
-vitaminC = Direct $ DirectNutrient 1162 "Vitamin C (ascorbic acid)" Micro
+vitaminC = Direct $ DirectNutrient 1162 "Vitamin C (ascorbic acid)" Milli
 
 vitaminD :: SummedNutrient
 vitaminD = SummedNutrient "Vitamin D (total)" Micro

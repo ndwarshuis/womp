@@ -191,7 +191,7 @@ parseProteinConversion v = do
   t <- v .: "type"
   case (t :: Text) of
     ".ProteinConversionFactor" -> do
-      p <- v .: "Value"
+      p <- v .: "value"
       return $ Just $ ProteinConversion p False
     _ -> return Nothing
 
@@ -617,13 +617,13 @@ data PartialNode_ a = PartialNode_
   deriving (Functor)
 
 data UnknownTree = UnknownTree DisplayNutrient [UnknownTree]
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 data FinalFood_ a = FinalFood_
   { ffMap :: DisplayNode a
   , ffEnergy :: a
   }
-  deriving (Generic, Functor)
+  deriving (Generic, Functor, Show)
   deriving (Semigroup) via GenericSemigroup (FinalFood_ a)
 
 type FinalFood = FinalFood_ NutrientValue
@@ -633,7 +633,7 @@ data DisplayNode a = DisplayNode
   , dnKnown :: M.Map DisplayNutrient (DisplayNode a)
   , dnUnknown :: M.Map [UnknownTree] a
   }
-  deriving (Functor)
+  deriving (Functor, Show)
 
 instance Semigroup a => Semigroup (DisplayNode a) where
   (<>) a b =
@@ -713,7 +713,7 @@ data Prefix
   | Kilo
   | Mega
   | Giga
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Enum, Bounded)
 
 instance Exception AppException
 

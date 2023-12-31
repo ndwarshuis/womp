@@ -128,29 +128,19 @@ parseUnit s = catchError nonUnity (const def)
       "IU" -> return $ Unit p IU
       _ -> Nothing
 
--- parseUnit :: MonadAppError m => T.Text -> m Unit
--- parseUnit s = catchError nonUnity (const def)
---   where
---     def = parseName Unity s
---     nonUnity = case T.splitAt 1 s of
---       ("G", rest) -> parseName Giga rest
---       ("M", rest) -> parseName Mega rest
---       ("k", rest) -> parseName Kilo rest
---       ("h", rest) -> parseName Hecto rest
---       ("d", rest) -> parseName Deci rest
---       ("c", rest) -> parseName Centi rest
---       ("m", rest) -> parseName Milli rest
---       ("µ", rest) -> parseName Micro rest
---       ("n", rest) -> parseName Nano rest
---       _ -> case T.splitAt 2 s of
---         ("da", rest) -> parseName Deca rest
---         _ -> def
---     parseName p r = case r of
---       "cal" -> return $ Unit p Calorie
---       "g" -> return $ Unit p Gram
---       "J" -> return $ Unit p Joule
---       "IU" -> return $ Unit p IU
---       _ -> throwAppError $ UnitParseError s
-
 raisePower :: Int -> Scientific -> Scientific
 raisePower x s = scientific (coefficient s) (base10Exponent s + x)
+
+autoPrefix :: Scientific -> Prefix
+autoPrefix s =
+  maybe maxBound fst $
+    L.find ((abs s <) . snd) $
+      fmap
+        (\p -> (p,) $ (10 ^^) $ (+ 3) $ prefixValue p)
+        -- NOTE only use multiples of three for display
+        [Nano, Micro, Milli, Unity, Kilo, Mega, Giga]
+
+withNonEmpty :: (Eq a, Monoid a) => (a -> b) -> b -> a -> b
+withNonEmpty f d x
+  | mempty == x = d
+  | otherwise = f x

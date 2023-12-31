@@ -7,7 +7,6 @@ import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Nutrient
 import Internal.NutrientTree
-import Internal.Nutrients
 import Internal.Types.Dhall
 import Internal.Types.Main
 import Internal.Utils
@@ -426,12 +425,17 @@ scheduleToTree
   -> Schedule
   -> m FinalFood
 scheduleToTree co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "Start day:" $ tshow $ fst ds
+  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "End day:" $ tshow $ snd ds
   days <- fromEither $ expandCronPat ds schWhen
+  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "N days:" $ tshow $ length days
   rs <- catMaybes <$> mapM (ingredientToTable co mlName) mlIngs
   let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
+  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "Rest: " $ tshow rs
+
   case rs of
     [] -> error "TODO prevent this from happening"
-    (x : xs) -> return $ fmap (fmap (fmap (* scale))) $ foldr (<>) x xs
+    (x : xs) -> return $ fmap (fmap (* scale)) <$> foldr (<>) x xs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 ingredientToTable
@@ -452,13 +456,10 @@ ingredientToTable CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifi
         Right r -> do
           -- TODO throw warnings at user
           let (t, _) = runState (ingredientToTree ingModifications ingMass r) []
-          -- TODO scale a number nested way down in there...but better
-          return $ Just $ fmap (fmap (fmap (* scale))) t
+          return $ Just t
         Left e -> do
           logError $ displayBytesUtf8 $ BC.pack e
           return Nothing
-  where
-    scale = fromFloatDigits ingMass / standardMass
 
 -- applyScale = scaleRowNutrient scale
 -- applyMods ms rs = fmap (\r -> foldr modifyItem r ms) rs
@@ -468,7 +469,7 @@ dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays} = do
   start <- maybe currentDay return dioStart
   let dayLen = maybe dioDays (\e -> fromIntegral $ diffDays e start) dioEnd
   when (dayLen < 1) $ throwAppErrorIO $ DaySpanError dayLen
-  return (start, dayLen)
+  return (start, dayLen - 1)
 
 currentDay :: MonadUnliftIO m => m Day
 currentDay = do
