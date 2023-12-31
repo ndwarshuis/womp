@@ -73,6 +73,7 @@ dependencies:
 - mtl
 - lens
 - generic-monoid
+- containers
 
 ghc-options:
 - -Wall

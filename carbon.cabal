@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Internal.Nutrient
+      Internal.Nutrients
       Internal.NutrientTree
       Internal.Types.Dhall
       Internal.Types.Main
@@ -79,6 +80,7 @@ library
     , base >=4.7 && <5
     , bytestring
     , cassava
+    , containers
     , dhall
     , generic-monoid
     , lens
@@ -144,6 +146,7 @@ executable carbon
     , bytestring
     , carbon
     , cassava
+    , containers
     , dhall
     , generic-monoid
     , lens

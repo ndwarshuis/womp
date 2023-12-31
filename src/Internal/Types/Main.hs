@@ -8,6 +8,7 @@ import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.Csv as C
+import qualified Data.Map.Merge.Strict as MMS
 import Data.Monoid
 import Data.Monoid.Generic
 import Data.Scientific
@@ -153,7 +154,7 @@ data CalorieConversion = CalorieConversion
 
 data ProteinConversion = ProteinConversion
   { pcFactor :: Scientific
-  , pcAssumed :: Bool
+  , pcAssumed :: Bool -- TODO why did I want this?
   }
   deriving (Show)
 
@@ -528,6 +529,8 @@ data AppWarning
 
 type NutrientState = MonadState FoodState
 
+type MealState = MonadState [AppWarning]
+
 data MeasuredNutrient
   = Direct DirectNutrient
   | -- | Computed ComputedNutrient
@@ -563,25 +566,67 @@ data DisplayNutrient = DisplayNutrient {dnName :: T.Text, dnPrefix :: Prefix}
 data FoodMeta = FoodMeta
   { fmDesc :: T.Text
   , fmId :: Int
-  , fmNitrogenFactor :: Scientific
   }
   deriving (Show)
 
-data FoodTreeNode a = FoodTreeNode
-  { ftValue :: a
+data FoodTreeNode a = FullNode (FullNode_ a) | PartialNode (PartialNode_ a)
+  deriving (Functor)
+
+data FullNode_ a = FullNode_
+  { fnValue :: a
   -- ^ Mass of this node
-  , ftNut :: DisplayNutrient
+  , fnNut :: DisplayNutrient
   -- ^ Nutrient associated with this node
-  , ftKnown :: [FoodTreeNode a]
+  , fnKnown :: [FoodTreeNode a]
   -- ^ Subnutrients underneath this node with known mass
-  , ftUnknown :: [UnknownTree]
+  , fnUnknown :: Either [UnknownTree] (FullNode_ a)
   -- ^ Subnutrients underneath this node with no known individual masses but
   -- known collective masses. This mass and all those under the "known" field
   -- must sum to that of the "value" field
   }
   deriving (Functor)
 
+data PartialNode_ a = PartialNode_
+  { pnNut :: DisplayNutrient
+  -- ^ Nutrient associated with this node
+  , pnKnown :: NonEmpty (FoodTreeNode a)
+  -- ^ Subnutrients underneath this node with known mass
+  }
+  deriving (Functor)
+
 data UnknownTree = UnknownTree DisplayNutrient [UnknownTree]
+  deriving (Eq, Ord)
+
+data FinalFood_ a = FinalFood_
+  { ffMap :: DisplayNode a
+  , ffEnergy :: a
+  }
+  deriving (Generic, Functor)
+  deriving (Semigroup) via GenericSemigroup (FinalFood_ a)
+
+type FinalFood = FinalFood_ NutrientValue
+
+data DisplayNode a = DisplayNode
+  { dnValue :: a
+  , dnKnown :: M.Map DisplayNutrient (DisplayNode a)
+  , dnUnknown :: M.Map [UnknownTree] a
+  }
+  deriving (Functor)
+
+instance Semigroup a => Semigroup (DisplayNode a) where
+  (<>) a b =
+    DisplayNode
+      { dnValue = dnValue a <> dnValue b
+      , dnKnown = merge_ (dnKnown a) (dnKnown b)
+      , dnUnknown = merge_ (dnUnknown a) (dnUnknown b)
+      }
+    where
+      merge_ :: (Ord k, Semigroup v) => M.Map k v -> M.Map k v -> M.Map k v
+      merge_ =
+        MMS.merge
+          MMS.preserveMissing
+          MMS.preserveMissing
+          (MMS.zipWithMatched (\_ x y -> x <> y))
 
 -- data FoodTree a = NutrientNode (FoodTreeNode a) | GroupNode T.Text [FoodTree a]
 
