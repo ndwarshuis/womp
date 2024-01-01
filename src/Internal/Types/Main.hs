@@ -53,6 +53,7 @@ data ExportOptions = ExportOptions
 data SummarizeOptions = SummarizeOptions
   { soMealPath :: !FilePath
   , soDateInterval :: !DateIntervalOptions
+  , soForce :: !Bool
   , soDisplay :: !DisplayOptions
   }
 
@@ -78,7 +79,7 @@ instance FromJSON FoodItem where
     t <- v .: "dataType"
     go t
     where
-      go :: T.Text -> Parser FoodItem
+      go :: Text -> Parser FoodItem
       go t
         -- \| t == "Branded" = Branded <$> parseJSON o
         | t == "Branded" = mempty
@@ -91,18 +92,18 @@ instance FromJSON FoodItem where
 data BrandedFoodItem = BrandedFoodItem
   { bfiMeta :: FoodRequiredMeta
   , bfiCommon :: FoodCommon
-  , bfiBrandOwner :: T.Text
-  , bfiDataSource :: Maybe T.Text
-  , -- , bfiGtinUpc :: Maybe T.Text
-    -- , bfiHouseholdServingFullText :: Maybe T.Text
-    bfiIngredients :: Maybe T.Text
-  , -- , bfiModifiedDate :: Maybe T.Text
+  , bfiBrandOwner :: Text
+  , bfiDataSource :: Maybe Text
+  , -- , bfiGtinUpc :: Maybe Text
+    -- , bfiHouseholdServingFullText :: Maybe Text
+    bfiIngredients :: Maybe Text
+  , -- , bfiModifiedDate :: Maybe Text
     bfiServingSize :: Maybe Int
   , -- , bfiFormat :: Maybe Double
-    bfiServingSizeUnit :: Maybe T.Text
-    -- , bfiPreparationStateCode :: Maybe T.Text
-    -- , bfiBrandedFoodCategory :: Maybe T.Text
-    -- , bfiTradeChannel :: [T.Text]
+    bfiServingSizeUnit :: Maybe Text
+    -- , bfiPreparationStateCode :: Maybe Text
+    -- , bfiBrandedFoodCategory :: Maybe Text
+    -- , bfiTradeChannel :: [Text]
     -- , bfiGpcClassCode :: Maybe Int
     -- , bfiFoodUpdateLog :: Maybe [FoodUpdateLog]
     -- , bfiLabelNutrients :: Maybe [LabelNutrient]
@@ -136,7 +137,7 @@ parseFoodCommon v =
 data FoundationFoodItem = FoundationFoodItem
   { ffiMeta :: FoodRequiredMeta
   , ffiCommon :: FoundationLegacyCommon
-  , ffiFootNote :: Maybe T.Text
+  , ffiFootNote :: Maybe Text
   , ffiFoodComponents :: Maybe [FoodComponent]
   , ffiFoodAttributes :: Maybe [FoodAttribute]
   , ffiFoodPortions :: Maybe [FoodPortion]
@@ -169,13 +170,13 @@ instance FromJSON SRLegacyFoodItem where
 
 data FoodRequiredMeta = FoodRequiredMeta
   { frmId :: FID
-  , frmDescription :: T.Text
+  , frmDescription :: Text
   }
   deriving (Show)
 
 data FoodCommon = FoodCommon
-  { fcFoodClass :: Maybe T.Text
-  , fcPublicationDate :: Maybe T.Text
+  { fcFoodClass :: Maybe Text
+  , fcPublicationDate :: Maybe Text
   , fcFoodNutrients :: [FoodNutrient]
   }
   deriving (Show)
@@ -184,7 +185,7 @@ data FoundationLegacyCommon = FoundationLegacyCommon
   { flcCommon :: FoodCommon
   , flcIsHistoricalReference :: Maybe Bool
   , flcNdbNumber :: Maybe Int
-  , flcScientificName :: Maybe T.Text
+  , flcScientificName :: Maybe Text
   , flcFoodCategory :: Maybe FoodCategory
   , flcCalorieConversion :: CalorieConversion
   , flcProteinConversion :: ProteinConversion
@@ -268,8 +269,8 @@ instance FromJSON LabelNutrient where
 
 data FoodCategory = FoodCategory
   { fcId :: Maybe Int
-  , fcCode :: Maybe T.Text
-  , fcDescription :: Maybe T.Text
+  , fcCode :: Maybe Text
+  , fcDescription :: Maybe Text
   }
   deriving (Show, Generic)
 
@@ -285,9 +286,9 @@ data FoodPortion = FoodPortion
   , fpDataPoints :: Maybe Int
   , fpGramWeight :: Maybe Scientific
   , fpMinYearAcquired :: Maybe Int
-  , fpMinDateAcquired :: Maybe T.Text
-  , fpModifier :: Maybe T.Text
-  , fpPortionDescription :: Maybe T.Text
+  , fpMinDateAcquired :: Maybe Text
+  , fpModifier :: Maybe Text
+  , fpPortionDescription :: Maybe Text
   , fpSequenceNumber :: Maybe Int
   , fpMeasureUnit :: Maybe MeasureUnit
   }
@@ -298,8 +299,8 @@ instance FromJSON FoodPortion where
 
 data MeasureUnit = MeausureUnit
   { muId :: Maybe Int
-  , muAbbreviation :: Maybe T.Text
-  , muName :: Maybe T.Text
+  , muAbbreviation :: Maybe Text
+  , muName :: Maybe Text
   }
   deriving (Show, Generic)
 
@@ -308,7 +309,7 @@ instance FromJSON MeasureUnit where
 
 data InputFoodFoundation = InputFoodFoundation
   { iffId :: Maybe Int
-  , iffFoodDescription :: Maybe T.Text
+  , iffFoodDescription :: Maybe Text
   , iffInputFood :: Maybe SampleFoodItem
   }
   deriving (Show, Generic)
@@ -319,10 +320,10 @@ instance FromJSON InputFoodFoundation where
 -- TODO missing foodGroup, foodAttributeTypes, totalRefuse
 data SampleFoodItem = SampleFoodItem
   { sfiFdcId :: FID
-  , sfiDescription :: T.Text
-  , sfiFoodClass :: Maybe T.Text
-  , sfiPublicationDate :: Maybe T.Text
-  , sfiFoodAttributes :: Maybe [T.Text]
+  , sfiDescription :: Text
+  , sfiFoodClass :: Maybe Text
+  , sfiPublicationDate :: Maybe Text
+  , sfiFoodAttributes :: Maybe [Text]
   }
   deriving (Show, Generic)
 
@@ -330,7 +331,7 @@ instance FromJSON SampleFoodItem where
   parseJSON = recordParseJSON "sfi"
 
 data NutrientConversionFactor = NutrientConversionFactor
-  { ncfType :: Maybe T.Text
+  { ncfType :: Maybe Text
   , ncfValue :: Maybe Scientific
   }
   deriving (Show, Generic)
@@ -367,8 +368,8 @@ instance FromJSON FoodNutrient where
 
 data NutrientDerivation = NutrientDerivation
   { ndId :: Maybe Int
-  , ndCode :: Maybe T.Text
-  , ndDescription :: Maybe T.Text
+  , ndCode :: Maybe Text
+  , ndDescription :: Maybe Text
   , ndFoodNutrientSource :: Maybe FoodNutrientSource
   }
   deriving (Show, Generic)
@@ -378,10 +379,10 @@ instance FromJSON NutrientDerivation where
 
 data Nutrient = Nutrient
   { nId :: Maybe NID
-  , nNumber :: Maybe T.Text
-  , nName :: Maybe T.Text
+  , nNumber :: Maybe Text
+  , nName :: Maybe Text
   , nRank :: Maybe Int
-  , nUnitName :: Maybe T.Text
+  , nUnitName :: Maybe Text
   }
   deriving (Show, Generic)
 
@@ -390,8 +391,8 @@ instance FromJSON Nutrient where
 
 data FoodNutrientDerivation = FoodNutrientDerivation
   { fndId :: Maybe Int
-  , fndCode :: Maybe T.Text
-  , fndDescription :: Maybe T.Text
+  , fndCode :: Maybe Text
+  , fndDescription :: Maybe Text
   , fndFoodNutientSource :: Maybe FoodNutrientSource
   }
   deriving (Show, Generic)
@@ -401,8 +402,8 @@ instance FromJSON FoodNutrientDerivation where
 
 data FoodNutrientSource = FoodNutrientSource
   { fnsId :: Maybe Int
-  , fnsCode :: Maybe T.Text
-  , fnsDescription :: Maybe T.Text
+  , fnsCode :: Maybe Text
+  , fnsDescription :: Maybe Text
   }
   deriving (Show, Generic)
 
@@ -413,10 +414,10 @@ data NutrientAnalysisDetails = NutrientAnalysisDetails
   { nadSubSampleId :: Maybe Int
   , nadAmount :: Maybe Scientific
   , -- , nadNutrientId :: Maybe Int
-    nadLabMethodDescription :: Maybe T.Text
-  , nadLabMethodOriginalDescription :: Maybe T.Text
-  , -- , nadLabMethodLink :: Maybe T.Text
-    nadLabMethodTechnique :: Maybe T.Text
+    nadLabMethodDescription :: Maybe Text
+  , nadLabMethodOriginalDescription :: Maybe Text
+  , -- , nadLabMethodLink :: Maybe Text
+    nadLabMethodTechnique :: Maybe Text
     -- , nadNutrientAcquisitionDetails :: Maybe [NutrientAcquisitionDetails]
   }
   deriving (Show, Generic)
@@ -426,9 +427,9 @@ instance FromJSON NutrientAnalysisDetails where
 
 -- data NutrientAcquisitionDetails = NutrientAcquisitionDetails
 --   { ncdSampleUnitId :: Maybe Int
---   , ncdPurchaseDate :: Maybe T.Text
---   , ncdStoreCity :: Maybe T.Text
---   , ncdStoreState :: Maybe T.Text
+--   , ncdPurchaseDate :: Maybe Text
+--   , ncdStoreCity :: Maybe Text
+--   , ncdStoreState :: Maybe Text
 --   }
 --   deriving (Show, Generic)
 
@@ -437,20 +438,20 @@ instance FromJSON NutrientAnalysisDetails where
 
 data FoodUpdateLog = FoodUpdateLog
   { fulFdcId :: Maybe FID
-  , fulAvailableDate :: Maybe T.Text
-  , fulBrandOwner :: Maybe T.Text
-  , fulDataSource :: Maybe T.Text
-  , fulDescription :: Maybe T.Text
-  , fulFoodClass :: Maybe T.Text
-  , fulGtinUpc :: Maybe T.Text
-  , fulHouseholdServingFullText :: Maybe T.Text
-  , fulIngredients :: Maybe T.Text
-  , fulModifiedDate :: Maybe T.Text
-  , fulPublicationDate :: Maybe T.Text
+  , fulAvailableDate :: Maybe Text
+  , fulBrandOwner :: Maybe Text
+  , fulDataSource :: Maybe Text
+  , fulDescription :: Maybe Text
+  , fulFoodClass :: Maybe Text
+  , fulGtinUpc :: Maybe Text
+  , fulHouseholdServingFullText :: Maybe Text
+  , fulIngredients :: Maybe Text
+  , fulModifiedDate :: Maybe Text
+  , fulPublicationDate :: Maybe Text
   , fulServingSize :: Maybe Scientific
-  , fulServingSizeUnit :: Maybe T.Text
-  , fulBrandedFoodCategory :: Maybe T.Text
-  , fulChanges :: Maybe T.Text
+  , fulServingSizeUnit :: Maybe Text
+  , fulBrandedFoodCategory :: Maybe Text
+  , fulChanges :: Maybe Text
   , fulFoodAttributes :: [FoodAttribute]
   }
   deriving (Show, Generic)
@@ -461,7 +462,7 @@ instance FromJSON FoodUpdateLog where
 data FoodAttribute = FoodAttribute
   { faID :: Maybe Int
   , faSequenceNumber :: Maybe Int
-  , faValue :: Maybe T.Text
+  , faValue :: Maybe Text
   , faFoodAttributeType :: FoodAttributeType
   }
   deriving (Show, Generic)
@@ -471,8 +472,8 @@ instance FromJSON FoodAttribute where
 
 data FoodAttributeType = FoodAttributeType
   { fatID :: Maybe Int
-  , fatName :: Maybe T.Text
-  , fatDescription :: Maybe T.Text
+  , fatName :: Maybe Text
+  , fatDescription :: Maybe Text
   }
   deriving (Show, Generic)
 
@@ -570,29 +571,29 @@ data MeasuredNutrient
 
 data DirectNutrient = DirectNutrient
   { mnId :: NID
-  , mnName :: T.Text
+  , mnName :: Text
   , mnDisplayPrefix :: Prefix
   }
   deriving (Show, Eq, Ord)
 
 data AltNutrient = AltNutrient
-  { anName :: T.Text
+  { anName :: Text
   , anDisplayPrefix :: Prefix
   , anChoices :: NonEmpty (NID, Maybe Scientific)
   }
   deriving (Show, Eq, Ord)
 
 data SummedNutrient = SummedNutrient
-  { snName :: T.Text
+  { snName :: Text
   , snDisplayPrefix :: Prefix
   }
   deriving (Show, Eq, Ord)
 
-data DisplayNutrient = DisplayNutrient {dnName :: T.Text, dnPrefix :: Prefix}
+data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
   deriving (Show, Eq, Ord)
 
 data FoodMeta = FoodMeta
-  { fmDesc :: T.Text
+  { fmDesc :: Text
   , fmId :: FID
   }
   deriving (Show)
@@ -722,10 +723,12 @@ type AppExceptT = ExceptT AppException
 data AppError
   = DatePatternError !Natural !Natural !(Maybe Natural) !PatternSuberr
   | -- | UnitMatchError !Dimensional !Dimensional
-    UnitParseError !T.Text
+    UnitParseError !Text
   | DaySpanError !Int
-  | -- TODO store FDC id/name and nutrient name here too
-    NutrientError
+  | NutrientError
+  | JSONError !ByteString
+  | EmptyMeal !T.Text
+  | MissingAPIKey !FilePath
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)

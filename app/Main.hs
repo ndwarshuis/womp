@@ -13,8 +13,9 @@ import Internal.Utils
 import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
-import RIO
+import RIO hiding (force)
 import RIO.FilePath
+import qualified RIO.NonEmpty as N
 import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
@@ -80,7 +81,6 @@ subcommand =
           )
     )
 
--- TODO need to get this to an int somehow
 fetchDump :: Parser FetchDumpOptions
 fetchDump =
   FetchDumpOptions
@@ -91,7 +91,7 @@ fetchDump =
           <> metavar "FOODID"
           <> help "ID for the food to pull from the database"
       )
-    <*> switch (long "force" <> short 'f' <> help "force retrieve")
+    <*> force
 
 -- TODO not dry
 export :: Parser ExportOptions
@@ -116,7 +116,11 @@ summarize =
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
+    <*> force
     <*> displayOptions
+
+force :: Parser Bool
+force = switch (long "force" <> short 'f' <> help "force retrieve")
 
 dateInterval :: Parser DateIntervalOptions
 dateInterval =
@@ -196,40 +200,27 @@ readDay :: String -> Day
 readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
 
 runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
-runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
-  res <- getStoreAPIKey coKey
-  case res of
-    -- TODO throw a real error here
-    Nothing -> undefined
-    Just k -> void $ runFetch_ foForce foID k
+runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} =
+  void . runFetch_ foForce foID =<< getStoreAPIKey coKey
 
 runFetch_
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => Bool
   -> FID
   -> APIKey
-  -> m T.Text
+  -> m Text
 runFetch_ frc i k = do
   f <- cacheDir
   let p = f </> (show i ++ ".json")
   if frc
     then getFoodJSON k i
-    else do
-      j <- readAndCache p (Just <$> getFoodJSON k i)
-      case j of
-        Nothing -> undefined
-        Just j' -> return j'
+    else readAndCache p (getFoodJSON k i)
 
 runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
-  -- TODO not DRY
-  res <- getStoreAPIKey coKey
-  case res of
-    -- TODO throw a real error here
-    Nothing -> undefined
-    Just k -> do
-      j <- runFetch_ foForce foID k
-      liftIO $ TI.putStr j
+  k <- getStoreAPIKey coKey
+  j <- runFetch_ foForce foID k
+  liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
 runExport = undefined
@@ -268,6 +259,7 @@ readTrees co p ds = do
       return $ Just ts
     [] -> return Nothing
 
+-- TODO show debug info for start/end dates and such
 scheduleToTree
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
@@ -275,44 +267,29 @@ scheduleToTree
   -> Schedule
   -> m FinalFood
 scheduleToTree co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
-  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "Start day:" $ tshow $ fst ds
-  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "End day:" $ tshow $ snd ds
   days <- fromEither $ expandCronPat ds schWhen
-  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "N days:" $ tshow $ length days
-  rs <- catMaybes <$> mapM (ingredientToTable co mlName) mlIngs
+  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
+  (r :| rs) <- mapErrorsIO (ingredientToTable co mlName) is
   let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
-  -- logDebug $ displayBytesUtf8 $ encodeUtf8 $ T.append "Rest: " $ tshow rs
-
-  case rs of
-    [] -> error "TODO prevent this from happening"
-    (x : xs) -> return $ fmap (fmap (* scale)) <$> foldr (<>) x xs
+  return $ fmap (fmap (* scale)) <$> foldr (<>) r rs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 ingredientToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
-  -> T.Text
+  -> Text
   -> Ingredient
-  -> m (Maybe FinalFood)
+  -> m FinalFood
 ingredientToTable CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifications} = do
-  res <- getStoreAPIKey coKey
-  case res of
-    -- TODO throw a real error here
-    Nothing -> logError "well crap" >> return Nothing
-    Just k -> do
-      j <- runFetch_ False (FID $ fromIntegral ingFID) k
-      let p = A.eitherDecodeStrict $ encodeUtf8 j
-      case p of
-        Right r -> do
-          -- TODO throw warnings at user
-          let (t, _) = runState (ingredientToTree ingModifications ingMass r) []
-          return $ Just t
-        Left e -> do
-          logError $ displayBytesUtf8 $ BC.pack e
-          return Nothing
-
--- applyScale = scaleRowNutrient scale
--- applyMods ms rs = fmap (\r -> foldr modifyItem r ms) rs
+  k <- getStoreAPIKey coKey
+  j <- runFetch_ False (FID $ fromIntegral ingFID) k
+  let p = A.eitherDecodeStrict $ encodeUtf8 j
+  case p of
+    Right r -> do
+      -- TODO throw warnings at user
+      let (t, _) = runState (ingredientToTree ingModifications ingMass r) []
+      return t
+    Left e -> throwAppErrorIO $ JSONError $ BC.pack e
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m DaySpan
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays} = do
@@ -333,11 +310,12 @@ configDir = getXdgDirectory XdgConfig "carbon"
 cacheDir :: MonadUnliftIO m => m FilePath
 cacheDir = getXdgDirectory XdgCache "carb0n"
 
+-- TDOO catch errors here
 getFoodJSON
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => APIKey
   -> FID
-  -> m T.Text
+  -> m Text
 getFoodJSON k i = do
   logInfo $ displayBytesUtf8 $ encodeUtf8 $ T.append "downloading " (tshow i)
   res <-
@@ -353,28 +331,30 @@ apiFoodURL :: R.Url 'R.Https
 apiFoodURL =
   R.https "api.nal.usda.gov"
     /: "fdc"
-    /~ ("v1" :: T.Text)
-    /~ ("food" :: T.Text)
+    /~ ("v1" :: Text)
+    /~ ("food" :: Text)
 
-getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m (Maybe APIKey)
+getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m APIKey
 getStoreAPIKey k = do
   f <- (</> apiKeyFile) <$> configDir
-  res <- readAndCache f (return $ unAPIKey <$> k)
-  return $ APIKey <$> res
+  APIKey <$> case k of
+    Just k' -> readAndCache f (return $ unAPIKey k')
+    Nothing -> do
+      e <- doesFileExist f
+      if e then readFileUtf8 f else throwAppErrorIO $ MissingAPIKey f
 
 apiKeyFile :: FilePath
 apiKeyFile = "apikey"
 
-readAndCache :: MonadUnliftIO m => FilePath -> m (Maybe T.Text) -> m (Maybe T.Text)
+readAndCache :: MonadUnliftIO m => FilePath -> m Text -> m Text
 readAndCache p x = do
   e <- doesFileExist p
-  if e then Just <$> readFileUtf8 p else go =<< x
+  if e then readFileUtf8 p else go =<< x
   where
-    go Nothing = return Nothing
-    go (Just t) = do
+    go t = do
       createDirectoryIfMissing True $ takeDirectory p
       writeFileUtf8 p t
-      return $ Just t
+      return t
 
 readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)

@@ -75,6 +75,9 @@ mapErrorsIO f xs = mapM go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
+  (JSONError _) -> undefined
+  (EmptyMeal _) -> undefined
+  (MissingAPIKey _) -> undefined
   (NutrientError) -> undefined -- [T.unwords ["could not parse valud for nutrient id:", tshow i]]
   (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
   (UnitParseError u) -> [T.append "could not parse unit: " u]
