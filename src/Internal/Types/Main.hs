@@ -45,10 +45,9 @@ data SubCommand
 data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
 
 data ExportOptions = ExportOptions
-
--- { eoConfig :: !FilePath
--- , eoDateInterval :: !DateIntervalOptions
--- }
+  { eoMealPath :: !FilePath
+  , eoDateInterval :: !DateIntervalOptions
+  }
 
 data SummarizeOptions = SummarizeOptions
   { soMealPath :: !FilePath
@@ -661,6 +660,14 @@ instance Semigroup a => Semigroup (DisplayNode a) where
           MMS.preserveMissing
           MMS.preserveMissing
           (MMS.zipWithMatched (\_ x y -> x <> y))
+
+data DisplayRow = DisplayRow
+  { drNutrient :: Text
+  , drParentNutrient :: Maybe Text
+  , drValue :: Scientific
+  , drUnit :: Unit
+  }
+  deriving (Show, Generic, C.ToRecord)
 
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 

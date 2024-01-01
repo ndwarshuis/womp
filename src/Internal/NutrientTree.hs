@@ -5,6 +5,7 @@ module Internal.NutrientTree
   , summedToDisplay
   , measToDisplay
   , fmtFullTree
+  , nodesToRows
   )
 where
 
@@ -583,3 +584,32 @@ fmtDisplayNutrient (DisplayNutrient n p) (NutrientValue (Sum v) _) =
     , " "
     , tunit (Unit p Gram)
     ]
+
+nodesToRows :: FinalFood -> [DisplayRow]
+nodesToRows (FinalFood_ (DisplayNode v ks us) e) =
+  [energy, totalMass] ++ goK massName ks ++ [goU massName us]
+  where
+    dpyRow n pnt v' u =
+      DisplayRow n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
+
+    energy = dpyRow "Energy" Nothing (val e) (Unit Kilo Calorie)
+
+    totalMass = dpyRow "Total Mass" Nothing (val v) (Unit Unity Gram)
+
+    massRow n pnt v' p = dpyRow n (Just pnt) v' (Unit p Gram)
+
+    massName = "Total Mass"
+
+    unknownName = "Unknown"
+
+    val = getSum . nvValue
+
+    goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
+
+    goK_ pnt (DisplayNutrient n p) (DisplayNode v' ks' us') =
+      massRow n pnt (val v') p : (goK n ks' ++ [goU n us'])
+
+    goU pnt us' =
+      let s = sum $ val <$> M.elems us'
+          p = autoPrefix s
+       in massRow unknownName pnt s p

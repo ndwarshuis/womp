@@ -2,6 +2,8 @@ module Main (main) where
 
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
+import Data.Char (ord)
+import qualified Data.Csv as C
 import Data.Scientific
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
@@ -14,6 +16,7 @@ import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
 import RIO hiding (force)
+import qualified RIO.ByteString.Lazy as BL
 import RIO.FilePath
 import qualified RIO.NonEmpty as N
 import RIO.State
@@ -96,15 +99,14 @@ fetchDump =
 -- TODO not dry
 export :: Parser ExportOptions
 export =
-  pure ExportOptions
-
--- <$> strOption
---   ( long "config"
---       <> short 'c'
---       <> metavar "CONFIG"
---       <> help "path to config with schedules and meals"
---   )
--- <*> dateInterval
+  ExportOptions
+    <$> strOption
+      ( long "config"
+          <> short 'c'
+          <> metavar "CONFIG"
+          <> help "path to config with schedules and meals"
+      )
+    <*> dateInterval
 
 summarize :: Parser SummarizeOptions
 summarize =
@@ -223,20 +225,13 @@ runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
-runExport = undefined
-
--- runExport co ExportOptions {eoConfig, eoDateInterval} = do
---   dayspan <- dateIntervalToDaySpan eoDateInterval
---   t <- readTree co eoConfig dayspan
---   TI.putStr t
-
--- readTree
---   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
---   => CommonOptions
---   -> FilePath
---   -> DaySpan
---   -> m FinalFood
--- readTree = undefined
+runExport co ExportOptions {eoMealPath, eoDateInterval} = do
+  dayspan <- dateIntervalToDaySpan eoDateInterval
+  ts <- readTrees co eoMealPath dayspan
+  case ts of
+    Nothing -> return ()
+    Just t -> do
+      liftIO $ BL.putStr $ C.encodeWith tsvOptions $ nodesToRows t
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
 runSummarize co SummarizeOptions {soMealPath, soDateInterval, soDisplay} = do
@@ -387,12 +382,12 @@ readMealPlan f = do
           T.pack f
   liftIO $ D.inputFile D.auto f
 
--- tsvOptions :: C.EncodeOptions
--- tsvOptions =
---   C.defaultEncodeOptions
---     { C.encDelimiter = fromIntegral (ord '\t')
---     , C.encIncludeHeader = True
---     }
+tsvOptions :: C.EncodeOptions
+tsvOptions =
+  C.defaultEncodeOptions
+    { C.encDelimiter = fromIntegral (ord '\t')
+    , C.encIncludeHeader = True
+    }
 
 type DaySpan = (Day, Int)
 
