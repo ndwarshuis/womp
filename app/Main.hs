@@ -120,6 +120,11 @@ summarize =
     <*> dateInterval
     <*> force
     <*> displayOptions
+    <*> switch
+      ( long "json"
+          <> short 'j'
+          <> help "summarize output in JSON (display options are ignored)"
+      )
 
 force :: Parser Bool
 force = switch (long "force" <> short 'f' <> help "force retrieve")
@@ -234,10 +239,14 @@ runExport co ExportOptions {eoMealPath, eoDateInterval} = do
       liftIO $ BL.putStr $ C.encodeWith tsvOptions $ nodesToRows t
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soMealPath, soDateInterval, soDisplay} = do
+runSummarize co SummarizeOptions {soMealPath, soDateInterval, soDisplay, soJSON} = do
   dayspan <- dateIntervalToDaySpan soDateInterval
   ts <- readTrees co soMealPath dayspan
-  maybe (return ()) (liftIO . TI.putStr . fmtFullTree soDisplay) ts
+  let out =
+        if soJSON
+          then BL.putStr . A.encode . finalToJSON
+          else TI.putStr . fmtFullTree soDisplay
+  maybe (return ()) (liftIO . out) ts
 
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)

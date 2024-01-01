@@ -6,9 +6,11 @@ module Internal.NutrientTree
   , measToDisplay
   , fmtFullTree
   , nodesToRows
+  , finalToJSON
   )
 where
 
+import Data.Aeson
 import Data.Monoid
 import Data.Scientific
 import Data.Semigroup
@@ -575,6 +577,26 @@ fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
       fmtHeader n $ concatMap fmtUnknownTree ts
 
     fmtHeader h = (h :) . fmap (addIndent 1)
+
+finalToJSON :: FinalFood -> Value
+finalToJSON (FinalFood_ ms c) =
+  object
+    [ "energy" .= object ["value" .= c, "unit" .= Unit Kilo Calorie]
+    , "mass" .= treeToJSON "Total" Unity ms
+    ]
+
+treeToJSON :: Text -> Prefix -> DisplayNode NutrientValue -> Value
+treeToJSON n p (DisplayNode v ks us) =
+  object
+    [ "value" .= v
+    , "name" .= n
+    , "unit" .= Unit p Gram
+    , "known" .= mapK ks
+    , "unknown" .= mapU us
+    ]
+  where
+    mapK = fmap (\(DisplayNutrient n' p', v') -> treeToJSON n' p' v') . M.toList
+    mapU = fmap (\(uts, v') -> object ["value" .= v', "trees" .= uts]) . M.toList
 
 -- TODO add nutrient value stuff later
 fmtDisplayNutrient :: DisplayNutrient -> NutrientValue -> T.Text

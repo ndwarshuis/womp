@@ -29,10 +29,10 @@ data CommonOptions = CommonOptions
   }
 
 newtype FID = FID {unFID :: Int}
-  deriving (Read, Show, FromJSON) via Int
+  deriving (Read, Show, FromJSON, ToJSON) via Int
 
 newtype NID = NID {unNID :: Int}
-  deriving (Read, Show, FromJSON, Eq, Ord, Num) via Int
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Int
 
 newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
 
@@ -54,6 +54,7 @@ data SummarizeOptions = SummarizeOptions
   , soDateInterval :: !DateIntervalOptions
   , soForce :: !Bool
   , soDisplay :: !DisplayOptions
+  , soJSON :: !Bool
   }
 
 data DateIntervalOptions = DateIntervalOptions
@@ -500,13 +501,13 @@ data UnitName
   | Calorie
   | Joule
   | IU
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, ToJSON)
 
 data Unit = Unit
   { unitBase :: Prefix
   , unitName :: UnitName
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, ToJSON)
 
 prefixValue :: Prefix -> Int
 prefixValue Nano = -9
@@ -600,7 +601,7 @@ data FoodMeta = FoodMeta
   { fmDesc :: Text
   , fmId :: FID
   }
-  deriving (Show)
+  deriving (Show, Generic, ToJSON)
 
 data FoodTreeNode a = FullNode (FullNode_ a) | PartialNode (PartialNode_ a)
   deriving (Functor)
@@ -628,7 +629,10 @@ data PartialNode_ a = PartialNode_
   deriving (Functor)
 
 data UnknownTree = UnknownTree Text [UnknownTree]
-  deriving (Eq, Ord, Show, Generic, ToJSON)
+  deriving (Eq, Ord, Show)
+
+instance ToJSON UnknownTree where
+  toJSON (UnknownTree n ts) = object ["name" .= n, "children" .= ts]
 
 data FinalFood_ a = FinalFood_
   { ffMap :: DisplayNode a
@@ -681,6 +685,13 @@ data NutrientValue_ a = NutrientValue
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
 
+instance ToJSON NutrientValue where
+  toJSON (NutrientValue (Sum v) ms) =
+    object ["value" .= v, "members" .= ms]
+
+  toEncoding (NutrientValue (Sum v) ms) =
+    pairs ("value" .= v <> "members" .= ms)
+
 -- | A group of nutrient categories that represent an aggregate mass
 data NutTree = NutTree
   { ntFractions :: Branches
@@ -719,7 +730,7 @@ data Prefix
   | Kilo
   | Mega
   | Giga
-  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON)
 
 instance Exception AppException
 
