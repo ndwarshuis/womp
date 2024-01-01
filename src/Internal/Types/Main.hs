@@ -554,7 +554,12 @@ data FoodState = FoodState
   , fsWarnings :: [AppWarning]
   }
 
-data AppWarning
+data AppWarning = AppWarning
+  { awType :: !AppWarningType
+  , awId :: !NID
+  }
+
+data AppWarningType
   = NotGram
   | NoUnit
   | NoAmount
@@ -722,10 +727,7 @@ type AppExceptT = ExceptT AppException
 
 data AppError
   = DatePatternError !Natural !Natural !(Maybe Natural) !PatternSuberr
-  | -- | UnitMatchError !Dimensional !Dimensional
-    UnitParseError !Text
   | DaySpanError !Int
-  | NutrientError
   | JSONError !ByteString
   | EmptyMeal !T.Text
   | MissingAPIKey !FilePath

@@ -58,7 +58,7 @@ legFoundToTree
   -> FoundationLegacyCommon
   -> m FinalFood
 legFoundToTree fm flc = do
-  ((_, t), stFin) <- runStateT (displayTree $ pcFactor pConv) st
+  (t, stFin) <- runStateT (displayTree $ pcFactor pConv) st
   modify (fsWarnings stFin ++)
   let f = FinalFood_ t $ computeCalories cConv t
   return $ fmap (\v -> NutrientValue (Sum v) $ pure rd) f

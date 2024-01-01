@@ -282,14 +282,33 @@ ingredientToTable
   -> m FinalFood
 ingredientToTable CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifications} = do
   k <- getStoreAPIKey coKey
-  j <- runFetch_ False (FID $ fromIntegral ingFID) k
-  let p = A.eitherDecodeStrict $ encodeUtf8 j
-  case p of
-    Right r -> do
-      -- TODO throw warnings at user
-      let (t, _) = runState (ingredientToTree ingModifications ingMass r) []
-      return t
+  let fid = FID $ fromIntegral ingFID
+  -- TODO don't hardcode force here
+  j <- runFetch_ False fid k
+  case A.eitherDecodeStrict $ encodeUtf8 j of
+    Right r -> runMealState fid ingModifications ingMass r
     Left e -> throwAppErrorIO $ JSONError $ BC.pack e
+
+runMealState
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => FID
+  -> [Modification]
+  -> Double
+  -> FoodItem
+  -> m FinalFood
+runMealState i ms mass item = do
+  let (t, ws) = runState (ingredientToTree ms mass item) []
+  mapM_ (logWarn . displayBytesUtf8 . encodeUtf8 . fmtWarning i) ws
+  return t
+
+fmtWarning :: FID -> AppWarning -> T.Text
+fmtWarning i (AppWarning t n) =
+  T.unwords [msg, "in nutrient with id", tshow n, "in food with id", tshow i]
+  where
+    msg = case t of
+      NotGram -> "Unit is not for mass"
+      NoUnit -> "No unit provided"
+      NoAmount -> "No amount provided"
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m DaySpan
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays} = do
@@ -310,7 +329,7 @@ configDir = getXdgDirectory XdgConfig "carbon"
 cacheDir :: MonadUnliftIO m => m FilePath
 cacheDir = getXdgDirectory XdgCache "carb0n"
 
--- TDOO catch errors here
+-- TODO catch errors here
 getFoodJSON
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => APIKey

@@ -34,7 +34,6 @@ findRemove f = go []
 
 type Grams = Scientific
 
--- TODO make these warnings actually say something
 findMass :: NutrientState m => NID -> m (Maybe Grams)
 findMass i = do
   f <- state getFoodNutrient
@@ -51,9 +50,10 @@ findMass i = do
       let u = parseUnit =<< nUnitName =<< fnNutrient f
       case (a, u) of
         (Just m, Just (Unit p Gram)) -> pure $ Just $ raisePower (prefixValue p) m
-        (Just _, Just _) -> throwAppWarning NotGram >> return Nothing
-        (Just _, Nothing) -> throwAppWarning NoUnit >> return Nothing
-        (Nothing, _) -> throwAppWarning NoAmount >> return Nothing
+        (Just _, Just _) -> warn NotGram
+        (Just _, Nothing) -> warn NoUnit
+        (Nothing, _) -> warn NoAmount
+    warn t = throwAppWarning i t >> return Nothing
 
 findMeasured :: NutrientState m => MeasuredNutrient -> m (Maybe Grams)
 findMeasured n = case n of
@@ -353,18 +353,15 @@ nutHierarchy n2Factor =
              , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
              ]
 
-fromNutTreeWithMass
-  :: NutrientState m
-  => Scientific
-  -> DisplayNutrient
-  -> NutTree
-  -> m (FullNode_ Scientific)
-fromNutTreeWithMass mass dn NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
+type FullNodeData =
+  ([FoodTreeNode Scientific], Either [UnknownTree] (FullNode_ Scientific))
+
+fromNutTreeWithMass_ :: NutrientState m => Scientific -> NutTree -> m FullNodeData
+fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
   -- possible results from this operation:
   -- 1) all known -> we know the mass of the unmeasured tree
   -- 2) at least one unknown -> we don't know the mass of the unknown tree
   res <- readBranches ntFractions
-  let toNode k u = FullNode_ mass dn k u
   case res of
     -- at least one unknown
     Left (ks, ms) -> do
@@ -387,7 +384,7 @@ fromNutTreeWithMass mass dn NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasur
             (fmap (PartialNode . PartialNode_ umh) . N.nonEmpty)
             toList
             <$> fromNutTreeWithoutMass ut
-      return $ toNode (maybe ks (: ks) umk) (Left $ UnknownTree umh umus : toList ms)
+      return (maybe ks (: ks) umk, Left $ UnknownTree umh umus : toList ms)
     -- all known
     Right ks -> do
       let diffMass = mass - sumTrees ks
@@ -398,9 +395,19 @@ fromNutTreeWithMass mass dn NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasur
           (return $ FullNode_ diffMass umh [] (Left []))
           (fromNutTreeWithMass diffMass umh)
           ntUnmeasuredTree
-      return $ toNode (toList ks) $ Right um
+      return (toList ks, Right um)
   where
     umh = summedToDisplay ntUnmeasuredHeader
+
+fromNutTreeWithMass
+  :: NutrientState m
+  => Scientific
+  -> DisplayNutrient
+  -> NutTree
+  -> m (FullNode_ Scientific)
+fromNutTreeWithMass mass dn nt = do
+  (ks, us) <- fromNutTreeWithMass_ mass nt
+  return $ FullNode_ mass dn ks us
 
 fromNutTreeWithoutMass
   :: NutrientState m
@@ -485,31 +492,38 @@ measToDisplay :: MeasuredNutrient -> DisplayNutrient
 measToDisplay (Direct (DirectNutrient _ n p)) = DisplayNutrient n p
 measToDisplay (Alternate (AltNutrient n p _)) = DisplayNutrient n p
 
-entireTree :: NutrientState m => Scientific -> m (FullNode_ Scientific)
-entireTree = fromNutTreeWithMass 100 (DisplayNutrient "All" Unity) . nutHierarchy
+entireTree
+  :: NutrientState m
+  => Scientific
+  -> m ([FoodTreeNode Scientific], Either [UnknownTree] (FullNode_ Scientific))
+entireTree = fromNutTreeWithMass_ standardMass . nutHierarchy
 
-fullToDisplayTree :: FullNode_ Scientific -> (DisplayNutrient, DisplayNode Scientific)
-fullToDisplayTree FullNode_ {fnValue, fnNut, fnKnown, fnUnknown} =
-  (fnNut, uncurry (DisplayNode fnValue) $ unpackNodes fnValue fnKnown fnUnknown)
+fullToDisplayTree :: FullNodeData -> DisplayNode Scientific
+fullToDisplayTree = uncurry (toNode standardMass)
   where
+    toNode v ks = uncurry (DisplayNode v) . unpackNodes v ks
+
     unpackNodes mass ks u = case u of
+      Right fn -> (toMap (FullNode fn : ks), mempty)
       Left uts -> case N.nonEmpty ks of
         Nothing -> (mempty, withNonEmpty (`M.singleton` mass) mempty uts)
         Just ks' ->
           (toMap $ toList ks', M.singleton uts (mass - sumTrees ks'))
-      Right fn -> (toMap (FullNode fn : ks), mempty)
 
     partialToDisplayTree PartialNode_ {pnNut, pnKnown} =
       ( pnNut
       , DisplayNode (sumTrees pnKnown) (toMap $ toList pnKnown) mempty
       )
 
+    fullToDisplayTree_ FullNode_ {fnNut, fnValue, fnKnown, fnUnknown} =
+      (fnNut, toNode fnValue fnKnown fnUnknown)
+
     toMap = M.fromList . fmap go
 
-    go (FullNode n) = fullToDisplayTree n
+    go (FullNode n) = fullToDisplayTree_ n
     go (PartialNode n) = partialToDisplayTree n
 
-displayTree :: NutrientState m => Scientific -> m (DisplayNutrient, DisplayNode Scientific)
+displayTree :: NutrientState m => Scientific -> m (DisplayNode Scientific)
 displayTree = fmap fullToDisplayTree . entireTree
 
 -- TODO not sure how efficient this is; probably doesn't matter than much ;)

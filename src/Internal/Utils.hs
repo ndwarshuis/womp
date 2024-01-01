@@ -14,8 +14,9 @@ throwAppError e = throwError $ AppException [e]
 throwAppErrorIO :: MonadUnliftIO m => AppError -> m a
 throwAppErrorIO = fromEither . throwAppError
 
-throwAppWarning :: NutrientState m => AppWarning -> m ()
-throwAppWarning w = modify $ \s -> s {fsWarnings = w : fsWarnings s}
+throwAppWarning :: NutrientState m => NID -> AppWarningType -> m ()
+throwAppWarning i t =
+  modify $ \s -> s {fsWarnings = AppWarning t i : fsWarnings s}
 
 combineError3
   :: (Semigroup e, MonadError e m)
@@ -75,17 +76,10 @@ mapErrorsIO f xs = mapM go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
-  (JSONError _) -> undefined
-  (EmptyMeal _) -> undefined
-  (MissingAPIKey _) -> undefined
-  (NutrientError) -> undefined -- [T.unwords ["could not parse valud for nutrient id:", tshow i]]
+  (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
+  (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
+  (MissingAPIKey p) -> [T.append "Could not read API key from path: " $ T.pack p]
   (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
-  (UnitParseError u) -> [T.append "could not parse unit: " u]
-  -- (UnitMatchError x y) ->
-  --   [ T.append
-  --       (T.unwords ["could not add", tshow x, "and", tshow y])
-  --       ": units don't match"
-  --   ]
   (DatePatternError s b r p) -> [T.unwords [msg, "in pattern: ", pat]]
     where
       pat =
