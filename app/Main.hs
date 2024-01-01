@@ -5,6 +5,7 @@ import qualified Data.ByteString.Char8 as BC
 import Data.Char (ord)
 import qualified Data.Csv as C
 import Data.Scientific
+import Data.Semigroup (sconcat)
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Nutrient
@@ -142,6 +143,15 @@ dateInterval =
           <> help "length of interval in days within which summary will be calculated (ignored if END is present)"
           <> value 7
       )
+    <*> optional
+      ( option
+          auto
+          ( long "interval"
+              <> short 'I'
+              <> metavar "INTERVAL"
+              <> help "length of time (in days) to aggregate summary"
+          )
+      )
 
 displayOptions :: Parser DisplayOptions
 displayOptions =
@@ -232,35 +242,39 @@ runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
 runExport co ExportOptions {eoMealPath, eoDateInterval} = do
   dayspan <- dateIntervalToDaySpan eoDateInterval
-  ts <- readTrees co eoMealPath dayspan
-  case ts of
-    Nothing -> return ()
-    Just t -> do
-      liftIO $ BL.putStr $ C.encodeWith tsvOptions $ nodesToRows t
+  ts <- mapM (readTrees co eoMealPath) dayspan
+  maybe (return ()) go $ N.nonEmpty $ catMaybes $ toList ts
+  where
+    go =
+      liftIO
+        . BL.putStr
+        . C.encodeDefaultOrderedByNameWith tsvOptions
+        . sconcat
+        . fmap (uncurry nodesToRows)
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
 runSummarize co SummarizeOptions {soMealPath, soDateInterval, soDisplay, soJSON} = do
   dayspan <- dateIntervalToDaySpan soDateInterval
-  ts <- readTrees co soMealPath dayspan
+  ts <- mapM (readTrees co soMealPath) $ toList dayspan
   let out =
         if soJSON
-          then BL.putStr . A.encode . finalToJSON
-          else TI.putStr . fmtFullTree soDisplay
-  maybe (return ()) (liftIO . out) ts
+          then BL.putStr . A.encode . fmap (uncurry finalToJSON)
+          else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
+  maybe (return ()) (liftIO . out) $ N.nonEmpty $ catMaybes ts
 
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
   -> FilePath
   -> DaySpan
-  -> m (Maybe FinalFood)
+  -> m (Maybe (DaySpan, FinalFood))
 readTrees co p ds = do
   ss <- readMealPlan p
   case ss of
     (x : xs) -> do
       init <- scheduleToTree co ds x
       ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree co ds) init xs
-      return $ Just ts
+      return $ Just (ds, ts)
     [] -> return Nothing
 
 -- TODO show debug info for start/end dates and such
@@ -314,12 +328,29 @@ fmtWarning i (AppWarning t n) =
       NoUnit -> "No unit provided"
       NoAmount -> "No amount provided"
 
-dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m DaySpan
-dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays} = do
+dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
+dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
   start <- maybe currentDay return dioStart
-  let dayLen = maybe dioDays (\e -> fromIntegral $ diffDays e start) dioEnd
-  when (dayLen < 1) $ throwAppErrorIO $ DaySpanError dayLen
-  return (start, dayLen - 1)
+  let totalLen = maybe dioDays (\e -> fromIntegral $ diffDays e start) dioEnd
+  let span1 = genSpans 1 totalLen start
+  when (totalLen < 1) $ throwAppErrorIO $ DaySpanError totalLen
+  case dioInterval of
+    Just i
+      | i >= totalLen -> return span1
+      | otherwise -> do
+          when (i < 1) $ throwAppErrorIO $ IntervalError i
+          let (n, r) = divMod totalLen i
+          let spanN = genSpans n i start
+          return $
+            if r == 0
+              then spanN
+              else spanN <> genSpans 1 r (addDays (fromIntegral $ n * i) start)
+    Nothing -> return span1
+  where
+    genSpans n s = take1 n . fmap (,s - 1) . N.iterate (addDays $ fromIntegral s)
+
+take1 :: Int -> NonEmpty a -> NonEmpty a
+take1 n (x :| xs) = x :| take (n - 1) xs
 
 currentDay :: MonadUnliftIO m => m Day
 currentDay = do
@@ -397,8 +428,6 @@ tsvOptions =
     { C.encDelimiter = fromIntegral (ord '\t')
     , C.encIncludeHeader = True
     }
-
-type DaySpan = (Day, Int)
 
 expandCronPat :: MonadAppError m => DaySpan -> Cron -> m [Day]
 expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =

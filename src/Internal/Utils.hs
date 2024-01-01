@@ -79,7 +79,8 @@ showError other = case other of
   (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
   (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
   (MissingAPIKey p) -> [T.append "Could not read API key from path: " $ T.pack p]
-  (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
+  (DaySpanError d) -> [T.unwords ["day interval must be positive, got", tshow d, "days"]]
+  (IntervalError d) -> [T.unwords ["aggregation interval must be positive, got", tshow d, "days"]]
   (DatePatternError s b r p) -> [T.unwords [msg, "in pattern: ", pat]]
     where
       pat =

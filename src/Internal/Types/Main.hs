@@ -61,12 +61,15 @@ data DateIntervalOptions = DateIntervalOptions
   { dioStart :: Maybe Day
   , dioEnd :: Maybe Day
   , dioDays :: Int
+  , dioInterval :: Maybe Int
   }
 
 data DisplayOptions = DisplayOptions
   { doUnknowns :: !Bool
   , doIndent :: !Int
   }
+
+type DaySpan = (Day, Int)
 
 data FoodItem
   = -- = Branded BrandedFoodItem
@@ -666,12 +669,37 @@ instance Semigroup a => Semigroup (DisplayNode a) where
           (MMS.zipWithMatched (\_ x y -> x <> y))
 
 data DisplayRow = DisplayRow
-  { drNutrient :: Text
+  { drStart :: Day
+  , drEnd :: Day
+  , drNutrient :: Text
   , drParentNutrient :: Maybe Text
   , drValue :: Scientific
   , drUnit :: Unit
   }
-  deriving (Show, Generic, C.ToRecord)
+  deriving (Show, Generic)
+
+drHeader :: [ByteString]
+drHeader =
+  [ "start"
+  , "end"
+  , "nutrient"
+  , "parent"
+  , "value"
+  , "unit"
+  ]
+
+instance C.DefaultOrdered DisplayRow where
+  headerOrder _ = C.header drHeader
+
+instance C.ToNamedRecord DisplayRow where
+  toNamedRecord (DisplayRow s e n p v u) =
+    C.namedRecord $
+      zipWith
+        (\h f -> f h)
+        drHeader
+        [(C..= fmt s), (C..= fmt e), (C..= n), (C..= p), (C..= v), (C..= u)]
+    where
+      fmt = formatTime defaultTimeLocale "%Y-%m-%d"
 
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
@@ -746,6 +774,7 @@ type AppExceptT = ExceptT AppException
 data AppError
   = DatePatternError !Natural !Natural !(Maybe Natural) !PatternSuberr
   | DaySpanError !Int
+  | IntervalError !Int
   | JSONError !ByteString
   | EmptyMeal !T.Text
   | MissingAPIKey !FilePath

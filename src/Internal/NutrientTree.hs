@@ -22,6 +22,7 @@ import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 import RIO.State
 import qualified RIO.Text as T
+import RIO.Time
 
 findRemove :: (a -> Bool) -> [a] -> (Maybe a, [a])
 findRemove f = go []
@@ -536,9 +537,14 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
-fmtFullTree :: DisplayOptions -> FinalFood -> T.Text
-fmtFullTree o (FinalFood_ m (NutrientValue (Sum v) _)) =
-  T.unlines [T.unwords ["Energy:", tshow v, "kcal"], fmtTree o m]
+fmtFullTree :: DisplayOptions -> DaySpan -> FinalFood -> T.Text
+fmtFullTree o (start, end) (FinalFood_ m (NutrientValue (Sum v) _)) =
+  T.unlines
+    [ T.unwords ["Start:", tshow start]
+    , T.unwords ["End:", tshow $ addDays (fromIntegral end) start]
+    , T.unwords ["Energy:", tshow v, "kcal"]
+    , fmtTree o m
+    ]
 
 -- TODO add some options to control how this works
 fmtTree :: DisplayOptions -> DisplayNode NutrientValue -> T.Text
@@ -578,10 +584,12 @@ fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
 
     fmtHeader h = (h :) . fmap (addIndent 1)
 
-finalToJSON :: FinalFood -> Value
-finalToJSON (FinalFood_ ms c) =
+finalToJSON :: DaySpan -> FinalFood -> Value
+finalToJSON (start, end) (FinalFood_ ms c) =
   object
-    [ "energy" .= object ["value" .= c, "unit" .= Unit Kilo Calorie]
+    [ "start" .= start
+    , "end" .= addDays (fromIntegral end) start
+    , "energy" .= object ["value" .= c, "unit" .= Unit Kilo Calorie]
     , "mass" .= treeToJSON "Total" Unity ms
     ]
 
@@ -609,12 +617,14 @@ fmtDisplayNutrient (DisplayNutrient n p) (NutrientValue (Sum v) _) =
     , tunit (Unit p Gram)
     ]
 
-nodesToRows :: FinalFood -> [DisplayRow]
-nodesToRows (FinalFood_ (DisplayNode v ks us) e) =
+nodesToRows :: DaySpan -> FinalFood -> [DisplayRow]
+nodesToRows (start, end) (FinalFood_ (DisplayNode v ks us) e) =
   [energy, totalMass] ++ goK massName ks ++ [goU massName us]
   where
+    end' = addDays (fromIntegral end) start
+
     dpyRow n pnt v' u =
-      DisplayRow n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
+      DisplayRow start end' n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
 
     energy = dpyRow "Energy" Nothing (val e) (Unit Kilo Calorie)
 
