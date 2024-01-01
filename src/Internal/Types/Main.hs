@@ -627,8 +627,8 @@ data PartialNode_ a = PartialNode_
   }
   deriving (Functor)
 
-data UnknownTree = UnknownTree DisplayNutrient [UnknownTree]
-  deriving (Eq, Ord, Show)
+data UnknownTree = UnknownTree Text [UnknownTree]
+  deriving (Eq, Ord, Show, Generic, ToJSON)
 
 data FinalFood_ a = FinalFood_
   { ffMap :: DisplayNode a

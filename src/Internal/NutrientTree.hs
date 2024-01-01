@@ -385,7 +385,7 @@ fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasured
             (fmap (PartialNode . PartialNode_ umh) . N.nonEmpty)
             toList
             <$> fromNutTreeWithoutMass ut
-      return (maybe ks (: ks) umk, Left $ UnknownTree umh umus : toList ms)
+      return (maybe ks (: ks) umk, Left $ UnknownTree umn umus : toList ms)
     -- all known
     Right ks -> do
       let diffMass = mass - sumTrees ks
@@ -399,6 +399,7 @@ fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasured
       return (toList ks, Right um)
   where
     umh = summedToDisplay ntUnmeasuredHeader
+    umn = snName ntUnmeasuredHeader
 
 fromNutTreeWithMass
   :: NutrientState m
@@ -421,9 +422,10 @@ fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTre
 
   (ks, us) <- either (second toList) ((,[]) . toList) <$> readBranches ntFractions
 
-  return (maybe ks (: ks) umk, UnknownTree umh umu :| us)
+  return (maybe ks (: ks) umk, UnknownTree umn umu :| us)
   where
     umh = summedToDisplay ntUnmeasuredHeader
+    umn = snName ntUnmeasuredHeader
     go = PartialNode . PartialNode_ umh
 
 readBranches
@@ -471,12 +473,12 @@ readBranches bs = do
       mass <- findMeasured h
       return $ case mass of
         Just m -> Right $ pure $ FullNode $ FullNode_ m dh [] (Left [])
-        Nothing -> Left ([], pure $ UnknownTree dh [])
+        Nothing -> Left ([], pure $ UnknownTree (dnName dh) [])
 
     fromKnowns _ [] = []
     fromKnowns dh (k : ks) = [PartialNode $ PartialNode_ dh (k :| ks)]
 
-    fromUnknowns dh = pure . UnknownTree dh . toList
+    fromUnknowns dh = pure . UnknownTree (dnName dh) . toList
 
     toKnownTree dh = pure . PartialNode . PartialNode_ dh
 
@@ -569,7 +571,7 @@ fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
             , tunit $ Unit p Gram
             ]
 
-    fmtUnknownTree (UnknownTree (DisplayNutrient n _) ts) =
+    fmtUnknownTree (UnknownTree n ts) =
       fmtHeader n $ concatMap fmtUnknownTree ts
 
     fmtHeader h = (h :) . fmap (addIndent 1)
