@@ -74,6 +74,15 @@ mapErrorsIO f xs = mapM go $ enumTraversable xs
       throwIO $ AppException $ foldr (<>) e es
     err x = catch (Nothing <$ x) $ \(AppException es) -> pure $ Just es
 
+-- TODO not dry
+mapPooledErrorsIO :: (Traversable t, MonadUnliftIO m) => (a -> m b) -> t a -> m (t b)
+mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
+  where
+    go (n, x) = catch (f x) $ \(AppException e) -> do
+      es <- fmap catMaybes $ mapM (err . f) $ drop (n + 1) $ toList xs
+      throwIO $ AppException $ foldr (<>) e es
+    err x = catch (Nothing <$ x) $ \(AppException es) -> pure $ Just es
+
 showError :: AppError -> [T.Text]
 showError other = case other of
   (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]

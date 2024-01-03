@@ -23,6 +23,7 @@ import qualified RIO.NonEmpty as N
 import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
+import UnliftIO.Concurrent
 import UnliftIO.Directory
 
 main :: IO ()
@@ -108,6 +109,19 @@ export =
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
+    <*> force
+    <*> threads
+
+threads :: Parser Int
+threads =
+  option
+    auto
+    ( long "threads"
+        <> short 't'
+        <> metavar "THREADS"
+        <> help "number of threads for processing ingredients"
+        <> value 2
+    )
 
 summarize :: Parser SummarizeOptions
 summarize =
@@ -126,6 +140,7 @@ summarize =
           <> short 'j'
           <> help "summarize output in JSON (display options are ignored)"
       )
+    <*> threads
 
 force :: Parser Bool
 force = switch (long "force" <> short 'f' <> help "force retrieve")
@@ -230,7 +245,10 @@ runFetch_ frc i k = do
   f <- cacheDir
   let p = f </> (show i ++ ".json")
   if frc
-    then getFoodJSON k i
+    then do
+      j <- getFoodJSON k i
+      createWriteFile p j
+      return j
     else readAndCache p (getFoodJSON k i)
 
 runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
@@ -240,10 +258,15 @@ runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
-runExport co ExportOptions {eoMealPath, eoDateInterval} = do
-  dayspan <- dateIntervalToDaySpan eoDateInterval
-  ts <- mapM (readTrees co eoMealPath) dayspan
-  maybe (return ()) go $ N.nonEmpty $ catMaybes $ toList ts
+runExport co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
+  setNumCapabilities eoThreads
+  -- TODO not DRY
+  (d0 :| ds) <- dateIntervalToDaySpan eoDateInterval
+  ss <- readMealPlan eoMealPath
+  let readgo f = readTrees f co ss
+  t <- readgo eoForce d0
+  ts <- mapM (readgo False) ds
+  maybe (return ()) go $ N.nonEmpty $ catMaybes $ t : ts
   where
     go =
       liftIO
@@ -253,56 +276,64 @@ runExport co ExportOptions {eoMealPath, eoDateInterval} = do
         . fmap (uncurry nodesToRows)
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soMealPath, soDateInterval, soDisplay, soJSON} = do
-  dayspan <- dateIntervalToDaySpan soDateInterval
-  ts <- mapM (readTrees co soMealPath) $ toList dayspan
-  let out =
-        if soJSON
-          then BL.putStr . A.encode . fmap (uncurry finalToJSON)
-          else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
-  maybe (return ()) (liftIO . out) $ N.nonEmpty $ catMaybes ts
+runSummarize
+  co
+  SummarizeOptions {soForce, soMealPath, soDateInterval, soDisplay, soJSON, soThreads} = do
+    setNumCapabilities soThreads
+    (d0 :| ds) <- dateIntervalToDaySpan soDateInterval
+    ss <- readMealPlan soMealPath
+    let go f = readTrees f co ss
+    t <- go soForce d0
+    ts <- mapM (go False) ds
+    let out =
+          if soJSON
+            then BL.putStr . A.encode . fmap (uncurry finalToJSON)
+            else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
+    maybe (return ()) (liftIO . out) $ N.nonEmpty $ catMaybes (t : ts)
 
+-- TODO this list thingy is pretty dumb
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
-  -> FilePath
+  => Bool
+  -> CommonOptions
+  -> [Schedule]
   -> DaySpan
   -> m (Maybe (DaySpan, FinalFood))
-readTrees co p ds = do
-  ss <- readMealPlan p
-  case ss of
-    (x : xs) -> do
-      init <- scheduleToTree co ds x
-      ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree co ds) init xs
-      return $ Just (ds, ts)
-    [] -> return Nothing
+readTrees frc co ss ds = case ss of
+  (x : xs) -> do
+    -- NOTE only force the first call if needed
+    init <- scheduleToTree frc co ds x
+    ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc co ds) init xs
+    return $ Just (ds, ts)
+  [] -> return Nothing
 
 -- TODO show debug info for start/end dates and such
 scheduleToTree
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
+  => Bool
+  -> CommonOptions
   -> DaySpan
   -> Schedule
   -> m FinalFood
-scheduleToTree co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+scheduleToTree frc co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   days <- fromEither $ expandCronPat ds schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  (r :| rs) <- mapErrorsIO (ingredientToTable co mlName) is
+  (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc co mlName) is
   let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
   return $ fmap (fmap (* scale)) <$> foldr (<>) r rs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 ingredientToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
+  => Bool
+  -> CommonOptions
   -> Text
   -> Ingredient
   -> m FinalFood
-ingredientToTable CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifications} = do
+ingredientToTable frc CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifications} = do
   k <- getStoreAPIKey coKey
   let fid = FID $ fromIntegral ingFID
-  -- TODO don't hardcode force here
-  j <- runFetch_ False fid k
+  j <- runFetch_ frc fid k
   case A.eitherDecodeStrict $ encodeUtf8 j of
     Right r -> runMealState fid ingModifications ingMass r
     Left e -> throwAppErrorIO $ JSONError $ BC.pack e
@@ -403,12 +434,15 @@ apiKeyFile = "apikey"
 readAndCache :: MonadUnliftIO m => FilePath -> m Text -> m Text
 readAndCache p x = do
   e <- doesFileExist p
+  -- liftIO $ TI.putStr $ T.append (tshow e) "\n"
   if e then readFileUtf8 p else go =<< x
   where
-    go t = do
-      createDirectoryIfMissing True $ takeDirectory p
-      writeFileUtf8 p t
-      return t
+    go t = createWriteFile p t >> return t
+
+createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
+createWriteFile p t = do
+  createDirectoryIfMissing True $ takeDirectory p
+  writeFileUtf8 p t
 
 readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)

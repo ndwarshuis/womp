@@ -47,6 +47,8 @@ data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
 data ExportOptions = ExportOptions
   { eoMealPath :: !FilePath
   , eoDateInterval :: !DateIntervalOptions
+  , eoForce :: !Bool
+  , eoThreads :: !Int
   }
 
 data SummarizeOptions = SummarizeOptions
@@ -55,6 +57,7 @@ data SummarizeOptions = SummarizeOptions
   , soForce :: !Bool
   , soDisplay :: !DisplayOptions
   , soJSON :: !Bool
+  , soThreads :: !Int
   }
 
 data DateIntervalOptions = DateIntervalOptions
