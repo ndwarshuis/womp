@@ -1,6 +1,6 @@
-name:                carbon
+name:                womp
 version:             0.1.0.0
-github:              "ndwarshuis/carbon"
+github:              "ndwarshuis/womp"
 license:             BSD-3-Clause
 author:              "Nathan Dwarshuis"
 maintainer:          "ndwar@yavin4.ch"
@@ -13,7 +13,7 @@ copyright:           "2023 Nathan Dwarshuis"
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/ndwarshuis/carbon#readme>
+description:         Please see the README on GitHub at <https://github.com/ndwarshuis/womp#readme>
 
 extra-source-files:
 - README.md
@@ -90,7 +90,7 @@ library:
   source-dirs: src
 
 executables:
-  carbon:
+  womp:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -98,10 +98,10 @@ executables:
     # - -rtsopts
     # - -with-rtsopts=-N
     dependencies:
-    - carbon
+    - womp
 
 # tests:
-#   carbon-test:
+#   womp-test:
 #     main:                Spec.hs
 #     source-dirs:         test
 #     ghc-options:
@@ -109,4 +109,4 @@ executables:
 #     - -rtsopts
 #     - -with-rtsopts=-N
 #     dependencies:
-#     - carbon
+#     - womp

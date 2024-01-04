@@ -33,7 +33,7 @@ main = parse =<< execParser o
       info
         (options <**> helper)
         ( fullDesc
-            <> header "carbon: nutrient planner"
+            <> header "womp: what's on my plate"
             <> progDesc "plan and track your macro/micronutrients"
         )
 
@@ -245,11 +245,15 @@ runFetch_ frc i k = do
   f <- cacheDir
   let p = f </> (show i ++ ".json")
   if frc
-    then do
+    then go p
+    else do
+      e <- doesFileExist p
+      if e then readFileUtf8 p else go p
+  where
+    go p = do
       j <- getFoodJSON k i
       createWriteFile p j
       return j
-    else readAndCache p (getFoodJSON k i)
 
 runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
@@ -261,9 +265,10 @@ runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
 runExport co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   setNumCapabilities eoThreads
   -- TODO not DRY
+  k <- getStoreAPIKey $ coKey co
   (d0 :| ds) <- dateIntervalToDaySpan eoDateInterval
   ss <- readMealPlan eoMealPath
-  let readgo f = readTrees f co ss
+  let readgo f = readTrees f k ss
   t <- readgo eoForce d0
   ts <- mapM (readgo False) ds
   maybe (return ()) go $ N.nonEmpty $ catMaybes $ t : ts
@@ -280,9 +285,10 @@ runSummarize
   co
   SummarizeOptions {soForce, soMealPath, soDateInterval, soDisplay, soJSON, soThreads} = do
     setNumCapabilities soThreads
+    k <- getStoreAPIKey $ coKey co
     (d0 :| ds) <- dateIntervalToDaySpan soDateInterval
     ss <- readMealPlan soMealPath
-    let go f = readTrees f co ss
+    let go f = readTrees f k ss
     t <- go soForce d0
     ts <- mapM (go False) ds
     let out =
@@ -295,15 +301,15 @@ runSummarize
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => Bool
-  -> CommonOptions
+  -> APIKey
   -> [Schedule]
   -> DaySpan
   -> m (Maybe (DaySpan, FinalFood))
-readTrees frc co ss ds = case ss of
+readTrees frc k ss ds = case ss of
   (x : xs) -> do
     -- NOTE only force the first call if needed
-    init <- scheduleToTree frc co ds x
-    ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc co ds) init xs
+    init <- scheduleToTree frc k ds x
+    ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc k ds) init xs
     return $ Just (ds, ts)
   [] -> return Nothing
 
@@ -311,14 +317,14 @@ readTrees frc co ss ds = case ss of
 scheduleToTree
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => Bool
-  -> CommonOptions
+  -> APIKey
   -> DaySpan
   -> Schedule
   -> m FinalFood
-scheduleToTree frc co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+scheduleToTree frc k ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   days <- fromEither $ expandCronPat ds schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc co mlName) is
+  (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc k mlName) is
   let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
   return $ fmap (fmap (* scale)) <$> foldr (<>) r rs
 
@@ -326,12 +332,11 @@ scheduleToTree frc co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, sch
 ingredientToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => Bool
-  -> CommonOptions
+  -> APIKey
   -> Text
   -> Ingredient
   -> m FinalFood
-ingredientToTable frc CommonOptions {coKey} _ Ingredient {ingFID, ingMass, ingModifications} = do
-  k <- getStoreAPIKey coKey
+ingredientToTable frc k _ Ingredient {ingFID, ingMass, ingModifications} = do
   let fid = FID $ fromIntegral ingFID
   j <- runFetch_ frc fid k
   case A.eitherDecodeStrict $ encodeUtf8 j of
@@ -390,10 +395,10 @@ currentDay = do
   return $ localDay $ utcToLocalTime z u
 
 configDir :: MonadUnliftIO m => m FilePath
-configDir = getXdgDirectory XdgConfig "carbon"
+configDir = getXdgDirectory XdgConfig "womp"
 
 cacheDir :: MonadUnliftIO m => m FilePath
-cacheDir = getXdgDirectory XdgCache "carb0n"
+cacheDir = getXdgDirectory XdgCache "womp"
 
 -- TODO catch errors here
 getFoodJSON
@@ -422,22 +427,16 @@ apiFoodURL =
 getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m APIKey
 getStoreAPIKey k = do
   f <- (</> apiKeyFile) <$> configDir
-  APIKey <$> case k of
-    Just k' -> readAndCache f (return $ unAPIKey k')
+  case k of
+    Just k' -> do
+      createWriteFile f (unAPIKey k')
+      return k'
     Nothing -> do
       e <- doesFileExist f
-      if e then readFileUtf8 f else throwAppErrorIO $ MissingAPIKey f
+      if e then APIKey <$> readFileUtf8 f else throwAppErrorIO $ MissingAPIKey f
 
 apiKeyFile :: FilePath
 apiKeyFile = "apikey"
-
-readAndCache :: MonadUnliftIO m => FilePath -> m Text -> m Text
-readAndCache p x = do
-  e <- doesFileExist p
-  -- liftIO $ TI.putStr $ T.append (tshow e) "\n"
-  if e then readFileUtf8 p else go =<< x
-  where
-    go t = createWriteFile p t >> return t
 
 createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
 createWriteFile p t = do

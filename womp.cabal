@@ -4,11 +4,11 @@ cabal-version: 2.2
 --
 -- see: https://github.com/sol/hpack
 
-name:           carbon
+name:           womp
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/ndwarshuis/carbon#readme>
-homepage:       https://github.com/ndwarshuis/carbon#readme
-bug-reports:    https://github.com/ndwarshuis/carbon/issues
+description:    Please see the README on GitHub at <https://github.com/ndwarshuis/womp#readme>
+homepage:       https://github.com/ndwarshuis/womp#readme
+bug-reports:    https://github.com/ndwarshuis/womp/issues
 author:         Nathan Dwarshuis
 maintainer:     ndwar@yavin4.ch
 copyright:      2023 Nathan Dwarshuis
@@ -21,7 +21,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/ndwarshuis/carbon
+  location: https://github.com/ndwarshuis/womp
 
 library
   exposed-modules:
@@ -33,9 +33,9 @@ library
       Internal.Types.TH
       Internal.Utils
   other-modules:
-      Paths_carbon
+      Paths_womp
   autogen-modules:
-      Paths_carbon
+      Paths_womp
   hs-source-dirs:
       src
   default-extensions:
@@ -95,12 +95,12 @@ library
     , unliftio
   default-language: Haskell2010
 
-executable carbon
+executable womp
   main-is: Main.hs
   other-modules:
-      Paths_carbon
+      Paths_womp
   autogen-modules:
-      Paths_carbon
+      Paths_womp
   hs-source-dirs:
       app
   default-extensions:
@@ -144,7 +144,6 @@ executable carbon
       aeson
     , base >=4.7 && <5
     , bytestring
-    , carbon
     , cassava
     , containers
     , dhall
@@ -159,4 +158,5 @@ executable carbon
     , text >=1.2.4.1
     , transformers
     , unliftio
+    , womp
   default-language: Haskell2010

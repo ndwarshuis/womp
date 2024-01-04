@@ -40,6 +40,8 @@ to other desktops is planned, as well as the addition of a web-based GUI.
 
 TODO
 
+get an apikey and such, type stuff and watch text fly across your screen
+
 # Installation
 
 TODO
