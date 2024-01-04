@@ -1,9 +1,11 @@
 module Internal.Utils where
 
 import Control.Monad.Error.Class
+import Data.Scientific
 import Internal.Types.Main
 import RIO
 import qualified RIO.List as L
+import RIO.State
 import qualified RIO.Text as T
 
 throwAppError :: MonadAppError m => AppError -> m a
@@ -11,6 +13,10 @@ throwAppError e = throwError $ AppException [e]
 
 throwAppErrorIO :: MonadUnliftIO m => AppError -> m a
 throwAppErrorIO = fromEither . throwAppError
+
+throwAppWarning :: NutrientState m => NID -> AppWarningType -> m ()
+throwAppWarning i t =
+  modify $ \s -> s {fsWarnings = AppWarning t i : fsWarnings s}
 
 combineError3
   :: (Semigroup e, MonadError e m)
@@ -68,16 +74,22 @@ mapErrorsIO f xs = mapM go $ enumTraversable xs
       throwIO $ AppException $ foldr (<>) e es
     err x = catch (Nothing <$ x) $ \(AppException es) -> pure $ Just es
 
+-- TODO not dry
+mapPooledErrorsIO :: (Traversable t, MonadUnliftIO m) => (a -> m b) -> t a -> m (t b)
+mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
+  where
+    go (n, x) = catch (f x) $ \(AppException e) -> do
+      es <- fmap catMaybes $ mapM (err . f) $ drop (n + 1) $ toList xs
+      throwIO $ AppException $ foldr (<>) e es
+    err x = catch (Nothing <$ x) $ \(AppException es) -> pure $ Just es
+
 showError :: AppError -> [T.Text]
 showError other = case other of
-  (NutrientError i) -> [T.unwords ["could not parse valud for nutrient id:", tshow i]]
-  (DaySpanError d) -> [T.unwords ["time interval must be positive, got", tshow d, "days"]]
-  (UnitParseError u) -> [T.append "could not parse unit: " u]
-  (UnitMatchError x y) ->
-    [ T.append
-        (T.unwords ["could not add", tshow x, "and", tshow y])
-        ": units don't match"
-    ]
+  (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
+  (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
+  (MissingAPIKey p) -> [T.append "Could not read API key from path: " $ T.pack p]
+  (DaySpanError d) -> [T.unwords ["day interval must be positive, got", tshow d, "days"]]
+  (IntervalError d) -> [T.unwords ["aggregation interval must be positive, got", tshow d, "days"]]
   (DatePatternError s b r p) -> [T.unwords [msg, "in pattern: ", pat]]
     where
       pat =
@@ -98,3 +110,44 @@ keyVals = T.intercalate "; " . fmap (uncurry keyVal)
 
 keyVal :: T.Text -> T.Text -> T.Text
 keyVal a b = T.concat [a, "=", b]
+
+parseUnit :: T.Text -> Maybe Unit
+parseUnit s = catchError nonUnity (const def)
+  where
+    def = parseName Unity s
+    nonUnity = case T.splitAt 1 s of
+      ("G", rest) -> parseName Giga rest
+      ("M", rest) -> parseName Mega rest
+      ("k", rest) -> parseName Kilo rest
+      ("h", rest) -> parseName Hecto rest
+      ("d", rest) -> parseName Deci rest
+      ("c", rest) -> parseName Centi rest
+      ("m", rest) -> parseName Milli rest
+      ("µ", rest) -> parseName Micro rest
+      ("n", rest) -> parseName Nano rest
+      _ -> case T.splitAt 2 s of
+        ("da", rest) -> parseName Deca rest
+        _ -> def
+    parseName p r = case r of
+      "cal" -> return $ Unit p Calorie
+      "g" -> return $ Unit p Gram
+      "J" -> return $ Unit p Joule
+      "IU" -> return $ Unit p IU
+      _ -> Nothing
+
+raisePower :: Int -> Scientific -> Scientific
+raisePower x s = scientific (coefficient s) (base10Exponent s + x)
+
+autoPrefix :: Scientific -> Prefix
+autoPrefix s =
+  maybe maxBound fst $
+    L.find ((abs s <) . snd) $
+      fmap
+        (\p -> (p,) $ (10 ^^) $ (+ 3) $ prefixValue p)
+        -- NOTE only use multiples of three for display
+        [Nano, Micro, Milli, Unity, Kilo, Mega, Giga]
+
+withNonEmpty :: (Eq a, Monoid a) => (a -> b) -> b -> a -> b
+withNonEmpty f d x
+  | mempty == x = d
+  | otherwise = f x

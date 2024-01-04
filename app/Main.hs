@@ -1,28 +1,29 @@
 module Main (main) where
 
-import Control.Monad.Error.Class
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
+import Data.Char (ord)
 import qualified Data.Csv as C
 import Data.Scientific
+import Data.Semigroup (sconcat)
 import qualified Data.Text.IO as TI
 import qualified Dhall as D
 import Internal.Nutrient
+import Internal.NutrientTree
 import Internal.Types.Dhall
 import Internal.Types.Main
 import Internal.Utils
 import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import Options.Applicative
-import RIO
--- import qualified RIO.ByteString as B
+import RIO hiding (force)
 import qualified RIO.ByteString.Lazy as BL
-import RIO.Char
 import RIO.FilePath
-import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
+import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
+import UnliftIO.Concurrent
 import UnliftIO.Directory
 
 main :: IO ()
@@ -32,7 +33,7 @@ main = parse =<< execParser o
       info
         (options <**> helper)
         ( fullDesc
-            <> header "carbon: nutrient planner"
+            <> header "womp: what's on my plate"
             <> progDesc "plan and track your macro/micronutrients"
         )
 
@@ -62,13 +63,13 @@ subcommand =
     ( command
         "fetch"
         ( info
-            (Fetch <$> fetch)
+            (Fetch <$> fetchDump)
             (progDesc "fetch a food by ID")
         )
         <> command
           "dump"
           ( info
-              (Dump <$> dump)
+              (Dump <$> fetchDump)
               (progDesc "dump JSON for food by ID")
           )
         <> command
@@ -85,10 +86,9 @@ subcommand =
           )
     )
 
--- TODO need to get this to an int somehow
-fetch :: Parser FetchOptions
-fetch =
-  FetchOptions
+fetchDump :: Parser FetchDumpOptions
+fetchDump =
+  FetchDumpOptions
     <$> option
       auto
       ( long "fid"
@@ -96,19 +96,7 @@ fetch =
           <> metavar "FOODID"
           <> help "ID for the food to pull from the database"
       )
-    <*> flag False True (long "force" <> short 'f' <> help "force retrieve")
-
-dump :: Parser DumpOptions
-dump =
-  DumpOptions
-    <$> option
-      auto
-      ( long "fid"
-          <> short 'i'
-          <> metavar "FOODID"
-          <> help "ID for the food to pull from the database"
-      )
-    <*> switch (long "force" <> short 'f' <> help "force retrieve")
+    <*> force
 
 -- TODO not dry
 export :: Parser ExportOptions
@@ -121,6 +109,19 @@ export =
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
+    <*> force
+    <*> threads
+
+threads :: Parser Int
+threads =
+  option
+    auto
+    ( long "threads"
+        <> short 't'
+        <> metavar "THREADS"
+        <> help "number of threads for processing ingredients"
+        <> value 2
+    )
 
 summarize :: Parser SummarizeOptions
 summarize =
@@ -132,6 +133,17 @@ summarize =
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
+    <*> force
+    <*> displayOptions
+    <*> switch
+      ( long "json"
+          <> short 'j'
+          <> help "summarize output in JSON (display options are ignored)"
+      )
+    <*> threads
+
+force :: Parser Bool
+force = switch (long "force" <> short 'f' <> help "force retrieve")
 
 dateInterval :: Parser DateIntervalOptions
 dateInterval =
@@ -145,6 +157,32 @@ dateInterval =
           <> metavar "DAYS"
           <> help "length of interval in days within which summary will be calculated (ignored if END is present)"
           <> value 7
+      )
+    <*> optional
+      ( option
+          auto
+          ( long "interval"
+              <> short 'I'
+              <> metavar "INTERVAL"
+              <> help "length of time (in days) to aggregate summary"
+          )
+      )
+
+displayOptions :: Parser DisplayOptions
+displayOptions =
+  DisplayOptions
+    <$> switch
+      ( long "unknowns"
+          <> short 'u'
+          <> help "display unknown nutrients in output"
+      )
+    <*> option
+      auto
+      ( long "indent"
+          <> short 'i'
+          <> metavar "INDENT"
+          <> help "indent level for output"
+          <> value 2
       )
 
 startDay :: Parser (Maybe Day)
@@ -190,326 +228,165 @@ parse (Options c@CommonOptions {coVerbosity} s) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
       exitFailure
 
-data Options = Options CommonOptions SubCommand
-
-data CommonOptions = CommonOptions
-  { coKey :: !(Maybe APIKey)
-  , coVerbosity :: !Bool
-  }
-
-type FID = Int
-
--- newtype FID = FID Int deriving (Read, Show)
-
-newtype APIKey = APIKey {unAPIKey :: T.Text} deriving (IsString)
-
-data SubCommand
-  = Fetch !FetchOptions
-  | Dump !DumpOptions
-  | Export !ExportOptions
-  | Summarize !SummarizeOptions
-
-data FetchOptions = FetchOptions {foID :: !FID, foForce :: !Bool}
-
-data DumpOptions = DumpOptions {doID :: !FID, doForce :: !Bool}
-
-data ExportOptions = ExportOptions
-  { eoConfig :: !FilePath
-  , eoDateInterval :: !DateIntervalOptions
-  }
-
-data SummarizeOptions = SummarizeOptions
-  { soConfig :: !FilePath
-  , soDateInterval :: !DateIntervalOptions
-  }
-
-data DateIntervalOptions = DateIntervalOptions
-  { dioStart :: Maybe Day
-  , dioEnd :: Maybe Day
-  , dioDays :: Int
-  }
-
 readDay :: String -> Day
 readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
 
-runFetch :: CommonOptions -> FetchOptions -> RIO SimpleApp ()
-runFetch CommonOptions {coKey} FetchOptions {foID, foForce} = do
-  res <- getStoreAPIKey coKey
-  case res of
-    -- TODO throw a real error here
-    Nothing -> undefined
-    Just k -> void $ runFetch_ foForce foID k
+runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
+runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} =
+  void . runFetch_ foForce foID =<< getStoreAPIKey coKey
 
 runFetch_
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => Bool
   -> FID
   -> APIKey
-  -> m T.Text
+  -> m Text
 runFetch_ frc i k = do
   f <- cacheDir
   let p = f </> (show i ++ ".json")
   if frc
-    then getFoodJSON k i
+    then go p
     else do
-      j <- readAndCache p (Just <$> getFoodJSON k i)
-      case j of
-        Nothing -> undefined
-        Just j' -> return j'
+      e <- doesFileExist p
+      if e then readFileUtf8 p else go p
+  where
+    go p = do
+      j <- getFoodJSON k i
+      createWriteFile p j
+      return j
 
-runDump :: CommonOptions -> DumpOptions -> RIO SimpleApp ()
-runDump CommonOptions {coKey} DumpOptions {doID, doForce} = do
-  -- TODO not DRY
-  res <- getStoreAPIKey coKey
-  case res of
-    -- TODO throw a real error here
-    Nothing -> undefined
-    Just k -> do
-      j <- runFetch_ doForce doID k
-      liftIO $ TI.putStr j
+runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
+runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
+  k <- getStoreAPIKey coKey
+  j <- runFetch_ foForce foID k
+  liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
-runExport co ExportOptions {eoConfig, eoDateInterval} = do
-  dayspan <- dateIntervalToDaySpan eoDateInterval
-  rs <- readRowNutrients co eoConfig dayspan
-  BL.putStr $ C.encodeWith tsvOptions rs
+runExport co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
+  setNumCapabilities eoThreads
+  -- TODO not DRY
+  k <- getStoreAPIKey $ coKey co
+  (d0 :| ds) <- dateIntervalToDaySpan eoDateInterval
+  ss <- readMealPlan eoMealPath
+  let readgo f = readTrees f k ss
+  t <- readgo eoForce d0
+  ts <- mapM (readgo False) ds
+  maybe (return ()) go $ N.nonEmpty $ catMaybes $ t : ts
+  where
+    go =
+      liftIO
+        . BL.putStr
+        . C.encodeDefaultOrderedByNameWith tsvOptions
+        . sconcat
+        . fmap (uncurry nodesToRows)
 
-readRowNutrients
+runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
+runSummarize
+  co
+  SummarizeOptions {soForce, soMealPath, soDateInterval, soDisplay, soJSON, soThreads} = do
+    setNumCapabilities soThreads
+    k <- getStoreAPIKey $ coKey co
+    (d0 :| ds) <- dateIntervalToDaySpan soDateInterval
+    ss <- readMealPlan soMealPath
+    let go f = readTrees f k ss
+    t <- go soForce d0
+    ts <- mapM (go False) ds
+    let out =
+          if soJSON
+            then BL.putStr . A.encode . fmap (uncurry finalToJSON)
+            else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
+    maybe (return ()) (liftIO . out) $ N.nonEmpty $ catMaybes (t : ts)
+
+-- TODO this list thingy is pretty dumb
+readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
-  -> FilePath
+  => Bool
+  -> APIKey
+  -> [Schedule]
   -> DaySpan
-  -> m [RowNutrient]
-readRowNutrients co p ds = do
-  sch <- readConfig p
-  concat <$> mapErrorsIO (scheduleToTable co ds) sch
+  -> m (Maybe (DaySpan, FinalFood))
+readTrees frc k ss ds = case ss of
+  (x : xs) -> do
+    -- NOTE only force the first call if needed
+    init <- scheduleToTree frc k ds x
+    ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc k ds) init xs
+    return $ Just (ds, ts)
+  [] -> return Nothing
 
-scheduleToTable
+-- TODO show debug info for start/end dates and such
+scheduleToTree
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
+  => Bool
+  -> APIKey
   -> DaySpan
   -> Schedule
-  -> m [RowNutrient]
-scheduleToTable co ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+  -> m FinalFood
+scheduleToTree frc k ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   days <- fromEither $ expandCronPat ds schWhen
-  rs <- concat <$> mapM (ingredientToTable co mlName) mlIngs
+  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
+  (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc k mlName) is
   let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
-  return $ fmap (scaleRowNutrient scale) rs
+  return $ fmap (fmap (* scale)) <$> foldr (<>) r rs
 
 -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
 ingredientToTable
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
-  -> T.Text
-  -> Ingredient
-  -> m [RowNutrient]
-ingredientToTable CommonOptions {coKey} n Ingredient {ingFID, ingMass, ingModifications} = do
-  res <- getStoreAPIKey coKey
-  case res of
-    -- TODO throw a real error here
-    Nothing -> logError "well crap" >> return []
-    Just k -> do
-      j <- runFetch_ False (fromIntegral ingFID) k
-      let p = A.eitherDecodeStrict $ encodeUtf8 j
-      case p of
-        Right r ->
-          return $
-            fmap applyScale $
-              applyMods ingModifications $
-                toRowNutrients n r
-        Left e -> do
-          logError $ displayBytesUtf8 $ BC.pack e
-          return []
-  where
-    scale = fromFloatDigits ingMass / standardMass
-    applyScale = scaleRowNutrient scale
-    applyMods ms rs = fmap (\r -> foldr applyModification r ms) rs
-
-scaleRowNutrient :: Scientific -> RowNutrient -> RowNutrient
-scaleRowNutrient x r@RowNutrient {rnAmount} = r {rnAmount = (* x) <$> rnAmount}
-
--- TODO not sure if this ever changes
-standardMass :: Scientific
-standardMass = 100
-
-applyModification :: Modification -> RowNutrient -> RowNutrient
-applyModification
-  Modification {modNutID, modScale}
-  r@RowNutrient {rnNutrientId, rnAmount}
-    | Just (fromIntegral modNutID) == rnNutrientId =
-        r {rnAmount = (* fromFloatDigits modScale) <$> rnAmount}
-    | otherwise = r
-
-toRowNutrients :: T.Text -> FoodItem -> [RowNutrient]
-toRowNutrients n i = case i of
-  (Foundation FoundationFoodItem {ffiMeta, ffiCommon}) ->
-    go ffiMeta (flcCommon ffiCommon)
-  -- (Branded BrandedFoodItem {bfiMeta, bfiCommon}) ->
-  --   go bfiMeta bfiCommon
-  (SRLegacy SRLegacyFoodItem {srlMeta, srlCommon}) ->
-    go srlMeta (flcCommon srlCommon)
-  where
-    go m c = go' m <$> fcFoodNutrients c
-    go' m FoodNutrient {fnNutrient, fnAmount, fnFoodNutrientDerivation} =
-      RowNutrient
-        { rnDesc = frmDescription m
-        , rnMealName = n
-        , rnId = frmId m
-        , rnDerivation = ndDescription =<< fnFoodNutrientDerivation
-        , rnNutrientId = nId =<< fnNutrient
-        , rnNutrientName = nName =<< fnNutrient
-        , rnUnit = nUnitName =<< fnNutrient
-        , rnAmount = fnAmount
-        }
-
-sumRowNutrients :: MonadAppError m => [RowNutrient] -> m [RowSum]
-sumRowNutrients rs =
-  mapM go $
-    N.groupAllWith rsNutrientId $
-      [ RowSum
-        { rsAmount = v
-        , rsUnit = u
-        , rsNutrientName = n
-        , rsNutrientId = i
-        }
-      | RowNutrient
-          { rnAmount = Just v
-          , rnUnit = Just u
-          , rnNutrientId = Just i
-          , rnNutrientName = Just n
-          } <-
-          rs
-      ]
-  where
-    go ys@(y :| _) = do
-      ds <- mapM (\x -> parseDimensional (rsAmount x) (rsUnit x)) ys
-      d <- sumDimensionals ds
-      let (newValue, newUnit) = fromDimensional d
-      return $ y {rsAmount = newValue, rsUnit = newUnit}
-
-sumDimensionals :: MonadAppError m => NonEmpty Dimensional -> m Dimensional
-sumDimensionals alld@(d :| ds) = do
-  d' <- foldM addDimensional d ds
-  return $
-    d'
-      { dimUnit =
-          Unit
-            { unitBase = majorityBase
-            , unitName = unitName $ dimUnit d
-            }
-      }
-  where
-    majorityBase = majority $ fmap (unitBase . dimUnit) alld
-
-majority :: Eq a => NonEmpty a -> a
-majority = fst . N.head . N.reverse . N.sortWith snd . count
-
-count :: Eq a => NonEmpty a -> NonEmpty (a, Int)
-count (x :| xs) =
-  let (xs', ys) = L.partition (x ==) xs
-      thisCount = (x, length xs')
-   in case N.nonEmpty ys of
-        Nothing -> thisCount :| []
-        Just ys' -> thisCount :| N.toList (count ys')
-
-addDimensional :: MonadAppError m => Dimensional -> Dimensional -> m Dimensional
-addDimensional x@(Dimensional v0 u0) y@(Dimensional v1 _)
-  | uname x == uname y = return $ Dimensional (v0 + v1) u0
-  | otherwise = throwAppError $ UnitMatchError x y
-  where
-    uname = unitName . dimUnit
-
-fromDimensional :: Dimensional -> (Scientific, T.Text)
-fromDimensional Dimensional {dimValue, dimUnit = u@Unit {unitBase}} =
-  (raisePower dimValue (-(prefixValue unitBase)), tunit u)
-
--- tdimensional :: Dimensional -> T.Text
--- tdimensional d = let (v, u) = fromDimensional d in T.unwords [tshow v, u]
-
-raisePower :: Scientific -> Int -> Scientific
-raisePower s x = scientific (coefficient s) (base10Exponent s + x)
-
-tunit :: Unit -> Text
-tunit Unit {unitName, unitBase} = T.append prefix unit
-  where
-    unit = case unitName of
-      Calorie -> "cal"
-      Joule -> "J"
-      Gram -> "g"
-      IU -> "IU"
-    prefix = case unitBase of
-      Nano -> "n"
-      Micro -> "µ"
-      Milli -> "m"
-      Centi -> "c"
-      Deci -> "d"
-      Unity -> ""
-      Deca -> "da"
-      Hecto -> "h"
-      Kilo -> "k"
-      Mega -> "M"
-      Giga -> "G"
-
-parseDimensional
-  :: MonadAppError m
-  => Scientific
+  => Bool
+  -> APIKey
   -> Text
-  -> m Dimensional
-parseDimensional n u = do
-  u' <- parseUnit u
-  let n' = raisePower n (prefixValue $ unitBase u')
-  return $ Dimensional n' u'
+  -> Ingredient
+  -> m FinalFood
+ingredientToTable frc k _ Ingredient {ingFID, ingMass, ingModifications} = do
+  let fid = FID $ fromIntegral ingFID
+  j <- runFetch_ frc fid k
+  case A.eitherDecodeStrict $ encodeUtf8 j of
+    Right r -> runMealState fid ingModifications ingMass r
+    Left e -> throwAppErrorIO $ JSONError $ BC.pack e
 
-parseUnit :: MonadAppError m => T.Text -> m Unit
-parseUnit s = catchError nonUnity (const def)
+runMealState
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => FID
+  -> [Modification]
+  -> Double
+  -> FoodItem
+  -> m FinalFood
+runMealState i ms mass item = do
+  let (t, ws) = runState (ingredientToTree ms mass item) []
+  mapM_ (logWarn . displayBytesUtf8 . encodeUtf8 . fmtWarning i) ws
+  return t
+
+fmtWarning :: FID -> AppWarning -> T.Text
+fmtWarning i (AppWarning t n) =
+  T.unwords [msg, "in nutrient with id", tshow n, "in food with id", tshow i]
   where
-    def = parseName Unity s
-    nonUnity = case T.splitAt 1 s of
-      ("G", rest) -> parseName Giga rest
-      ("M", rest) -> parseName Mega rest
-      ("k", rest) -> parseName Kilo rest
-      ("h", rest) -> parseName Hecto rest
-      ("d", rest) -> parseName Deci rest
-      ("c", rest) -> parseName Centi rest
-      ("m", rest) -> parseName Milli rest
-      ("µ", rest) -> parseName Micro rest
-      ("n", rest) -> parseName Nano rest
-      _ -> case T.splitAt 2 s of
-        ("da", rest) -> parseName Deca rest
-        _ -> def
-    parseName p r = case r of
-      "cal" -> return $ Unit Calorie p
-      "g" -> return $ Unit Gram p
-      "J" -> return $ Unit Joule p
-      "IU" -> return $ Unit IU p
-      _ -> throwAppError $ UnitParseError s
+    msg = case t of
+      NotGram -> "Unit is not for mass"
+      NoUnit -> "No unit provided"
+      NoAmount -> "No amount provided"
 
-prefixValue :: Prefix -> Int
-prefixValue Nano = -9
-prefixValue Micro = -6
-prefixValue Milli = -3
-prefixValue Centi = -2
-prefixValue Deci = -1
-prefixValue Unity = 0
-prefixValue Deca = 1
-prefixValue Hecto = 2
-prefixValue Kilo = 3
-prefixValue Mega = 6
-prefixValue Giga = 9
-
-runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize co SummarizeOptions {soConfig, soDateInterval} = do
-  dayspan <- dateIntervalToDaySpan soDateInterval
-  rs <- readRowNutrients co soConfig dayspan
-  ss <- fromEither $ sumRowNutrients rs
-  BL.putStr $ C.encodeWith tsvOptions ss
-
-dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m DaySpan
-dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays} = do
+dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
+dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
   start <- maybe currentDay return dioStart
-  let dayLen = maybe dioDays (\e -> fromIntegral $ diffDays e start) dioEnd
-  when (dayLen < 1) $ throwAppErrorIO $ DaySpanError dayLen
-  return (start, dayLen)
+  let totalLen = maybe dioDays (\e -> fromIntegral $ diffDays e start) dioEnd
+  let span1 = genSpans 1 totalLen start
+  when (totalLen < 1) $ throwAppErrorIO $ DaySpanError totalLen
+  case dioInterval of
+    Just i
+      | i >= totalLen -> return span1
+      | otherwise -> do
+          when (i < 1) $ throwAppErrorIO $ IntervalError i
+          let (n, r) = divMod totalLen i
+          let spanN = genSpans n i start
+          return $
+            if r == 0
+              then spanN
+              else spanN <> genSpans 1 r (addDays (fromIntegral $ n * i) start)
+    Nothing -> return span1
+  where
+    genSpans n s = take1 n . fmap (,s - 1) . N.iterate (addDays $ fromIntegral s)
+
+take1 :: Int -> NonEmpty a -> NonEmpty a
+take1 n (x :| xs) = x :| take (n - 1) xs
 
 currentDay :: MonadUnliftIO m => m Day
 currentDay = do
@@ -518,16 +395,17 @@ currentDay = do
   return $ localDay $ utcToLocalTime z u
 
 configDir :: MonadUnliftIO m => m FilePath
-configDir = getXdgDirectory XdgConfig "carbon"
+configDir = getXdgDirectory XdgConfig "womp"
 
 cacheDir :: MonadUnliftIO m => m FilePath
-cacheDir = getXdgDirectory XdgCache "carb0n"
+cacheDir = getXdgDirectory XdgCache "womp"
 
+-- TODO catch errors here
 getFoodJSON
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => APIKey
   -> FID
-  -> m T.Text
+  -> m Text
 getFoodJSON k i = do
   logInfo $ displayBytesUtf8 $ encodeUtf8 $ T.append "downloading " (tshow i)
   res <-
@@ -543,34 +421,33 @@ apiFoodURL :: R.Url 'R.Https
 apiFoodURL =
   R.https "api.nal.usda.gov"
     /: "fdc"
-    /~ ("v1" :: T.Text)
-    /~ ("food" :: T.Text)
+    /~ ("v1" :: Text)
+    /~ ("food" :: Text)
 
-getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m (Maybe APIKey)
+getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m APIKey
 getStoreAPIKey k = do
   f <- (</> apiKeyFile) <$> configDir
-  res <- readAndCache f (return $ unAPIKey <$> k)
-  return $ APIKey <$> res
+  case k of
+    Just k' -> do
+      createWriteFile f (unAPIKey k')
+      return k'
+    Nothing -> do
+      e <- doesFileExist f
+      if e then APIKey <$> readFileUtf8 f else throwAppErrorIO $ MissingAPIKey f
 
 apiKeyFile :: FilePath
 apiKeyFile = "apikey"
 
-readAndCache :: MonadUnliftIO m => FilePath -> m (Maybe T.Text) -> m (Maybe T.Text)
-readAndCache p x = do
-  e <- doesFileExist p
-  if e then Just <$> readFileUtf8 p else go =<< x
-  where
-    go Nothing = return Nothing
-    go (Just t) = do
-      createDirectoryIfMissing True $ takeDirectory p
-      writeFileUtf8 p t
-      return $ Just t
+createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
+createWriteFile p t = do
+  createDirectoryIfMissing True $ takeDirectory p
+  writeFileUtf8 p t
 
-readConfig
+readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => FilePath
   -> m [Schedule]
-readConfig f = do
+readMealPlan f = do
   logDebug $
     displayBytesUtf8 $
       encodeUtf8 $
@@ -584,8 +461,6 @@ tsvOptions =
     { C.encDelimiter = fromIntegral (ord '\t')
     , C.encIncludeHeader = True
     }
-
-type DaySpan = (Day, Int)
 
 expandCronPat :: MonadAppError m => DaySpan -> Cron -> m [Day]
 expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =
