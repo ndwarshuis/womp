@@ -781,6 +781,7 @@ data AppError
   | JSONError !ByteString
   | EmptyMeal !T.Text
   | MissingAPIKey !FilePath
+  | FileTypeError !FilePath
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)

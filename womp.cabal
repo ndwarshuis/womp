@@ -82,6 +82,7 @@ library
     , cassava
     , containers
     , dhall
+    , dhall-json
     , generic-monoid
     , lens
     , mtl
@@ -93,6 +94,7 @@ library
     , text >=1.2.4.1
     , transformers
     , unliftio
+    , yaml
   default-language: Haskell2010
 
 executable womp
@@ -147,6 +149,7 @@ executable womp
     , cassava
     , containers
     , dhall
+    , dhall-json
     , generic-monoid
     , lens
     , mtl
@@ -159,4 +162,5 @@ executable womp
     , transformers
     , unliftio
     , womp
+    , yaml
   default-language: Haskell2010

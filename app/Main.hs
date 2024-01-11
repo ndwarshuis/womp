@@ -7,6 +7,7 @@ import qualified Data.Csv as C
 import Data.Scientific
 import Data.Semigroup (sconcat)
 import qualified Data.Text.IO as TI
+import qualified Data.Yaml as Y
 import qualified Dhall as D
 import Internal.Nutrient
 import Internal.NutrientTree
@@ -453,7 +454,19 @@ readMealPlan f = do
       encodeUtf8 $
         T.append "reading schedule at path: " $
           T.pack f
-  liftIO $ D.inputFile D.auto f
+  liftIO $
+    if isDhall f
+      then D.inputFile D.auto f
+      else
+        if isYaml f
+          then Y.decodeFileThrow f
+          else throwAppErrorIO $ FileTypeError f
+
+isDhall :: FilePath -> Bool
+isDhall = isExtensionOf "dhall"
+
+isYaml :: FilePath -> Bool
+isYaml f = isExtensionOf "yaml" f || isExtensionOf "yml" f
 
 tsvOptions :: C.EncodeOptions
 tsvOptions =

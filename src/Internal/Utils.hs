@@ -85,6 +85,7 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
+  (FileTypeError f) -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
   (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
   (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
   (MissingAPIKey p) -> [T.append "Could not read API key from path: " $ T.pack p]

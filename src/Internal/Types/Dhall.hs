@@ -6,6 +6,7 @@
 
 module Internal.Types.Dhall where
 
+import Data.Aeson
 import Dhall.TH
 import Internal.Types.TH
 import RIO
@@ -25,7 +26,7 @@ makeHaskellTypesWith
   ]
 
 deriveProduct
-  ["Eq", "Show"]
+  ["Eq", "Show", "FromJSON"]
   [ "Weekday"
   , "WeekdayPat"
   , "RepeatPat"

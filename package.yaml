@@ -74,6 +74,8 @@ dependencies:
 - lens
 - generic-monoid
 - containers
+- yaml
+- dhall-json
 
 ghc-options:
 - -Wall

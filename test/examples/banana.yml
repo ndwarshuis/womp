@@ -1,0 +1,7 @@
+- schMeal:
+    mlName: "banana"
+    mlIngs:
+      - ingFID: 1105073
+        ingMass: 150.0
+        ingModifications: []
+  schWhen: {}
