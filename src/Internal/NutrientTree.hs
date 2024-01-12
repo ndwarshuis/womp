@@ -546,9 +546,8 @@ fmtFullTree o (start, end) (FinalFood_ m (NutrientValue (Sum v) _)) =
     , fmtTree o m
     ]
 
--- TODO add some options to control how this works
 fmtTree :: DisplayOptions -> DisplayNode NutrientValue -> T.Text
-fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
+fmtTree o@(DisplayOptions u _ _ uy) (DisplayNode v ks us) = T.unlines (header : rest)
   where
     header = T.append "Total mass: " (tshow $ getSum $ nvValue v)
     rest = go ks us
@@ -557,11 +556,10 @@ fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
 
     withMap f = concatMap (uncurry f) . M.assocs
 
-    -- TODO configure indent level
-    addIndent n = T.append (T.replicate (i * n) " ")
+    addIndent n = T.append (T.replicate (2 * n) " ")
 
     fmtKnown dn (DisplayNode v' ks' us') =
-      fmtHeader (fmtDisplayNutrient dn v') $ go ks' us'
+      fmtHeader (fmtDisplayNutrient o dn v') $ go ks' us'
 
     fmtUnknownTotal =
       maybeToList . fmap (fmtUnknownHeader . sconcat) . N.nonEmpty . M.elems
@@ -571,10 +569,10 @@ fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
        in fmtHeader h $ if u then concatMap fmtUnknownTree ts else []
 
     fmtUnknownHeader (NutrientValue (Sum v') _) =
-      let p = autoPrefix v'
+      let (p, v'') = unityMaybeSci uy (autoPrefix v') v'
        in T.concat
             [ "Unknown: "
-            , tshow $ raisePower (-prefixValue p) v'
+            , tshow v''
             , " "
             , tunit $ Unit p Gram
             ]
@@ -584,38 +582,69 @@ fmtTree (DisplayOptions u i) (DisplayNode v ks us) = T.unlines (header : rest)
 
     fmtHeader h = (h :) . fmap (addIndent 1)
 
-finalToJSON :: DaySpan -> FinalFood -> Value
-finalToJSON (start, end) (FinalFood_ ms c) =
+fmtDisplayNutrient :: DisplayOptions -> DisplayNutrient -> NutrientValue -> T.Text
+fmtDisplayNutrient
+  DisplayOptions {doUnityUnits}
+  (DisplayNutrient n p)
+  (NutrientValue (Sum v) _) =
+    T.concat [n, ": ", tshow v', " ", tunit (Unit p' Gram)]
+    where
+      (p', v') = unityMaybeSci doUnityUnits p v
+
+finalToJSON :: DisplayOptions -> DaySpan -> FinalFood -> Value
+finalToJSON o (start, end) (FinalFood_ ms c) =
   object
     [ "start" .= start
     , "end" .= addDays (fromIntegral end) start
     , "energy" .= object ["value" .= c, "unit" .= Unit Kilo Calorie]
-    , "mass" .= treeToJSON "Total" Unity ms
+    , "mass" .= treeToJSON o "Total" Unity ms
     ]
 
-treeToJSON :: Text -> Prefix -> DisplayNode NutrientValue -> Value
-treeToJSON n p (DisplayNode v ks us) =
-  object
-    [ "value" .= v
+treeToJSON
+  :: DisplayOptions
+  -> Text
+  -> Prefix
+  -> DisplayNode NutrientValue
+  -> Value
+treeToJSON o@(DisplayOptions u m e uy) n p (DisplayNode v ks us) =
+  object $
+    [ encodeValue v'
     , "name" .= n
-    , "unit" .= Unit p Gram
+    , encodeUnit p'
     , "known" .= mapK ks
-    , "unknown" .= mapU us
     ]
+      ++ ["unknown" .= mapU us | u]
   where
-    mapK = fmap (\(DisplayNutrient n' p', v') -> treeToJSON n' p' v') . M.toList
-    mapU = fmap (\(uts, v') -> object ["value" .= v', "trees" .= uts]) . M.toList
+    (p', v') = unityMaybe uy p v
 
--- TODO add nutrient value stuff later
-fmtDisplayNutrient :: DisplayNutrient -> NutrientValue -> T.Text
-fmtDisplayNutrient (DisplayNutrient n p) (NutrientValue (Sum v) _) =
-  T.concat
-    [ n
-    , ": "
-    , tshow $ raisePower (-(prefixValue p)) v
-    , " "
-    , tunit (Unit p Gram)
-    ]
+    mapK = fmap (\(DisplayNutrient n' p'', v'') -> treeToJSON o n' p'' v'') . M.toList
+
+    mapU = fmap (uncurry goUnk) . M.toList
+
+    goUnk uts v'' =
+      let (p'', v''') = unityMaybe uy (autoPrefix $ getSum $ nvValue v'') v''
+       in object
+            [ encodeValue v'''
+            , encodeUnit p''
+            , "trees" .= uts
+            ]
+
+    encodeValue v'' = if m then "value" .= v'' else "value" .= getSum (nvValue v'')
+    encodeUnit p'' =
+      let u' = Unit p'' Gram
+       in if e then "unit" .= u' else "unit" .= tunit u'
+
+-- | Convert a value and its prefix depending on if we want all values to be
+-- displayed in their native units or all in unity (ie "grams" with no prefix).
+-- Assume the incoming value is in grams
+unityMaybe :: Bool -> Prefix -> NutrientValue -> (Prefix, NutrientValue)
+unityMaybe unity p n@(NutrientValue (Sum v) _) =
+  let (p', v') = unityMaybeSci unity p v
+   in (p', n {nvValue = Sum v'})
+
+unityMaybeSci :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
+unityMaybeSci True _ v = (Unity, v)
+unityMaybeSci False p v = (p, raisePower (-prefixValue p) v)
 
 nodesToRows :: DaySpan -> FinalFood -> [DisplayRow]
 nodesToRows (start, end) (FinalFood_ (DisplayNode v ks us) e) =

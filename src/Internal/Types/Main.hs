@@ -69,7 +69,9 @@ data DateIntervalOptions = DateIntervalOptions
 
 data DisplayOptions = DisplayOptions
   { doUnknowns :: !Bool
-  , doIndent :: !Int
+  , doMembers :: !Bool
+  , doExpandedUnits :: !Bool
+  , doUnityUnits :: !Bool
   }
 
 type DaySpan = (Day, Int)

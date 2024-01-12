@@ -177,13 +177,20 @@ displayOptions =
           <> short 'u'
           <> help "display unknown nutrients in output"
       )
-    <*> option
-      auto
-      ( long "indent"
-          <> short 'i'
-          <> metavar "INDENT"
-          <> help "indent level for output"
-          <> value 2
+    <*> switch
+      ( long "members"
+          <> short 'm'
+          <> help "display members that are included with each value"
+      )
+    <*> switch
+      ( long "expandUnits"
+          <> short 'e'
+          <> help "show prefix and base unit as separate keys (JSON only)"
+      )
+    <*> switch
+      ( long "unityUnits"
+          <> short 'y'
+          <> help "show all masses in grams (no prefix)"
       )
 
 startDay :: Parser (Maybe Day)
@@ -294,7 +301,7 @@ runSummarize
     ts <- mapM (go False) ds
     let out =
           if soJSON
-            then BL.putStr . A.encode . fmap (uncurry finalToJSON)
+            then BL.putStr . A.encode . fmap (uncurry (finalToJSON soDisplay))
             else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
     maybe (return ()) (liftIO . out) $ N.nonEmpty $ catMaybes (t : ts)
 
