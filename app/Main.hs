@@ -168,6 +168,14 @@ dateInterval =
               <> help "length of time (in days) to aggregate summary"
           )
       )
+    <*> option
+      auto
+      ( long "normalize"
+          <> short 'N'
+          <> metavar "NORMALIZE"
+          <> help "normalize all values to this (for instance to put week-long schedule on per/day basis)"
+          <> value 1
+      )
 
 displayOptions :: Parser DisplayOptions
 displayOptions =
@@ -279,8 +287,9 @@ runExport co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   let readgo f = readTrees f k ss
   t <- readgo eoForce d0
   ts <- mapM (readgo False) ds
-  maybe (return ()) go $ N.nonEmpty $ catMaybes $ t : ts
+  maybe (return ()) go $ N.nonEmpty $ fmap (second (fmap (`divNV` n))) $ catMaybes $ t : ts
   where
+    n = dioNormalize eoDateInterval
     go =
       liftIO
         . BL.putStr
@@ -303,7 +312,9 @@ runSummarize
           if soJSON
             then BL.putStr . A.encode . fmap (uncurry (finalToJSON soDisplay))
             else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
-    maybe (return ()) (liftIO . out) $ N.nonEmpty $ catMaybes (t : ts)
+    maybe (return ()) (liftIO . out) $ N.nonEmpty $ second (fmap (`divNV` n)) <$> catMaybes (t : ts)
+    where
+      n = dioNormalize soDateInterval
 
 -- TODO this list thingy is pretty dumb
 readTrees

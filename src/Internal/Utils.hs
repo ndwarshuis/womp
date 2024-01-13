@@ -152,3 +152,13 @@ withNonEmpty :: (Eq a, Monoid a) => (a -> b) -> b -> a -> b
 withNonEmpty f d x
   | mempty == x = d
   | otherwise = f x
+
+-- NOTE this won't work for negative denominators
+divSci :: Integral n => Scientific -> n -> Scientific
+divSci n d
+  | n == 0 = 0
+  | otherwise = scientific c1 (base10Exponent n - pd)
+  where
+    c0 = coefficient n
+    c1 = div (c0 * 10 ^ pd) $ fromIntegral d
+    pd = ceiling $ logBase 10 (fromIntegral d :: Double)

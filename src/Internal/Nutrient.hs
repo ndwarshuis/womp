@@ -6,6 +6,7 @@ import Internal.NutrientTree
 import Internal.Nutrients
 import Internal.Types.Dhall
 import Internal.Types.Main
+import Internal.Utils
 import RIO
 import RIO.State
 
@@ -79,3 +80,6 @@ computeCalories (CalorieConversion ff pf cf _) dn =
 
 scaleNV :: Num a => a -> NutrientValue_ (Sum a) -> NutrientValue_ (Sum a)
 scaleNV x = fmap (fmap (* x))
+
+divNV :: Integral n => NutrientValue -> n -> NutrientValue
+divNV n d = fmap (fmap (`divSci` d)) n

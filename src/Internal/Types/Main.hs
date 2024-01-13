@@ -65,6 +65,7 @@ data DateIntervalOptions = DateIntervalOptions
   , dioEnd :: Maybe Day
   , dioDays :: Int
   , dioInterval :: Maybe Int
+  , dioNormalize :: Int
   }
 
 data DisplayOptions = DisplayOptions

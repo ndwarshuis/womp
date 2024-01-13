@@ -549,7 +549,7 @@ fmtFullTree o (start, end) (FinalFood_ m (NutrientValue (Sum v) _)) =
 fmtTree :: DisplayOptions -> DisplayNode NutrientValue -> T.Text
 fmtTree o@(DisplayOptions u _ _ uy) (DisplayNode v ks us) = T.unlines (header : rest)
   where
-    header = T.append "Total mass: " (tshow $ getSum $ nvValue v)
+    header = T.unwords ["Total mass:", tshow $ getSum $ nvValue v, "g"]
     rest = go ks us
     go ks' us' =
       withMap fmtKnown ks' ++ if u then withMap fmtUnknown us' else fmtUnknownTotal us'
