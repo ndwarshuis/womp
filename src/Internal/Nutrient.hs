@@ -23,56 +23,30 @@ ingredientToTree ms mass f =
     scale = mass / 100
 
 modifyItem :: Modification -> FoodItem -> FoodItem
-modifyItem m i = case i of
-  Foundation f@FoundationFoodItem {ffiCommon} ->
-    Foundation $ f {ffiCommon = go ffiCommon}
-  SRLegacy f@SRLegacyFoodItem {srlCommon} ->
-    SRLegacy $ f {srlCommon = go srlCommon}
-  where
-    go c0@FoundationLegacyCommon {flcCommon = c1@FoodCommon {fcFoodNutrients}} =
-      c0 {flcCommon = c1 {fcFoodNutrients = modifyNutrient m <$> fcFoodNutrients}}
+modifyItem m f@FoodItem {fiFoodNutrients = ns} =
+  f {fiFoodNutrients = modifyNutrient m <$> ns}
 
 modifyNutrient :: Modification -> FoodNutrient -> FoodNutrient
 modifyNutrient
   Modification {modNutID, modScale}
-  f@FoodNutrient {fnId, fnAmount}
-    | Just (fromIntegral modNutID) == fnId =
+  f@FoodNutrient {fnAmount}
+    | Just modNutID == undefined =
         f {fnAmount = (* fromFloatDigits modScale) <$> fnAmount}
     | otherwise = f
 
--- TODO add branched (which will required forcing the data for the label into
--- a list of food nutrients)
 foodItemToTree :: MealState m => FoodItem -> m FinalFood
-foodItemToTree (Foundation f) = foundationToTree f
-foodItemToTree (SRLegacy f) = legacyToTree f
-
-legacyToTree :: MealState m => SRLegacyFoodItem -> m FinalFood
-legacyToTree SRLegacyFoodItem {srlMeta, srlCommon} =
-  legFoundToTree srlMeta srlCommon
-
-foundationToTree :: MealState m => FoundationFoodItem -> m FinalFood
-foundationToTree FoundationFoodItem {ffiMeta, ffiCommon} =
-  legFoundToTree ffiMeta ffiCommon
-
-legFoundToTree
-  :: MealState m
-  => FoodRequiredMeta
-  -> FoundationLegacyCommon
-  -> m FinalFood
-legFoundToTree fm flc = do
-  (t, stFin) <- runStateT (displayTree $ pcFactor pConv) st
+foodItemToTree (FoodItem i d ns cc pc) = do
+  (t, stFin) <- runStateT (displayTree $ pcFactor pc) st
   modify (fsWarnings stFin ++)
-  let f = FinalFood_ t $ computeCalories cConv t
+  let f = FinalFood_ t $ computeCalories cc t
   return $ fmap (\v -> NutrientValue (Sum v) $ pure rd) f
   where
-    rd = FoodMeta (frmDescription fm) (frmId fm)
-    st = FoodState (fcFoodNutrients $ flcCommon flc) []
-    pConv = flcProteinConversion flc
-    cConv = flcCalorieConversion flc
+    rd = FoodMeta d i
+    st = FoodState ns []
 
 -- TODO dummy value for protein smells funny
 computeCalories :: CalorieConversion -> DisplayNode Scientific -> Scientific
-computeCalories (CalorieConversion ff pf cf _) dn =
+computeCalories (CalorieConversion ff pf cf) dn =
   ff * go (measToDisplay lipid)
     + pf * go (measToDisplay (protein 0))
     + cf * go (summedToDisplay carbDiff)
