@@ -2,13 +2,14 @@ module Main (main) where
 
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
-import Data.Char (ord, toUpper)
+import Data.Char (ord)
 import qualified Data.Csv as C
 import Data.Scientific
 import Data.Semigroup (sconcat)
 import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
 import qualified Dhall as D
+import Internal.CLI
 import Internal.Nutrient
 import Internal.NutrientTree
 import Internal.Types.Dhall
@@ -28,197 +29,10 @@ import UnliftIO.Concurrent
 import UnliftIO.Directory
 
 main :: IO ()
-main = parse =<< execParser o
-  where
-    o =
-      info
-        (options <**> helper)
-        ( fullDesc
-            <> header "womp: what's on my plate"
-            <> progDesc "plan and track your macro/micronutrients"
-        )
+main = run =<< parseCLI
 
-options :: Parser Options
-options = Options <$> commonOptions <*> subcommand
-
-commonOptions :: Parser CommonOptions
-commonOptions =
-  CommonOptions
-    <$> optional
-      ( strOption
-          ( long "apikey"
-              <> short 'k'
-              <> metavar "APIKEY"
-              <> help "API key for USDA FoodData Central"
-          )
-      )
-    <*> switch
-      ( long "verbose"
-          <> short 'v'
-          <> help "be obnoxious"
-      )
-
-subcommand :: Parser SubCommand
-subcommand =
-  subparser
-    ( command
-        "fetch"
-        ( info
-            (Fetch <$> fetchDump)
-            (progDesc "fetch a food by ID")
-        )
-        <> command
-          "dump"
-          ( info
-              (Dump <$> fetchDump)
-              (progDesc "dump JSON for food by ID")
-          )
-        <> command
-          "export"
-          ( info
-              (Export <$> export)
-              (progDesc "export data for aggregated meal(s) in tabular form")
-          )
-        <> command
-          "summarize"
-          ( info
-              (Summarize <$> summarize)
-              (progDesc "summarize nutrients for a given time period")
-          )
-    )
-
-fetchDump :: Parser FetchDumpOptions
-fetchDump =
-  FetchDumpOptions
-    <$> option
-      auto
-      ( long "fid"
-          <> short 'i'
-          <> metavar "FOODID"
-          <> help "ID for the food to pull from the database"
-      )
-    <*> force
-
-export :: Parser ExportOptions
-export =
-  ExportOptions
-    <$> strOption
-      ( long "config"
-          <> short 'c'
-          <> metavar "CONFIG"
-          <> help "path to config with schedules and meals"
-      )
-    <*> dateInterval
-    <*> force
-    <*> option
-      auto
-      ( long "threads"
-          <> short 't'
-          <> metavar "THREADS"
-          <> help "number of threads for processing ingredients"
-          <> value 2
-      )
-
-summarize :: Parser SummarizeOptions
-summarize =
-  SummarizeOptions
-    <$> displayOptions
-    <*> switch
-      ( long "json"
-          <> short 'j'
-          <> help "summarize output in JSON (display options are ignored)"
-      )
-    <*> export
-
-force :: Parser Bool
-force = switch (long "force" <> short 'f' <> help "force retrieve")
-
-dateInterval :: Parser DateIntervalOptions
-dateInterval =
-  DateIntervalOptions
-    <$> startDay
-    <*> endDay
-    <*> option
-      auto
-      ( long "days"
-          <> short 'd'
-          <> metavar "DAYS"
-          <> help "length of interval in days within which summary will be calculated (ignored if END is present)"
-          <> value 7
-      )
-    <*> optional
-      ( option
-          auto
-          ( long "interval"
-              <> short 'I'
-              <> metavar "INTERVAL"
-              <> help "length of time (in days) to aggregate summary"
-          )
-      )
-    <*> option
-      auto
-      ( long "normalize"
-          <> short 'N'
-          <> metavar "NORMALIZE"
-          <> help "normalize all values to this (for instance to put week-long schedule on per/day basis)"
-          <> value 1
-      )
-
-displayOptions :: Parser DisplayOptions
-displayOptions =
-  DisplayOptions
-    <$> switch
-      ( long "unknowns"
-          <> short 'u'
-          <> help "display unknown nutrients in output"
-      )
-    <*> switch
-      ( long "members"
-          <> short 'm'
-          <> help "display members that are included with each value"
-      )
-    <*> switch
-      ( long "expandUnits"
-          <> short 'x'
-          <> help "show prefix and base unit as separate keys (JSON only)"
-      )
-    <*> switch
-      ( long "unityUnits"
-          <> short 'U'
-          <> help "show all masses in grams (no prefix)"
-      )
-
-startDay :: Parser (Maybe Day)
-startDay =
-  parseDay
-    "start"
-    's'
-    "start date on which to begin summary calculations"
-
-endDay :: Parser (Maybe Day)
-endDay =
-  parseDay
-    "end"
-    'e'
-    "end date on which to stop summary calculations (exclusive)"
-
-parseDay :: String -> Char -> String -> Parser (Maybe Day)
-parseDay l s d =
-  fmap readDay
-    <$> optional
-      ( strOption
-          ( long l
-              <> short s
-              <> metavar (fmap toUpper l)
-              <> help d
-          )
-      )
-
-readDay :: String -> Day
-readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
-
-parse :: MonadUnliftIO m => Options -> m ()
-parse (Options c@CommonOptions {coVerbosity} s) = do
+run :: MonadUnliftIO m => Options -> m ()
+run (Options c@CommonOptions {coVerbosity} s) = do
   logOpts <-
     setLogVerboseFormat True
       . setLogUseTime False
@@ -238,15 +52,15 @@ parse (Options c@CommonOptions {coVerbosity} s) = do
 
 runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} =
-  void . runFetch_ foForce foID =<< getStoreAPIKey coKey
+  void . fetchFID foForce foID =<< getStoreAPIKey coKey
 
-runFetch_
+fetchFID
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => Bool
   -> FID
   -> APIKey
   -> m Text
-runFetch_ frc i k = do
+fetchFID frc i k = do
   e <- fidExists i
   if frc then go else if e then readFID i else go
   where
@@ -279,7 +93,7 @@ readFID i = readFileUtf8 =<< fidPath i
 runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   k <- getStoreAPIKey coKey
-  j <- runFetch_ foForce foID k
+  j <- fetchFID foForce foID k
   liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
@@ -310,52 +124,16 @@ readTrees co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   setNumCapabilities eoThreads
   k <- getStoreAPIKey $ coKey co
   ds <- dateIntervalToDaySpan eoDateInterval
-  ss <- readMealPlan eoMealPath
-  fs <- something eoForce k ss ds
-  -- TODO don't normalize here
-  return $ fmap (\(SpanFood f s) -> SpanFood (fmap (`divNV` n) f) s) fs
+  ss <- fmap go <$> readMealPlan eoMealPath
+  something eoForce k ss ds
   where
     n = dioNormalize eoDateInterval
-
--- readTrees_
---   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
---   => Bool
---   -> APIKey
---   -> NonEmpty (ValidSchedule (Cron, Scientific))
---   -> DaySpan
---   -> m (Maybe (DaySpan, FinalFood))
--- readTrees_ frc k (s :| ss) ds = do
---   -- NOTE only force the first call if needed
---   init <- scheduleToTree frc k ds s
---   ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc k ds) init ss
---   return $ (ds,) <$> ts
-
--- -- TODO show debug info for start/end dates and such
--- scheduleToTree
---   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
---   => Bool
---   -> APIKey
---   -> DaySpan
---   -> ValidSchedule (Cron, Scientific)
---   -> m (Maybe FinalFood)
--- scheduleToTree frc k ds ValidSchedule {vsIngs, vsMeta = (w, s)} = do
---   let days = expandCronPat ds w
---   case days of
---     [] -> return Nothing
---     _ -> do
---       (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc k) vsIngs
---       let scale = fromIntegral (length days) * s
---       return $ Just $ scaleNV scale <$> foldr (<>) r rs
-
--- type ExpandedSchedule = NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific))
+    go (ValidSchedule x (d, s)) = ValidSchedule x (d, divSci s n)
 
 groupByTup :: Eq a => NonEmpty (a, b) -> NonEmpty (a, NonEmpty b)
 groupByTup =
   fmap (\xs -> (fst $ N.head xs, snd <$> xs))
     . N.groupWith1 fst
-
--- invertNonEmpty :: (Eq b) => NonEmpty (a, NonEmpty b) -> NonEmpty (b, NonEmpty a)
--- invertNonEmpty = groupByTup . fmap (\(x, y) -> (y, x)) . flattenNonEmpty
 
 flattenNonEmpty :: NonEmpty (a, NonEmpty b) -> NonEmpty (a, b)
 flattenNonEmpty = sconcat . fmap (\(x, ys) -> (x,) <$> ys)
@@ -374,7 +152,7 @@ something frc k vs ds = do
   return $ expandFood fs
   where
     getJSON fid = do
-      j <- runFetch_ frc fid k
+      j <- fetchFID frc fid k
       case A.eitherDecodeStrict $ encodeUtf8 j of
         Right r -> return (fid, r)
         Left e -> throwAppErrorIO $ JSONError $ BC.pack e
@@ -430,23 +208,6 @@ expandFood =
     . groupByTup
     . fmap (\(f, (d, s)) -> (d, fmap (scaleNV s) f))
     . flattenNonEmpty
-
--- scheduleToIngredients :: ExpandedSchedule -> NonEmpty Ingredient
--- scheduleToIngredients = N.nub . sconcat . fmap vsIngs . sconcat . fmap snd
-
--- -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
--- ingredientToTable
---   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
---   => Bool
---   -> APIKey
---   -> Ingredient
---   -> m FinalFood
--- ingredientToTable frc k Ingredient {ingFID, ingMass, ingModifications} = do
---   let fid = FID $ fromIntegral ingFID
---   j <- runFetch_ frc fid k
---   case A.eitherDecodeStrict $ encodeUtf8 j of
---     Right r -> runMealState fid ingModifications ingMass r
---     Left e -> throwAppErrorIO $ JSONError $ BC.pack e
 
 runMealState
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)

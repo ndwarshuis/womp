@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Internal.CLI
       Internal.Nutrient
       Internal.Nutrients
       Internal.NutrientTree
