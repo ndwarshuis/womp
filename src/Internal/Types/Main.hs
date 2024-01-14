@@ -13,6 +13,7 @@ import Data.Monoid
 import Data.Monoid.Generic
 import Data.Scientific
 import GHC.Generics
+import Internal.Types.Dhall
 import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
@@ -29,7 +30,7 @@ data CommonOptions = CommonOptions
   }
 
 newtype FID = FID {unFID :: Int}
-  deriving (Read, Show, FromJSON, ToJSON) via Int
+  deriving (Eq, Read, Show, FromJSON, ToJSON) via Int
 
 newtype NID = NID {unNID :: Int}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Int
@@ -52,12 +53,9 @@ data ExportOptions = ExportOptions
   }
 
 data SummarizeOptions = SummarizeOptions
-  { soMealPath :: !FilePath
-  , soDateInterval :: !DateIntervalOptions
-  , soForce :: !Bool
-  , soDisplay :: !DisplayOptions
+  { soDisplay :: !DisplayOptions
   , soJSON :: !Bool
-  , soThreads :: !Int
+  , soExport :: !ExportOptions
   }
 
 data DateIntervalOptions = DateIntervalOptions
@@ -489,6 +487,11 @@ data FoodAttributeType = FoodAttributeType
 instance FromJSON FoodAttributeType where
   parseJSON = recordParseJSON "fat"
 
+data ValidSchedule a = ValidSchedule
+  { vsIngs :: NonEmpty Ingredient
+  , vsMeta :: a
+  }
+
 stripRecordPrefix :: String -> String -> String
 stripRecordPrefix prefix = maybe [] go . L.stripPrefix prefix
   where
@@ -642,6 +645,12 @@ data UnknownTree = UnknownTree Text [UnknownTree]
 
 instance ToJSON UnknownTree where
   toJSON (UnknownTree n ts) = object ["name" .= n, "children" .= ts]
+
+data SpanFood = SpanFood
+  { sfFinal :: FinalFood_ NutrientValue
+  , sfDaySpan :: DaySpan
+  }
+  deriving (Generic, Show)
 
 data FinalFood_ a = FinalFood_
   { ffMap :: DisplayNode a

@@ -537,8 +537,8 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
-fmtFullTree :: DisplayOptions -> DaySpan -> FinalFood -> T.Text
-fmtFullTree o (start, end) (FinalFood_ m (NutrientValue (Sum v) _)) =
+fmtFullTree :: DisplayOptions -> SpanFood -> T.Text
+fmtFullTree o (SpanFood (FinalFood_ m (NutrientValue (Sum v) _)) (start, end)) =
   T.unlines
     [ T.unwords ["Start:", tshow start]
     , T.unwords ["End:", tshow $ addDays (fromIntegral end) start]
@@ -591,8 +591,8 @@ fmtDisplayNutrient
     where
       (p', v') = unityMaybeSci doUnityUnits p v
 
-finalToJSON :: DisplayOptions -> DaySpan -> FinalFood -> Value
-finalToJSON o (start, end) (FinalFood_ ms c) =
+finalToJSON :: DisplayOptions -> SpanFood -> Value
+finalToJSON o (SpanFood (FinalFood_ ms c) (start, end)) =
   object
     [ "start" .= start
     , "end" .= addDays (fromIntegral end) start
@@ -646,8 +646,8 @@ unityMaybeSci :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
 unityMaybeSci True _ v = (Unity, v)
 unityMaybeSci False p v = (p, raisePower (-prefixValue p) v)
 
-nodesToRows :: DaySpan -> FinalFood -> [DisplayRow]
-nodesToRows (start, end) (FinalFood_ (DisplayNode v ks us) e) =
+nodesToRows :: SpanFood -> [DisplayRow]
+nodesToRows (SpanFood (FinalFood_ (DisplayNode v ks us) e) (start, end)) =
   [energy, totalMass] ++ goK massName ks ++ [goU massName us]
   where
     end' = addDays (fromIntegral end) start

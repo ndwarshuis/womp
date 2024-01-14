@@ -50,16 +50,16 @@ combineErrorM a b f = do
 -- liftExcept :: MonadError e m => Except e a -> m a
 -- liftExcept = either throwM return . runExcept
 
--- mapErrors :: (Traversable t, MonadAppError m) => (a -> m b) -> t a -> m (t b)
--- -- First, record number of each action. Then try each action. On first failure,
--- -- note it's position in the sequence, skip ahead to the untried actions,
--- -- collect failures and add to the first failure.
--- mapErrors f xs = mapM go $ enumTraversable xs
---   where
---     go (n, x) = catchError (f x) $ \e -> do
---       es <- fmap catMaybes $ mapM (err . f) $ drop (n + 1) $ toList xs
---       throwError $ foldr (<>) e es
---     err x = catchError (Nothing <$ x) (pure . Just)
+mapErrors :: (Traversable t, MonadAppError m) => (a -> m b) -> t a -> m (t b)
+-- First, record number of each action. Then try each action. On first failure,
+-- note it's position in the sequence, skip ahead to the untried actions,
+-- collect failures and add to the first failure.
+mapErrors f xs = mapM go $ enumTraversable xs
+  where
+    go (n, x) = catchError (f x) $ \e -> do
+      es <- fmap catMaybes $ mapM (err . f) $ drop (n + 1) $ toList xs
+      throwError $ foldr (<>) e es
+    err x = catchError (Nothing <$ x) (pure . Just)
 
 enumTraversable :: (Num n, Traversable t) => t a -> t (n, a)
 enumTraversable = snd . L.mapAccumL go 0

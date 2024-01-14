@@ -2,7 +2,7 @@ module Main (main) where
 
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Char8 as BC
-import Data.Char (ord)
+import Data.Char (ord, toUpper)
 import qualified Data.Csv as C
 import Data.Scientific
 import Data.Semigroup (sconcat)
@@ -99,7 +99,6 @@ fetchDump =
       )
     <*> force
 
--- TODO not dry
 export :: Parser ExportOptions
 export =
   ExportOptions
@@ -111,37 +110,25 @@ export =
       )
     <*> dateInterval
     <*> force
-    <*> threads
-
-threads :: Parser Int
-threads =
-  option
-    auto
-    ( long "threads"
-        <> short 't'
-        <> metavar "THREADS"
-        <> help "number of threads for processing ingredients"
-        <> value 2
-    )
+    <*> option
+      auto
+      ( long "threads"
+          <> short 't'
+          <> metavar "THREADS"
+          <> help "number of threads for processing ingredients"
+          <> value 2
+      )
 
 summarize :: Parser SummarizeOptions
 summarize =
   SummarizeOptions
-    <$> strOption
-      ( long "config"
-          <> short 'c'
-          <> metavar "CONFIG"
-          <> help "path to config with schedules and meals"
-      )
-    <*> dateInterval
-    <*> force
-    <*> displayOptions
+    <$> displayOptions
     <*> switch
       ( long "json"
           <> short 'j'
           <> help "summarize output in JSON (display options are ignored)"
       )
-    <*> threads
+    <*> export
 
 force :: Parser Bool
 force = switch (long "force" <> short 'f' <> help "force retrieve")
@@ -192,38 +179,43 @@ displayOptions =
       )
     <*> switch
       ( long "expandUnits"
-          <> short 'e'
+          <> short 'x'
           <> help "show prefix and base unit as separate keys (JSON only)"
       )
     <*> switch
       ( long "unityUnits"
-          <> short 'y'
+          <> short 'U'
           <> help "show all masses in grams (no prefix)"
       )
 
 startDay :: Parser (Maybe Day)
 startDay =
-  fmap readDay
-    <$> optional
-      ( strOption
-          ( long "start"
-              <> short 's'
-              <> metavar "START"
-              <> help "start date on which to begin summary calculations"
-          )
-      )
+  parseDay
+    "start"
+    's'
+    "start date on which to begin summary calculations"
 
 endDay :: Parser (Maybe Day)
 endDay =
+  parseDay
+    "end"
+    'e'
+    "end date on which to stop summary calculations (exclusive)"
+
+parseDay :: String -> Char -> String -> Parser (Maybe Day)
+parseDay l s d =
   fmap readDay
     <$> optional
       ( strOption
-          ( long "end"
-              <> short 'e'
-              <> metavar "END"
-              <> help "end date on which to stop summary calculations (exclusive)"
+          ( long l
+              <> short s
+              <> metavar (fmap toUpper l)
+              <> help d
           )
       )
+
+readDay :: String -> Day
+readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
 
 parse :: MonadUnliftIO m => Options -> m ()
 parse (Options c@CommonOptions {coVerbosity} s) = do
@@ -244,9 +236,6 @@ parse (Options c@CommonOptions {coVerbosity} s) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
       exitFailure
 
-readDay :: String -> Day
-readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
-
 runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} =
   void . runFetch_ foForce foID =<< getStoreAPIKey coKey
@@ -258,18 +247,34 @@ runFetch_
   -> APIKey
   -> m Text
 runFetch_ frc i k = do
-  f <- cacheDir
-  let p = f </> (show i ++ ".json")
-  if frc
-    then go p
-    else do
-      e <- doesFileExist p
-      if e then readFileUtf8 p else go p
+  e <- fidExists i
+  if frc then go else if e then readFID i else go
   where
-    go p = do
-      j <- getFoodJSON k i
-      createWriteFile p j
-      return j
+    go = downloadFID k i
+
+fidPath :: MonadUnliftIO m => FID -> m FilePath
+fidPath i = do
+  d <- cacheDir
+  return $ d </> (show i ++ ".json")
+
+fidExists :: MonadUnliftIO m => FID -> m Bool
+fidExists i = doesFileExist =<< fidPath i
+
+downloadFID
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => APIKey
+  -> FID
+  -> m Text
+downloadFID k i = do
+  p <- fidPath i
+  j <- getFoodJSON k i
+  createWriteFile p j
+  return j
+
+-- | Read FID JSON file
+-- ASSUME it has already been downloaded or this will error
+readFID :: MonadUnliftIO m => FID -> m Text
+readFID i = readFileUtf8 =<< fidPath i
 
 runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
@@ -278,95 +283,176 @@ runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   liftIO $ TI.putStr j
 
 runExport :: CommonOptions -> ExportOptions -> RIO SimpleApp ()
-runExport co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
-  setNumCapabilities eoThreads
-  -- TODO not DRY
-  k <- getStoreAPIKey $ coKey co
-  (d0 :| ds) <- dateIntervalToDaySpan eoDateInterval
-  ss <- readMealPlan eoMealPath
-  let readgo f = readTrees f k ss
-  t <- readgo eoForce d0
-  ts <- mapM (readgo False) ds
-  maybe (return ()) go $ N.nonEmpty $ fmap (second (fmap (`divNV` n))) $ catMaybes $ t : ts
+runExport co xo = go =<< readTrees co xo
   where
-    n = dioNormalize eoDateInterval
     go =
       liftIO
         . BL.putStr
         . C.encodeDefaultOrderedByNameWith tsvOptions
         . sconcat
-        . fmap (uncurry nodesToRows)
+        . fmap nodesToRows
 
 runSummarize :: CommonOptions -> SummarizeOptions -> RIO SimpleApp ()
-runSummarize
-  co
-  SummarizeOptions {soForce, soMealPath, soDateInterval, soDisplay, soJSON, soThreads} = do
-    setNumCapabilities soThreads
-    k <- getStoreAPIKey $ coKey co
-    (d0 :| ds) <- dateIntervalToDaySpan soDateInterval
-    ss <- readMealPlan soMealPath
-    let go f = readTrees f k ss
-    t <- go soForce d0
-    ts <- mapM (go False) ds
-    let out =
-          if soJSON
-            then BL.putStr . A.encode . fmap (uncurry (finalToJSON soDisplay))
-            else TI.putStr . sconcat . fmap (uncurry (fmtFullTree soDisplay))
-    maybe (return ()) (liftIO . out) $ N.nonEmpty $ second (fmap (`divNV` n)) <$> catMaybes (t : ts)
-    where
-      n = dioNormalize soDateInterval
+runSummarize co (SummarizeOptions d j xo) = do
+  liftIO . go =<< readTrees co xo
+  where
+    go =
+      if j
+        then BL.putStr . A.encode . fmap (finalToJSON d)
+        else TI.putStr . sconcat . fmap (fmtFullTree d)
 
--- TODO this list thingy is pretty dumb
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => Bool
-  -> APIKey
-  -> [Schedule]
-  -> DaySpan
-  -> m (Maybe (DaySpan, FinalFood))
-readTrees frc k ss ds = case ss of
-  (x : xs) -> do
-    -- NOTE only force the first call if needed
-    init <- scheduleToTree frc k ds x
-    ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc k ds) init xs
-    return $ Just (ds, ts)
-  [] -> return Nothing
+  => CommonOptions
+  -> ExportOptions
+  -> m (NonEmpty SpanFood)
+readTrees co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
+  setNumCapabilities eoThreads
+  k <- getStoreAPIKey $ coKey co
+  ds <- dateIntervalToDaySpan eoDateInterval
+  ss <- readMealPlan eoMealPath
+  fs <- something eoForce k ss ds
+  -- TODO don't normalize here
+  return $ fmap (\(SpanFood f s) -> SpanFood (fmap (`divNV` n) f) s) fs
+  where
+    n = dioNormalize eoDateInterval
 
--- TODO show debug info for start/end dates and such
-scheduleToTree
+-- readTrees_
+--   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+--   => Bool
+--   -> APIKey
+--   -> NonEmpty (ValidSchedule (Cron, Scientific))
+--   -> DaySpan
+--   -> m (Maybe (DaySpan, FinalFood))
+-- readTrees_ frc k (s :| ss) ds = do
+--   -- NOTE only force the first call if needed
+--   init <- scheduleToTree frc k ds s
+--   ts <- foldM (\acc -> fmap (<> acc) . scheduleToTree frc k ds) init ss
+--   return $ (ds,) <$> ts
+
+-- -- TODO show debug info for start/end dates and such
+-- scheduleToTree
+--   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+--   => Bool
+--   -> APIKey
+--   -> DaySpan
+--   -> ValidSchedule (Cron, Scientific)
+--   -> m (Maybe FinalFood)
+-- scheduleToTree frc k ds ValidSchedule {vsIngs, vsMeta = (w, s)} = do
+--   let days = expandCronPat ds w
+--   case days of
+--     [] -> return Nothing
+--     _ -> do
+--       (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc k) vsIngs
+--       let scale = fromIntegral (length days) * s
+--       return $ Just $ scaleNV scale <$> foldr (<>) r rs
+
+-- type ExpandedSchedule = NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific))
+
+groupByTup :: Eq a => NonEmpty (a, b) -> NonEmpty (a, NonEmpty b)
+groupByTup =
+  fmap (\xs -> (fst $ N.head xs, snd <$> xs))
+    . N.groupWith1 fst
+
+-- invertNonEmpty :: (Eq b) => NonEmpty (a, NonEmpty b) -> NonEmpty (b, NonEmpty a)
+-- invertNonEmpty = groupByTup . fmap (\(x, y) -> (y, x)) . flattenNonEmpty
+
+flattenNonEmpty :: NonEmpty (a, NonEmpty b) -> NonEmpty (a, b)
+flattenNonEmpty = sconcat . fmap (\(x, ys) -> (x,) <$> ys)
+
+something
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => Bool
   -> APIKey
-  -> DaySpan
-  -> Schedule
-  -> m FinalFood
-scheduleToTree frc k ds Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
-  days <- fromEither $ expandCronPat ds schWhen
-  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  (r :| rs) <- mapPooledErrorsIO (ingredientToTable frc k mlName) is
-  let scale = fromFloatDigits $ fromIntegral (length days) * fromMaybe 1.0 schScale
-  return $ fmap (fmap (* scale)) <$> foldr (<>) r rs
+  -> NonEmpty (ValidSchedule (Cron, Scientific))
+  -> NonEmpty DaySpan
+  -> m (NonEmpty SpanFood)
+something frc k vs ds = do
+  xs <- expandScheduleIO vs ds
+  js <- mapPooledErrorsIO (\(x, y) -> (,y) <$> getJSON x) $ expandIngredients xs
+  fs <- mapM (uncurry jsonToFood) $ flattenNonEmpty js
+  return $ expandFood fs
+  where
+    getJSON fid = do
+      j <- runFetch_ frc fid k
+      case A.eitherDecodeStrict $ encodeUtf8 j of
+        Right r -> return (fid, r)
+        Left e -> throwAppErrorIO $ JSONError $ BC.pack e
+    jsonToFood (fid, r) ((m, ms), rest) = do
+      f <- runMealState fid ms m r
+      return (f, rest)
 
--- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
-ingredientToTable
+expandSchedule
+  :: NonEmpty (ValidSchedule (Cron, Scientific))
+  -> NonEmpty DaySpan
+  -> [(DaySpan, NonEmpty (ValidSchedule Scientific))]
+expandSchedule vs = mapMaybe go . toList
+  where
+    go ds = fmap (ds,) $ N.nonEmpty $ mapMaybe (go' ds) $ toList vs
+    go' ds v@ValidSchedule {vsMeta = (w, s)} =
+      fmap ((\s' -> v {vsMeta = s'}) . (* s) . fromIntegral . length) $
+        N.nonEmpty $
+          expandCronPat ds w
+
+expandScheduleIO
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => Bool
-  -> APIKey
-  -> Text
-  -> Ingredient
-  -> m FinalFood
-ingredientToTable frc k _ Ingredient {ingFID, ingMass, ingModifications} = do
-  let fid = FID $ fromIntegral ingFID
-  j <- runFetch_ frc fid k
-  case A.eitherDecodeStrict $ encodeUtf8 j of
-    Right r -> runMealState fid ingModifications ingMass r
-    Left e -> throwAppErrorIO $ JSONError $ BC.pack e
+  => NonEmpty (ValidSchedule (Cron, Scientific))
+  -> NonEmpty DaySpan
+  -> m (NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific)))
+expandScheduleIO vs ds =
+  maybe go return $ N.nonEmpty $ expandSchedule vs ds
+  where
+    go = do
+      logError "Schedule does not intersect with desired date range"
+      exitFailure
+
+type IngMeta = (Scientific, [Modification])
+
+expandIngredients
+  :: NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific))
+  -> NonEmpty (FID, NonEmpty (IngMeta, NonEmpty (DaySpan, Scientific)))
+expandIngredients =
+  fmap (second groupByTup)
+    . groupByTup
+    . fmap (\(d, (s, (f, fm))) -> (f, (fm, (d, s))))
+    . flattenNonEmpty
+    . fmap (second (flattenNonEmpty . fmap go))
+  where
+    go ValidSchedule {vsIngs, vsMeta} = (vsMeta, go' <$> vsIngs)
+    go' Ingredient {ingMass = m, ingModifications = ms, ingFID = f} =
+      (FID $ fromIntegral f, (fromFloatDigits m, ms))
+
+expandFood
+  :: NonEmpty (FinalFood, NonEmpty (DaySpan, Scientific))
+  -> NonEmpty SpanFood
+expandFood =
+  fmap (\(d, fs) -> SpanFood (sconcat fs) d)
+    . groupByTup
+    . fmap (\(f, (d, s)) -> (d, fmap (scaleNV s) f))
+    . flattenNonEmpty
+
+-- scheduleToIngredients :: ExpandedSchedule -> NonEmpty Ingredient
+-- scheduleToIngredients = N.nub . sconcat . fmap vsIngs . sconcat . fmap snd
+
+-- -- TODO warn user if they attempt to get an experimentalal food (which is basically just an abstract)
+-- ingredientToTable
+--   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+--   => Bool
+--   -> APIKey
+--   -> Ingredient
+--   -> m FinalFood
+-- ingredientToTable frc k Ingredient {ingFID, ingMass, ingModifications} = do
+--   let fid = FID $ fromIntegral ingFID
+--   j <- runFetch_ frc fid k
+--   case A.eitherDecodeStrict $ encodeUtf8 j of
+--     Right r -> runMealState fid ingModifications ingMass r
+--     Left e -> throwAppErrorIO $ JSONError $ BC.pack e
 
 runMealState
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => FID
   -> [Modification]
-  -> Double
+  -> Scientific
   -> FoodItem
   -> m FinalFood
 runMealState i ms mass item = do
@@ -465,20 +551,31 @@ createWriteFile p t = do
 readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => FilePath
-  -> m [Schedule]
+  -> m (NonEmpty (ValidSchedule (Cron, Scientific)))
 readMealPlan f = do
   logDebug $
     displayBytesUtf8 $
       encodeUtf8 $
         T.append "reading schedule at path: " $
           T.pack f
-  liftIO $
-    if isDhall f
-      then D.inputFile D.auto f
-      else
-        if isYaml f
-          then Y.decodeFileThrow f
-          else throwAppErrorIO $ FileTypeError f
+  ss <-
+    liftIO $
+      if isDhall f
+        then D.inputFile D.auto f
+        else
+          if isYaml f
+            then Y.decodeFileThrow f
+            else throwAppErrorIO $ FileTypeError f
+  vs <- mapM checkSched ss
+  maybe (logError "meal plan is empty" >> exitFailure) return $ N.nonEmpty vs
+
+checkSched :: MonadUnliftIO m => Schedule -> m (ValidSchedule (Cron, Scientific))
+checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
+  fromEither $ checkCronPat schWhen
+  return $ ValidSchedule is (schWhen, s)
+  where
+    s = fromFloatDigits $ fromMaybe 1.0 schScale
 
 isDhall :: FilePath -> Bool
 isDhall = isExtensionOf "dhall"
@@ -493,28 +590,28 @@ tsvOptions =
     , C.encIncludeHeader = True
     }
 
-expandCronPat :: MonadAppError m => DaySpan -> Cron -> m [Day]
+expandCronPat :: DaySpan -> Cron -> [Day]
 expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =
-  combineError3 yRes mRes dRes $ \ys ms ds ->
-    filter validWeekday $
-      mapMaybe (uncurry3 toDay) $
-        takeWhile (\((y, _), m, d) -> (y, m, d) <= (yb1, mb1, db1)) $
-          dropWhile (\((y, _), m, d) -> (y, m, d) < (yb0, mb0, db0)) $
-            [(y, m, d) | y <- (\y -> (y, isLeapYear y)) <$> ys, m <- ms, d <- ds]
+  filter validWeekday $
+    mapMaybe (uncurry3 toDay) $
+      takeWhile (\((y, _), m, d) -> (y, m, d) <= (yb1, mb1, db1)) $
+        dropWhile (\((y, _), m, d) -> (y, m, d) < (yb0, mb0, db0)) $
+          [(y, m, d) | y <- (\y -> (y, isLeapYear y)) <$> ys, m <- ms, d <- ds]
   where
-    yRes = case cronYear of
-      Nothing -> return [yb0 .. yb1]
-      Just pat -> do
-        ys <- expandMDYPat (fromIntegral yb0) (fromIntegral yb1) pat
-        return $ dropWhile (< yb0) $ fromIntegral <$> ys
-    mRes = expandMD 12 cronMonth
-    dRes = expandMD 31 cronDay
+    ys = case cronYear of
+      Nothing -> [yb0 .. yb1]
+      Just pat ->
+        dropWhile (< yb0) $
+          fromIntegral
+            <$> expandMDYPat (fromIntegral yb0) (fromIntegral yb1) pat
+    ms = expandMD 12 cronMonth
+    ds = expandMD 31 cronDay
     (s, e) = fromDaySpan b
     (yb0, mb0, db0) = toGregorian s
     (yb1, mb1, db1) = toGregorian $ addDays (-1) e
     expandMD lim =
-      fmap (fromIntegral <$>)
-        . maybe (return [1 .. lim]) (expandMDYPat 1 lim)
+      (fromIntegral <$>)
+        . maybe [1 .. lim] (expandMDYPat 1 lim)
     expandW (OnDay x) = [fromEnum x]
     expandW (OnDays xs) = fromEnum <$> xs
     ws = maybe [] expandW cronWeekly
@@ -527,25 +624,31 @@ expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =
 uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 uncurry3 f (x, y, z) = f x y z
 
-expandMDYPat :: MonadAppError m => Natural -> Natural -> MDYPat -> m [Natural]
-expandMDYPat lower upper (Single x) = return [x | lower <= x && x <= upper]
-expandMDYPat lower upper (Multi xs) = return $ dropWhile (<= lower) $ takeWhile (<= upper) xs
-expandMDYPat lower upper (After x) = return [max lower x .. upper]
-expandMDYPat lower upper (Before x) = return [lower .. min upper x]
+-- ASSUME that the repeat pattern is valid
+expandMDYPat :: Natural -> Natural -> MDYPat -> [Natural]
+expandMDYPat lower upper (Single x) = [x | lower <= x && x <= upper]
+expandMDYPat lower upper (Multi xs) = dropWhile (<= lower) $ takeWhile (<= upper) xs
+expandMDYPat lower upper (After x) = [max lower x .. upper]
+expandMDYPat lower upper (Before x) = [lower .. min upper x]
 expandMDYPat lower upper (Between (Btw btStart btEnd)) =
-  return [max lower btStart .. min upper btEnd]
-expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r})
-  | b < 1 = throwAppError $ DatePatternError s b r ZeroLength
-  | otherwise = do
-      k <- limit r
-      return $ dropWhile (<= lower) $ takeWhile (<= k) [s + i * b | i <- [0 ..]]
+  [max lower btStart .. min upper btEnd]
+expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}) =
+  -- ASSUME b and (Just r) > 0
+  let k = maybe upper (\n -> min (s + b * (n - 1)) upper) r
+   in dropWhile (<= lower) $ takeWhile (<= k) [s + i * b | i <- [0 ..]]
+
+checkCronPat :: MonadAppError m => Cron -> m ()
+checkCronPat Cron {cronYear, cronMonth, cronDay} =
+  mapM_ (mapM go) [cronYear, cronMonth, cronDay]
   where
-    limit Nothing = return upper
-    limit (Just n)
-      -- this guard not only produces the error for the user but also protects
-      -- from an underflow below it
-      | n < 1 = throwAppError $ DatePatternError s b r ZeroRepeats
-      | otherwise = return $ min (s + b * (n - 1)) upper
+    go (Repeat p) = checkRepeatPat p
+    go _ = return ()
+
+checkRepeatPat :: MonadAppError m => RepeatPat -> m ()
+checkRepeatPat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}
+  | b == 0 = throwAppError $ DatePatternError s b r ZeroLength
+  | r == Just 0 = throwAppError $ DatePatternError s b r ZeroRepeats
+  | otherwise = return ()
 
 fromDaySpan :: DaySpan -> (Day, Day)
 fromDaySpan (d, n) = (d, addDays (fromIntegral n + 1) d)

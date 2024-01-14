@@ -13,13 +13,13 @@ import RIO.State
 ingredientToTree
   :: MealState m
   => [Modification]
-  -> Double
+  -> Scientific
   -> FoodItem
   -> m FinalFood
 ingredientToTree ms mass f =
   fmap (scaleNV scale) <$> foodItemToTree (foldr modifyItem f ms)
   where
-    scale = fromFloatDigits mass / 100.0
+    scale = mass / 100
 
 modifyItem :: Modification -> FoodItem -> FoodItem
 modifyItem m i = case i of
