@@ -128,7 +128,7 @@ readTrees co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   something eoForce k ss ds
   where
     n = dioNormalize eoDateInterval
-    go (ValidSchedule x (d, s)) = ValidSchedule x (d, divSci s n)
+    go (ValidSchedule x (d, s)) = ValidSchedule x (d, s / fromIntegral n)
 
 groupByTup :: Eq a => NonEmpty (a, b) -> NonEmpty (a, NonEmpty b)
 groupByTup =
@@ -142,7 +142,7 @@ something
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => Bool
   -> APIKey
-  -> NonEmpty (ValidSchedule (Cron, Scientific))
+  -> NonEmpty (ValidSchedule (Cron, Double))
   -> NonEmpty DaySpan
   -> m (NonEmpty SpanFood)
 something frc k vs ds = do
@@ -161,20 +161,20 @@ something frc k vs ds = do
       return (f, rest)
 
 expandSchedule
-  :: NonEmpty (ValidSchedule (Cron, Scientific))
+  :: NonEmpty (ValidSchedule (Cron, Double))
   -> NonEmpty DaySpan
   -> [(DaySpan, NonEmpty (ValidSchedule Scientific))]
 expandSchedule vs = mapMaybe go . toList
   where
     go ds = fmap (ds,) $ N.nonEmpty $ mapMaybe (go' ds) $ toList vs
     go' ds v@ValidSchedule {vsMeta = (w, s)} =
-      fmap ((\s' -> v {vsMeta = s'}) . (* s) . fromIntegral . length) $
+      fmap ((\s' -> v {vsMeta = s'}) . (* fromFloatDigits s) . fromIntegral . length) $
         N.nonEmpty $
           expandCronPat ds w
 
 expandScheduleIO
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => NonEmpty (ValidSchedule (Cron, Scientific))
+  => NonEmpty (ValidSchedule (Cron, Double))
   -> NonEmpty DaySpan
   -> m (NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific)))
 expandScheduleIO vs ds =
@@ -312,7 +312,7 @@ createWriteFile p t = do
 readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => FilePath
-  -> m (NonEmpty (ValidSchedule (Cron, Scientific)))
+  -> m (NonEmpty (ValidSchedule (Cron, Double)))
 readMealPlan f = do
   logDebug $
     displayBytesUtf8 $
@@ -330,13 +330,13 @@ readMealPlan f = do
   vs <- mapM checkSched ss
   maybe (logError "meal plan is empty" >> exitFailure) return $ N.nonEmpty vs
 
-checkSched :: MonadUnliftIO m => Schedule -> m (ValidSchedule (Cron, Scientific))
+checkSched :: MonadUnliftIO m => Schedule -> m (ValidSchedule (Cron, Double))
 checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
   fromEither $ checkCronPat schWhen
   return $ ValidSchedule is (schWhen, s)
   where
-    s = fromFloatDigits $ fromMaybe 1.0 schScale
+    s = fromMaybe 1.0 schScale
 
 isDhall :: FilePath -> Bool
 isDhall = isExtensionOf "dhall"
