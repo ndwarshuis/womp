@@ -2,6 +2,7 @@ module Internal.Utils where
 
 import Control.Monad.Error.Class
 import Data.Scientific
+import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
 import qualified RIO.List as L

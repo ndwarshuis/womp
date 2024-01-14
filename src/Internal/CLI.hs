@@ -6,7 +6,7 @@ import Options.Applicative
 import RIO hiding (force)
 import RIO.Time
 
-parseCLI :: IO Options
+parseCLI :: IO CLIOptions
 parseCLI =
   execParser $
     info
@@ -16,8 +16,8 @@ parseCLI =
           <> progDesc "plan and track your macro/micronutrients"
       )
 
-options :: Parser Options
-options = Options <$> commonOptions <*> subcommand
+options :: Parser CLIOptions
+options = CLIOptions <$> commonOptions <*> subcommand
 
 commonOptions :: Parser CommonOptions
 commonOptions =

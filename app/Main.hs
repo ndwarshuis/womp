@@ -13,6 +13,7 @@ import Internal.CLI
 import Internal.Nutrient
 import Internal.NutrientTree
 import Internal.Types.Dhall
+import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils
 import Network.HTTP.Req ((/:), (/~))
@@ -31,8 +32,8 @@ import UnliftIO.Directory
 main :: IO ()
 main = run =<< parseCLI
 
-run :: MonadUnliftIO m => Options -> m ()
-run (Options c@CommonOptions {coVerbosity} s) = do
+run :: MonadUnliftIO m => CLIOptions -> m ()
+run (CLIOptions c@CommonOptions {coVerbosity} s) = do
   logOpts <-
     setLogVerboseFormat True
       . setLogUseTime False

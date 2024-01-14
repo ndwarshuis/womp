@@ -5,6 +5,7 @@ import Data.Scientific
 import Internal.NutrientTree
 import Internal.Nutrients
 import Internal.Types.Dhall
+import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils
 import RIO
