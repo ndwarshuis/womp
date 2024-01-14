@@ -20,6 +20,16 @@ import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
 
+type NutrientMap = M.Map NID ValidNutrient
+
+type MappedFoodItem = FoodItem NutrientMap
+
+data ValidNutrient = ValidNutrient
+  { vnAmount :: Scientific
+  , vnName :: Text
+  , vnPrefix :: Prefix
+  }
+
 data CLIOptions = CLIOptions CommonOptions SubCommand
 
 data CommonOptions = CommonOptions
@@ -75,8 +85,6 @@ data ValidSchedule a = ValidSchedule
 data UnitName
   = Gram
   | Calorie
-  | Joule
-  | IU
   deriving (Show, Eq, Generic, ToJSON)
 
 data Unit = Unit
@@ -113,9 +121,7 @@ prefixSymbol Giga = "G"
 
 unitSymbol :: UnitName -> Text
 unitSymbol Calorie = "cal"
-unitSymbol Joule = "J"
 unitSymbol Gram = "g"
-unitSymbol IU = "IU"
 
 tunit :: Unit -> Text
 tunit (Unit p n) = T.append (prefixSymbol p) (unitSymbol n)
@@ -127,22 +133,18 @@ type NutrientReader = MonadReader FoodMeta
 
 data FoodState = FoodState
   { fsNutrients :: [FoodNutrient]
-  , fsWarnings :: [AppWarning]
+  , fsWarnings :: [NutrientWarning]
   }
 
-data AppWarning = AppWarning
-  { awType :: !AppWarningType
-  , awId :: !NID
-  }
+-- TODO add name to this so that the user is less confused
+data NutrientWarning
+  = NotGram !NID !Text
+  | UnknownUnit !NID !Text
+  | InvalidNutrient !FoodNutrient
 
-data AppWarningType
-  = NotGram
-  | NoUnit
-  | NoAmount
+type NutrientState = MonadState NutrientMap
 
-type NutrientState = MonadState FoodState
-
-type MealState = MonadState [AppWarning]
+type MealState = MonadState [NutrientWarning]
 
 data MeasuredNutrient
   = Direct DirectNutrient

@@ -10,21 +10,24 @@ import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
 
-data FoodItem = FoodItem
+type ParsedFoodItem = FoodItem [FoodNutrient]
+
+-- TODO need a way to filter out/warn user on bad nutrient data
+data FoodItem n = FoodItem
   { fiId :: FID
   , fiDescription :: Text
-  , fiFoodNutrients :: [FoodNutrient]
+  , fiFoodNutrients :: n
   , fiCalorieConversion :: CalorieConversion
   , fiProteinConversion :: ProteinConversion
   }
   deriving (Generic)
 
-instance FromJSON FoodItem where
+instance FromJSON ParsedFoodItem where
   parseJSON (Object v) = do
     t <- v .: "dataType"
     go t
     where
-      go :: Text -> Parser FoodItem
+      go :: Text -> Parser ParsedFoodItem
       go t
         | t == "Branded" = parseFoodItem v
         | t == "Foundation" = parseFoodItem v
@@ -33,7 +36,7 @@ instance FromJSON FoodItem where
         | otherwise = mempty
   parseJSON _ = mempty
 
-parseFoodItem :: Object -> Parser FoodItem
+parseFoodItem :: Object -> Parser ParsedFoodItem
 parseFoodItem v = do
   ncf <- v .: "nutrientConversionFactors"
   c <- firstM parseCalorieConversion ncf
@@ -48,37 +51,6 @@ parseFoodItem v = do
     defCalorie = CalorieConversion {ccFat = 9, ccProtein = 4, ccCarbs = 4}
     defProtein = ProteinConversion 6.25
 
--- parseFoodCommon :: Object -> Parser FoodCommon
--- parseFoodCommon v =
---   FoodCommon
---     <$> v .:? "foodClass"
---     <*> v .:? "publicationDate"
-
--- instance FromJSON FoundationLegacyFoodItem where
---   parseJSON = withObject "FoundationFoodItem" $ \v ->
---     FoundationLegacyFoodItem
---       <$> parseFoodRequiredMeta v
---       <*> parseFoundationLegacyCommon v
-
--- data FoodRequiredMeta = FoodRequiredMeta
---   { frmId :: FID
---   , frmDescription :: Text
---   }
---   deriving (Show)
-
--- data FoodCommon = FoodCommon
---   { fcFoodClass :: Maybe Text
---   , fcPublicationDate :: Maybe Text
---   , fcFoodNutrients :: [FoodNutrient]
---   }
---   deriving (Show)
-
--- data FoundationLegacyCommon = FoundationLegacyCommon
---   { flcCommon :: FoodCommon
---   , flcCalorieConversion :: CalorieConversion
---   , flcProteinConversion :: ProteinConversion
---   }
-
 data CalorieConversion = CalorieConversion
   { ccFat :: Scientific
   , ccProtein :: Scientific
@@ -88,19 +60,6 @@ data CalorieConversion = CalorieConversion
 newtype ProteinConversion = ProteinConversion
   { pcFactor :: Scientific
   }
-
--- parseFoundationLegacyCommon :: Object -> Parser FoundationLegacyCommon
--- parseFoundationLegacyCommon v = do
---   ncf <- v .: "nutrientConversionFactors"
---   c <- firstM parseCalorieConversion ncf
---   p <- firstM parseProteinConversion ncf
---   FoundationLegacyCommon
---     <$> parseFoodCommon v
---     <*> pure (fromMaybe defCalorie c)
---     <*> pure (fromMaybe defProtein p)
---   where
---     defCalorie = CalorieConversion {ccFat = 9, ccProtein = 4, ccCarbs = 4}
---     defProtein = ProteinConversion 6.25
 
 parseCalorieConversion :: Object -> Parser (Maybe CalorieConversion)
 parseCalorieConversion v = do

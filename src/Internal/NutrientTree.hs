@@ -25,40 +25,12 @@ import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
 
-findRemove :: (a -> Bool) -> [a] -> (Maybe a, [a])
-findRemove f = go []
-  where
-    -- TODO this reverse isn't really necessary (this would only be necessary if
-    -- I wanted more speed, in which case this would be an ordered set on which
-    -- I could perform binary search, since that isn't the case, order doesn't
-    -- matter)
-    go acc [] = (Nothing, reverse acc)
-    go acc (x : xs)
-      | f x = (Just x, reverse acc ++ xs)
-      | otherwise = go (x : acc) xs
-
+-- TODO newtype
 type Grams = Scientific
 
 findMass :: NutrientState m => NID -> m (Maybe Grams)
-findMass i = do
-  f <- state getFoodNutrient
-  maybe (return Nothing) go f
-  where
-    getFoodNutrient s =
-      second (\x -> s {fsNutrients = x}) $
-        findRemove (\x -> (nId =<< fnNutrient x) == Just i) (fsNutrients s)
-    -- if food has a given nutrient but it has no amount or the wrong unit,
-    -- skip and throw a warning since this is not supposed to happen (ideally)
-    -- but won't necessarily compromise the final result
-    go f = do
-      let a = fnAmount f
-      let u = parseUnit =<< nUnitName =<< fnNutrient f
-      case (a, u) of
-        (Just m, Just (Unit p Gram)) -> pure $ Just $ raisePower (prefixValue p) m
-        (Just _, Just _) -> warn NotGram
-        (Just _, Nothing) -> warn NoUnit
-        (Nothing, _) -> warn NoAmount
-    warn t = throwAppWarning i t >> return Nothing
+findMass i =
+  state (first (fmap vnAmount) . M.updateLookupWithKey (\_ _ -> Nothing) i)
 
 findMeasured :: NutrientState m => MeasuredNutrient -> m (Maybe Grams)
 findMeasured n = case n of

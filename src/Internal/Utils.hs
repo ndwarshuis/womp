@@ -2,11 +2,10 @@ module Internal.Utils where
 
 import Control.Monad.Error.Class
 import Data.Scientific
-import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
 import qualified RIO.List as L
-import RIO.State
+-- import RIO.State
 import qualified RIO.Text as T
 
 throwAppError :: MonadAppError m => AppError -> m a
@@ -15,9 +14,9 @@ throwAppError e = throwError $ AppException [e]
 throwAppErrorIO :: MonadUnliftIO m => AppError -> m a
 throwAppErrorIO = fromEither . throwAppError
 
-throwAppWarning :: NutrientState m => NID -> AppWarningType -> m ()
-throwAppWarning i t =
-  modify $ \s -> s {fsWarnings = AppWarning t i : fsWarnings s}
+-- throwAppWarning :: NutrientState m => NutrientWarning -> m ()
+-- throwAppWarning w =
+--   modify $ \s -> s {fsWarnings = w : fsWarnings s}
 
 combineError3
   :: (Semigroup e, MonadError e m)
@@ -133,8 +132,6 @@ parseUnit s = catchError nonUnity (const def)
     parseName p r = case r of
       "cal" -> return $ Unit p Calorie
       "g" -> return $ Unit p Gram
-      "J" -> return $ Unit p Joule
-      "IU" -> return $ Unit p IU
       _ -> Nothing
 
 raisePower :: Int -> Scientific -> Scientific
