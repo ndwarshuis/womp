@@ -29,6 +29,7 @@ data ValidNutrient = ValidNutrient
   , vnName :: Text
   , vnPrefix :: Prefix
   }
+  deriving (Show)
 
 data CLIOptions = CLIOptions CommonOptions SubCommand
 

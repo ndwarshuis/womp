@@ -22,8 +22,8 @@ import Options.Applicative
 import RIO hiding (force)
 import qualified RIO.ByteString.Lazy as BL
 import RIO.FilePath
+import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
-import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
 import UnliftIO.Concurrent
@@ -215,21 +215,56 @@ runMealState
   => FID
   -> [Modification]
   -> Scientific
-  -> FoodItem
+  -> ParsedFoodItem
   -> m FinalFood
-runMealState i ms mass item = do
-  let (t, ws) = runState (ingredientToTree ms mass item) []
-  mapM_ (logWarn . displayBytesUtf8 . encodeUtf8 . fmtWarning i) ws
-  return t
+runMealState i ms mass pfi = do
+  let (ws, mfi) = mapFoodItem pfi
+  let (final, unused) = ingredientToTree ms mass mfi
+  mapM_ (logWarn . displayText . fmtWarning i) ws
+  mapM_ (logWarn . displayText . uncurry (fmtUnused i)) $ M.toList unused
+  return final
 
-fmtWarning :: FID -> AppWarning -> T.Text
-fmtWarning i (AppWarning t n) =
-  T.unwords [msg, "in nutrient with id", tshow n, "in food with id", tshow i]
-  where
-    msg = case t of
-      NotGram -> "Unit is not for mass"
-      NoUnit -> "No unit provided"
-      NoAmount -> "No amount provided"
+displayText :: Text -> Utf8Builder
+displayText = displayBytesUtf8 . encodeUtf8
+
+fmtUnused :: FID -> NID -> ValidNutrient -> T.Text
+fmtUnused fi ni n =
+  T.concat
+    [ "Unused nutrient with id "
+    , tshow ni
+    , " in food with id "
+    , tshow fi
+    , ": "
+    , tshow n
+    ]
+
+fmtWarning :: FID -> NutrientWarning -> T.Text
+fmtWarning fi (NotGram ni n) =
+  T.unwords
+    [ "Unit"
+    , n
+    , "is not a mass in nutrient with id"
+    , tshow ni
+    , "in food with id"
+    , tshow fi
+    ]
+fmtWarning fi (UnknownUnit ni n) =
+  T.unwords
+    [ "Unit"
+    , n
+    , "cannot be parsed in nutrient with id"
+    , tshow ni
+    , "in food with id"
+    , tshow fi
+    ]
+fmtWarning fi (InvalidNutrient n) =
+  T.unwords ["Food with id", tshow fi, "has invalid food nutrient:", tshow n]
+
+-- where
+--   msg = case t of
+--     NotGram -> "Unit is not for mass"
+--     NoUnit -> "No unit provided"
+--     NoAmount -> "No amount provided"
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
