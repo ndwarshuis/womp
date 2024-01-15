@@ -10,6 +10,7 @@ import Internal.Types.Main
 import Internal.Utils
 import RIO
 import qualified RIO.Map as M
+import qualified RIO.Set as S
 import RIO.State
 
 ingredientToTree
@@ -35,6 +36,12 @@ mapFoodItem f@FoodItem {fiFoodNutrients = ns} =
         Just _ -> Left $ NotGram i u
         Nothing -> Left $ UnknownUnit i u
     go n = Left $ InvalidNutrient n
+
+filterFoodItem :: ParsedFoodItem -> ParsedFoodItem
+filterFoodItem f@FoodItem {fiFoodNutrients = ns} =
+  f {fiFoodNutrients = filter go ns}
+  where
+    go fi = maybe True (\i -> not $ S.member i ignoredNutrients) (nId =<< fnNutrient fi)
 
 -- TODO warn user when modifications don't match
 modifyItem :: Modification -> MappedFoodItem -> MappedFoodItem

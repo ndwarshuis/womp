@@ -218,10 +218,10 @@ runMealState
   -> ParsedFoodItem
   -> m FinalFood
 runMealState i ms mass pfi = do
-  let (ws, mfi) = mapFoodItem pfi
+  let (ws, mfi) = mapFoodItem $ filterFoodItem pfi
   let (final, unused) = ingredientToTree ms mass mfi
   mapM_ (logWarn . displayText . fmtWarning i) ws
-  mapM_ (logWarn . displayText . uncurry (fmtUnused i)) $ M.toList unused
+  mapM_ (logDebug . displayText . uncurry (fmtUnused i)) $ M.toList unused
   return final
 
 displayText :: Text -> Utf8Builder

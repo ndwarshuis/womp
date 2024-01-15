@@ -1,8 +1,10 @@
 module Internal.Nutrients where
 
 import Data.Scientific
+import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
+import qualified RIO.Set as S
 
 standardMass :: Scientific
 standardMass = 100
@@ -523,6 +525,9 @@ vitaminC = Direct $ DirectNutrient 1162 "Vitamin C (ascorbic acid)" Milli
 vitaminD :: SummedNutrient
 vitaminD = SummedNutrient "Vitamin D (total)" Micro
 
+vitaminD2andD3 :: MeasuredNutrient
+vitaminD2andD3 = Direct $ DirectNutrient 1114 "Vitamin D2+D3" Micro
+
 -- | Vitamin D produced by mushrooms exposed to UV light
 vitaminD2 :: MeasuredNutrient
 vitaminD2 = Direct $ DirectNutrient 1111 "Vitamin D2 (ergocalciferol)" Micro
@@ -589,7 +594,7 @@ cisLycopene :: MeasuredNutrient
 cisLycopene = Direct $ DirectNutrient 1160 "cis-Lycopene" Micro
 
 transLycopene :: MeasuredNutrient
-transLycopene = Direct $ DirectNutrient 2028 "trans-Lycopene" Micro
+transLycopene = Direct $ DirectNutrient 2029 "trans-Lycopene" Micro
 
 -- | There isn't a good name for these, this really just means "lutein isomers"
 -- even though the names sound like totally different compounds
@@ -727,3 +732,46 @@ otherCholine = SummedNutrient "Choline (unclassified)" Milli
 
 otherFolate :: SummedNutrient
 otherFolate = SummedNutrient "Folates (unclassified)" Milli
+
+otherVitaminD :: SummedNutrient
+otherVitaminD = SummedNutrient "Vitamin D (unclassified)" Micro
+
+-- | Nutrients that are calculated which we don't need because we calculate them
+-- on-the-fly ourselves or because they are not masses (IU or something else)
+-- Note: these were determined by looking at the full Oct 2023 csv download and
+-- finding nutrients that had no "method," which I took to mean that they were
+-- calculated from other things and thus do not need to be parsed from the JSON
+-- blob here. The vast majority of nutrients from this list were not included,
+-- since it was not clear if these would be added in future releases, in which
+-- case I want the user to be notified in the debug output that they are missing
+-- so that can be added to the tree.
+ignoredNutrients :: Set NID
+ignoredNutrients =
+  S.fromList
+    [ 1005 -- carbs by difference
+    , 1050 -- carbs by summation
+    , 2039 -- carbs
+    , 2040 -- other carotenoids
+    , 2041 -- tocopherols and tocotrienols
+    , 2042 -- amino acids
+    , 2043 -- minerals
+    , 2044 -- lipids
+    , 2045 -- proximates
+    , 2046 -- vitamins and other compounds
+    , 2047 -- energy (general)
+    , 2048 -- energy (specific)
+    , 2054 -- total tocotrienols
+    , 2055 -- total tocopherols
+    , 2064 -- oligosaccharides
+    , 2067 -- total vitamin A
+    , 2068 -- total vitamin E
+    , 1025 -- organic acids
+    , 1063 -- total sugar
+    , 1085 -- total fat
+    , 1106 -- vitamin A (RAE)
+    , 1008 -- energy
+    , 1062 -- energy (joules)
+    , 1110 -- Vitamin D2+D3 (IU)
+    , 1329 -- lipids trans-mono
+    , 1330 -- lipids trans-di
+    ]

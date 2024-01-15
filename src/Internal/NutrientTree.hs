@@ -283,8 +283,11 @@ nutHierarchy n2Factor =
                      ]
              , leaf vitaminC
              , unmeasured vitaminD $
-                fmap leaf $
-                  vitaminD2 :| [vitaminD3, calcifediol, vitaminD4]
+                leaf calcifediol
+                  :| [ leaf vitaminD4
+                     , measuredLeaves vitaminD2andD3 otherVitaminD $
+                        vitaminD2 :| [vitaminD3]
+                     ]
              , groupLeaves "Vitamin E" Milli allVitaminE
              , group "Vitamin K" Micro $
                 fmap leaf $
@@ -431,7 +434,15 @@ readBranches bs = do
       foldM go init xs
       where
         go (Left ([], _)) next = fromHeader next
-        go acc _ = return acc
+        go acc next = do
+          -- if we have found a valid nutrient that takes priority over others
+          -- remove the others from the nutrient map so they don't end up in
+          -- the "unused" debug output
+          _ <- case next of
+            (MeasuredHeader h _) -> findMeasured h
+            (Leaf h) -> findMeasured h
+            _ -> return Nothing
+          return acc
 
     fromHeader (MeasuredHeader h nt) = do
       let dh = measToDisplay h
