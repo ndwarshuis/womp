@@ -22,7 +22,7 @@ import RIO.Time
 
 type NutrientMap = M.Map NID ValidNutrient
 
-type MappedFoodItem = FoodItem NutrientMap
+type MappedFoodItem = FoodItem FID NutrientMap
 
 data ValidNutrient = ValidNutrient
   { vnAmount :: Scientific
@@ -181,7 +181,7 @@ data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
 -- TODO we don't have id for custom ingredients
 data FoodMeta = FoodMeta
   { fmDesc :: Text
-  , fmId :: FID
+  , fmId :: Maybe FID
   }
   deriving (Show, Generic, ToJSON)
 

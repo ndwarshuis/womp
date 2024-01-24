@@ -6,6 +6,7 @@ import Internal.Types.Dhall
 import Internal.Types.Main
 import RIO
 import qualified RIO.List as L
+import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
 
 throwAppError :: MonadAppError m => AppError -> m a
@@ -160,3 +161,7 @@ divSci n d
     c0 = coefficient n
     c1 = div (c0 * 10 ^ pd) $ fromIntegral d
     pd = ceiling $ logBase 10 (fromIntegral d :: Double)
+
+-- TODO could make this more general...if I feel like it
+findDups :: Ord a => [a] -> [a]
+findDups = fmap N.head . filter ((> 1) . length) . N.group . L.sort

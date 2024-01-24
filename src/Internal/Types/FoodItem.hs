@@ -11,11 +11,11 @@ import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
 
-type ParsedFoodItem = FoodItem [FoodNutrient]
+type ParsedFoodItem = FoodItem FID [FoodNutrient]
 
 -- TODO need a way to filter out/warn user on bad nutrient data
-data FoodItem n = FoodItem
-  { fiId :: FID
+data FoodItem i n = FoodItem
+  { fiId :: i
   , fiDescription :: Text
   , fiFoodNutrients :: n
   , fiCalorieConversion :: CalorieConversion
