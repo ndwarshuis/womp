@@ -2,11 +2,50 @@ let Map =
       https://prelude.dhall-lang.org/v23.0.0/Map/Type
         sha256:210c7a9eba71efbb0f7a66b3dcf8b9d3976ffc2bc0e907aadfb6aa29c333e8ed
 
+let Prefix =
+      < Nano
+      | Micro
+      | Milli
+      | Centi
+      | Deci
+      | Unity
+      | Deca
+      | Hecto
+      | Kilo
+      | Mega
+      | Giga
+      >
+
 let Modification = { modNutID : Natural, modScale : Double }
+
+let CustomNutrient = { cnID : Natural, cnMass : Double, cnPrefix : Prefix }
+
+let CalorieConversion =
+      { Type = { ccFat : Double, ccProtein : Double, ccCarbs : Double }
+      , default = { ccFat = 9.0, ccCarbs = 4.0, ccProtein = 4.0 }
+      }
+
+let CustomSource =
+      { Type =
+          { scDesc : Text
+          , scRemainder : Natural
+          , scRemainderPrefix : Prefix
+          , scNutrients : List CustomNutrient
+          , scCalorie : CalorieConversion.Type
+          , scProtein : Double
+          }
+      , default =
+        { scCalorie = CalorieConversion::{=}
+        , scProtein = 6.25
+        , scNutrients = [] : List CustomNutrient
+        }
+      }
+
+let IngredientSource = < Custom : CustomSource.Type | FDC : Natural >
 
 let Ingredient =
       { Type =
-          { ingFID : Natural
+          { ingSource : IngredientSource
           , ingMass : Double
           , ingModifications : List Modification
           }
@@ -114,6 +153,10 @@ let Config =
 
 in  { Modification
     , Btw
+    , Prefix
+    , CustomNutrient
+    , CustomSource
+    , IngredientSource
     , Ingredient
     , Meal
     , RepeatPat
@@ -123,4 +166,5 @@ in  { Modification
     , Cron
     , Schedule
     , Config
+    , CalorieConversion
     }

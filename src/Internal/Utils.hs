@@ -2,10 +2,10 @@ module Internal.Utils where
 
 import Control.Monad.Error.Class
 import Data.Scientific
+import Internal.Types.Dhall
 import Internal.Types.Main
 import RIO
 import qualified RIO.List as L
--- import RIO.State
 import qualified RIO.Text as T
 
 throwAppError :: MonadAppError m => AppError -> m a

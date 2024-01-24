@@ -16,7 +16,12 @@ makeHaskellTypesWith
   [ MultipleConstructors "Weekday" "(./dhall/Types.dhall).Weekday"
   , MultipleConstructors "WeekdayPat" "(./dhall/Types.dhall).WeekdayPat"
   , MultipleConstructors "MDYPat" "(./dhall/Types.dhall).MDYPat"
+  , MultipleConstructors "Prefix" "(./dhall/Types.dhall).Prefix"
+  , MultipleConstructors "IngredientSource" "(./dhall/Types.dhall).IngredientSource"
+  , SingleConstructor "CalorieConversion" "CalorieConversion" "(./dhall/Types.dhall).CalorieConversion.Type"
   , SingleConstructor "Btw" "Btw" "(./dhall/Types.dhall).Btw"
+  , SingleConstructor "CustomNutrient" "CustomNutrient" "(./dhall/Types.dhall).CustomNutrient"
+  , SingleConstructor "CustomSource" "CustomSource" "(./dhall/Types.dhall).CustomSource.Type"
   , SingleConstructor "RepeatPat" "RepeatPat" "(./dhall/Types.dhall).RepeatPat"
   , SingleConstructor "Modification" "Modification" "(./dhall/Types.dhall).Modification"
   , SingleConstructor "Ingredient" "Ingredient" "(./dhall/Types.dhall).Ingredient.Type"
@@ -28,6 +33,10 @@ makeHaskellTypesWith
 deriveProduct
   ["Eq", "Show", "FromJSON"]
   [ "Weekday"
+  , "Prefix"
+  , "IngredientSource"
+  , "CustomSource"
+  , "CustomNutrient"
   , "WeekdayPat"
   , "RepeatPat"
   , "Btw"
@@ -37,6 +46,13 @@ deriveProduct
   , "MDYPat"
   , "Cron"
   , "Schedule"
+  , "CalorieConversion"
   ]
+
+deriving instance ToJSON Prefix
+
+deriving instance Ord Prefix
+
+deriving instance Bounded Prefix
 
 deriving instance Enum Weekday

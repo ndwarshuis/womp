@@ -13,6 +13,34 @@ import qualified RIO.Map as M
 import qualified RIO.Set as S
 import RIO.State
 
+-- TODO make sure mass is less than 100
+-- TODO make sure all ids unique
+customToTree
+  :: [Modification]
+  -> Scientific
+  -> CustomSource
+  -> FinalFood
+customToTree
+  ms
+  mass
+  CustomSource {scDesc, scRemainder, scRemainderPrefix, scNutrients, scCalorie, scProtein} = undefined
+    where
+      h = nutHierarchy (fromFloatDigits scProtein)
+      nm = customMap scNutrients
+      nmMod = foldr modifyMap nm ms
+      nutMass = sum $ fmap vnAmount $ M.elems nm
+      nid = (NID $ fromIntegral scRemainder)
+      rem = (ValidNutrient (standardMass - nutMass) scRemainderPrefix)
+      nmFinal = M.insert nid rem nmMod
+
+customMap :: [CustomNutrient] -> NutrientMap
+customMap = M.fromList . fmap go
+  where
+    go CustomNutrient {cnID, cnMass, cnPrefix} =
+      ( NID $ fromIntegral cnID
+      , ValidNutrient (fromFloatDigits cnMass) cnPrefix
+      )
+
 ingredientToTree
   :: [Modification]
   -> Scientific
@@ -32,7 +60,7 @@ mapFoodItem f@FoodItem {fiFoodNutrients = ns} =
     go (FoodNutrient (Just (Nutrient (Just i) (Just n) (Just u))) (Just v)) =
       case parseUnit u of
         Just (Unit p Gram) ->
-          Right (i, ValidNutrient (raisePower (prefixValue p) v) n p)
+          Right (i, ValidNutrient (raisePower (prefixValue p) v) p)
         Just _ -> Left $ NotGram i u
         Nothing -> Left $ UnknownUnit i u
     go n = Left $ InvalidNutrient n
@@ -45,15 +73,17 @@ filterFoodItem f@FoodItem {fiFoodNutrients = ns} =
 
 -- TODO warn user when modifications don't match
 modifyItem :: Modification -> MappedFoodItem -> MappedFoodItem
-modifyItem Modification {modNutID, modScale} f@FoodItem {fiFoodNutrients = ns} =
-  f {fiFoodNutrients = M.adjust go (fromIntegral modNutID) ns}
+modifyItem m f = f {fiFoodNutrients = modifyMap m $ fiFoodNutrients f}
+
+modifyMap :: Modification -> NutrientMap -> NutrientMap
+modifyMap Modification {modNutID, modScale} = M.adjust go (fromIntegral modNutID)
   where
     go n@ValidNutrient {vnAmount} =
       n {vnAmount = vnAmount * fromFloatDigits modScale}
 
 foodItemToTree :: MappedFoodItem -> (FinalFood, NutrientMap)
 foodItemToTree (FoodItem i d ns cc pc) =
-  first go $ runState (displayTree $ pcFactor pc) ns
+  first go $ runState (displayTree pc) ns
   where
     go t = fmap toNV $ FinalFood_ t $ computeCalories cc t
     toNV v = NutrientValue (Sum v) $ pure $ FoodMeta d i

@@ -15,6 +15,7 @@ import Data.Monoid
 import Data.Scientific
 import Data.Semigroup
 import Internal.Nutrients
+import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils

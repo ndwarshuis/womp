@@ -6,6 +6,7 @@ import Data.Aeson
 import Data.Aeson.Types
 import Data.Scientific
 import GHC.Generics
+import Internal.Types.Dhall
 import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
@@ -18,22 +19,16 @@ data FoodItem n = FoodItem
   , fiDescription :: Text
   , fiFoodNutrients :: n
   , fiCalorieConversion :: CalorieConversion
-  , fiProteinConversion :: ProteinConversion
+  , fiProteinConversion :: Scientific
   }
   deriving (Generic)
 
 instance FromJSON ParsedFoodItem where
   parseJSON (Object v) = do
     t <- v .: "dataType"
-    go t
-    where
-      go :: Text -> Parser ParsedFoodItem
-      go t
-        | t == "Branded" = parseFoodItem v
-        | t == "Foundation" = parseFoodItem v
-        | t == "Survey (FNDDS)" = mempty
-        | t == "SR Legacy" = parseFoodItem v
-        | otherwise = mempty
+    if (t :: Text) `elem` ["Branded", "Foundation", "SR Legacy"]
+      then parseFoodItem v
+      else mempty
   parseJSON _ = mempty
 
 parseFoodItem :: Object -> Parser ParsedFoodItem
@@ -49,17 +44,7 @@ parseFoodItem v = do
     <*> pure (fromMaybe defProtein p)
   where
     defCalorie = CalorieConversion {ccFat = 9, ccProtein = 4, ccCarbs = 4}
-    defProtein = ProteinConversion 6.25
-
-data CalorieConversion = CalorieConversion
-  { ccFat :: Scientific
-  , ccProtein :: Scientific
-  , ccCarbs :: Scientific
-  }
-
-newtype ProteinConversion = ProteinConversion
-  { pcFactor :: Scientific
-  }
+    defProtein = 6.25
 
 parseCalorieConversion :: Object -> Parser (Maybe CalorieConversion)
 parseCalorieConversion v = do
@@ -72,13 +57,11 @@ parseCalorieConversion v = do
       return $ Just $ CalorieConversion f p c
     _ -> return Nothing
 
-parseProteinConversion :: Object -> Parser (Maybe ProteinConversion)
+parseProteinConversion :: Object -> Parser (Maybe Scientific)
 parseProteinConversion v = do
   t <- v .: "type"
   case (t :: Text) of
-    ".ProteinConversionFactor" -> do
-      p <- v .: "value"
-      return $ Just $ ProteinConversion p
+    ".ProteinConversionFactor" -> Just <$> v .: "value"
     _ -> return Nothing
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)

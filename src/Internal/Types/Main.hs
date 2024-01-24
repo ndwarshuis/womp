@@ -26,10 +26,12 @@ type MappedFoodItem = FoodItem NutrientMap
 
 data ValidNutrient = ValidNutrient
   { vnAmount :: Scientific
-  , vnName :: Text
   , vnPrefix :: Prefix
   }
   deriving (Show)
+
+-- data ValidCustomIngredient = ValidCustomIngredient
+--   { vci
 
 data CLIOptions = CLIOptions CommonOptions SubCommand
 
@@ -176,6 +178,7 @@ data SummedNutrient = SummedNutrient
 data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
   deriving (Show, Eq, Ord)
 
+-- TODO we don't have id for custom ingredients
 data FoodMeta = FoodMeta
   { fmDesc :: Text
   , fmId :: FID
@@ -328,19 +331,19 @@ data Node
 
 data Aggregation a = AggIdentity a | Priority (NonEmpty a)
 
-data Prefix
-  = Nano
-  | Micro
-  | Milli
-  | Centi
-  | Deci
-  | Unity
-  | Deca
-  | Hecto
-  | Kilo
-  | Mega
-  | Giga
-  deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON)
+-- data Prefix
+--   = Nano
+--   | Micro
+--   | Milli
+--   | Centi
+--   | Deci
+--   | Unity
+--   | Deca
+--   | Hecto
+--   | Kilo
+--   | Mega
+--   | Giga
+--   deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON)
 
 instance Exception AppException
 

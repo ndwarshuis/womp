@@ -1,6 +1,7 @@
 module Internal.Nutrients where
 
 import Data.Scientific
+import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
