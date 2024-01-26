@@ -185,10 +185,10 @@ something frc k vs ds = do
 expandSchedule
   :: NonEmpty (ValidSchedule (Cron, Double))
   -> NonEmpty DaySpan
-  -> [(DaySpan, NonEmpty (ValidSchedule Scientific))]
-expandSchedule vs = mapMaybe go . toList
+  -> [(ValidSchedule Scientific, DaySpan)]
+expandSchedule vs = concatMap go . toList
   where
-    go ds = fmap (ds,) $ N.nonEmpty $ mapMaybe (go' ds) $ toList vs
+    go ds = fmap (,ds) $ mapMaybe (go' ds) $ toList vs
     go' ds v@ValidSchedule {vsMeta = (w, s)} =
       fmap ((\s' -> v {vsMeta = s'}) . (* fromFloatDigits s) . fromIntegral . length) $
         N.nonEmpty $
@@ -198,7 +198,7 @@ expandScheduleIO
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => NonEmpty (ValidSchedule (Cron, Double))
   -> NonEmpty DaySpan
-  -> m (NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific)))
+  -> m (NonEmpty (ValidSchedule Scientific, DaySpan))
 expandScheduleIO vs ds =
   maybe go return $ N.nonEmpty $ expandSchedule vs ds
   where
@@ -206,20 +206,35 @@ expandScheduleIO vs ds =
       logError "Schedule does not intersect with desired date range"
       exitFailure
 
-type IngMeta = (Scientific, [Modification])
+type IngMeta = (Mass, [Modification])
 
+type GroupedIngredient a =
+  ( a
+  , NonEmpty (IngMeta, NonEmpty (Scientific, NonEmpty DaySpan))
+  )
+
+-- TODO clean this up
 expandIngredients
-  :: NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific))
-  -> BiNonEmpty (FID, NonEmpty (IngMeta, NonEmpty (DaySpan, Scientific))) ()
+  :: NonEmpty (ValidSchedule Scientific, DaySpan)
+  -> BiNonEmpty (GroupedIngredient FID) (GroupedIngredient CustomSource)
 expandIngredients =
-  fmap (second groupByTup)
-    . groupByTup_
-    . fmap (\(d, (s, (f, fm))) -> (f, (fm, (d, s))))
-    . flattenNonEmpty_
-    . fmap (second (flattenNonEmpty . fmap go))
+  bimap
+    (second (fmap (second groupByTup) . groupByTup))
+    (second (fmap (second groupByTup) . groupByTup))
+    . BN.swap
+    . BN.groupByTup
+    . BN.swap
+    . BN.groupByTup
+    . sconcat
+    . fmap (uncurry go)
   where
-    go ValidSchedule {vsIngs, vsMeta} = (vsMeta, go' <$> vsIngs)
-    go' Ingredient {ingMass = m, ingModifications = ms, ingSource = s} = undefined
+    go ValidSchedule {vsIngs, vsMeta} ds = BN.fromNonEmpty (splitIng vsMeta ds) vsIngs
+    splitIng scale ds Ingredient {ingMass, ingModifications, ingSource} =
+      let meta = (Mass $ fromFloatDigits ingMass, ingModifications)
+          rest = (meta, (scale, ds))
+       in case ingSource of
+            FDC i -> Left (FID i, rest)
+            Custom c -> Right (c, rest)
 
 -- let s' = case s of
 --       FDC i -> Right $ FID $ fromIntegral i
@@ -401,23 +416,21 @@ checkSched :: MonadUnliftIO m => Schedule -> m (ValidSchedule (Cron, Double))
 checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   fromEither $ checkCronPat schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  bitraverse f g partitionIngredients is
+  bitraverse f g undefined is
   where
     -- return $ ValidSchedule is' (schWhen, s)
 
     s = fromMaybe 1.0 schScale
 
-data CustomIngredient = CustomIngredient [Modification] Scientific CustomSource
-
-partitionIngredients
-  :: NonEmpty Ingredient
-  -> (BiNonEmpty ValidFDCIngredient CustomIngredient)
-partitionIngredients = partitionBiNonEmpty go
-  where
-    go Ingredient {ingSource = s, ingMass = m, ingModifications = ms} =
-      case s of
-        FDC i -> Left $ ValidFDCIngredient (FID i) (fromFloatDigits m) ms
-        Custom c -> Right $ CustomIngredient ms (fromFloatDigits m) c
+-- partitionIngredients
+--   :: NonEmpty Ingredient
+--   -> (BiNonEmpty ValidFDCIngredient CustomIngredient)
+-- partitionIngredients = partitionBiNonEmpty go
+--   where
+--     go Ingredient {ingSource = s, ingMass = m, ingModifications = ms} =
+--       case s of
+--         FDC i -> Left $ ValidFDCIngredient (FID i) (fromFloatDigits m) ms
+--         Custom c -> Right $ CustomIngredient ms (fromFloatDigits m) c
 
 -- Left e -> throwAppErrorIO $ CustomIngError e
 -- Right (f, nm) -> do

@@ -82,6 +82,8 @@ data ValidSchedule a = ValidSchedule
   , vsMeta :: a
   }
 
+data CustomIngredient = CustomIngredient CustomSource Mass [Modification]
+
 data ValidFDCIngredient = ValidFDCIngredient
   { viID :: FID
   , viMass :: Mass

@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingVia #-}
 
 module Internal.Types.BiNonEmpty where
 
+import Data.Monoid.Generic
 import Data.Semigroup (sconcat)
 import RIO
 import qualified RIO.NonEmpty as N
@@ -12,6 +14,8 @@ data BiNonEmpty a b = BiNonEmpty
   , bneLeft :: [a]
   , bneRight :: [b]
   }
+  deriving (Generic)
+  deriving (Semigroup) via GenericSemigroup (BiNonEmpty a b)
 
 instance Bifunctor BiNonEmpty where
   bimap f g (BiNonEmpty h as bs) =
@@ -26,6 +30,9 @@ instance Bifoldable BiNonEmpty where
       bs' = g <$> bs
 
 deriving instance Bitraversable BiNonEmpty
+
+groupByTup :: Eq a => BiNonEmpty (a, b) c -> BiNonEmpty (a, NonEmpty b) c
+groupByTup = first (\xs -> (fst $ N.head xs, snd <$> xs)) . groupWith fst
 
 groupWith :: Eq c => (a -> c) -> BiNonEmpty a b -> BiNonEmpty (NonEmpty a) b
 groupWith f = withFirst (N.groupWith f) (N.groupWith1 f)
