@@ -19,7 +19,7 @@ data FoodItem i n = FoodItem
   , fiDescription :: Text
   , fiFoodNutrients :: n
   , fiCalorieConversion :: CalorieConversion
-  , fiProteinConversion :: Scientific
+  , fiProteinConversion :: ProteinConversion
   }
   deriving (Generic)
 
@@ -44,7 +44,7 @@ parseFoodItem v = do
     <*> pure (fromMaybe defProtein p)
   where
     defCalorie = CalorieConversion {ccFat = 9, ccProtein = 4, ccCarbs = 4}
-    defProtein = 6.25
+    defProtein = ProteinConversion 6.25
 
 parseCalorieConversion :: Object -> Parser (Maybe CalorieConversion)
 parseCalorieConversion v = do
@@ -57,7 +57,7 @@ parseCalorieConversion v = do
       return $ Just $ CalorieConversion f p c
     _ -> return Nothing
 
-parseProteinConversion :: Object -> Parser (Maybe Scientific)
+parseProteinConversion :: Object -> Parser (Maybe ProteinConversion)
 parseProteinConversion v = do
   t <- v .: "type"
   case (t :: Text) of
@@ -90,7 +90,7 @@ instance FromJSON LabelNutrient where
 
 data FoodNutrient = FoodNutrient
   { fnNutrient :: Maybe Nutrient
-  , fnAmount :: Maybe Scientific
+  , fnAmount :: Maybe Mass
   }
   deriving (Show, Generic)
 
@@ -107,11 +107,17 @@ data Nutrient = Nutrient
 instance FromJSON Nutrient where
   parseJSON = recordParseJSON "n"
 
-newtype FID = FID {unFID :: Int}
-  deriving (Eq, Read, Show, FromJSON, ToJSON) via Int
+newtype FID = FID {unFID :: Natural}
+  deriving (Eq, Read, Show, FromJSON, ToJSON) via Natural
 
-newtype NID = NID {unNID :: Int}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Int
+newtype NID = NID {unNID :: Natural}
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Natural
+
+newtype Mass = Mass {unMass :: Scientific}
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional) via Scientific
+
+newtype ProteinConversion = ProteinConversion {unPC :: Scientific}
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Scientific
 
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
 recordParseJSON s = genericParseJSON (recordOptions s)

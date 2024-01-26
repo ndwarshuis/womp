@@ -86,6 +86,7 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
+  (CustomIngError c) -> [fmtCustomError c]
   (FileTypeError f) -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
   (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
   (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
@@ -106,6 +107,16 @@ showError other = case other of
       msg = case p of
         ZeroLength -> "Zero repeat length"
         ZeroRepeats -> "Zero repeats"
+
+fmtCustomError :: CustomIngError -> Text
+fmtCustomError (CustomDups n ns) =
+  T.concat
+    [ "Duplicate nutrient IDs found for '"
+    , n
+    , "': "
+    , T.intercalate ", " $ tshow <$> N.toList ns
+    ]
+fmtCustomError (TooMuchMass n) = T.append "Mass for custom ingredient over 100g: " n
 
 keyVals :: [(T.Text, T.Text)] -> T.Text
 keyVals = T.intercalate "; " . fmap (uncurry keyVal)

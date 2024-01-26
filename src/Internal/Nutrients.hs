@@ -1,23 +1,25 @@
 module Internal.Nutrients where
 
-import Data.Scientific
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
 import qualified RIO.Set as S
 
-standardMass :: Scientific
+standardMass :: Mass
 standardMass = 100
 
 water :: MeasuredNutrient
 water = Direct $ DirectNutrient 1051 "Water" Unity
 
-protein :: Scientific -> MeasuredNutrient
+dispProtein :: DisplayNutrient
+dispProtein = DisplayNutrient "Protein" Unity
+
+protein :: ProteinConversion -> MeasuredNutrient
 protein n2Factor =
   Alternate $
-    AltNutrient "Protein" Unity $
-      (proteinId, Nothing) :| [(nitrogenId, Just n2Factor)]
+    AltNutrient (dnName dispProtein) (dnPrefix dispProtein) $
+      (proteinId, Nothing) :| [(nitrogenId, Just $ unPC n2Factor)]
   where
     nitrogenId = 1002
     proteinId = 1003

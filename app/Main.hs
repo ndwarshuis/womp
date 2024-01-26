@@ -12,6 +12,8 @@ import qualified Dhall as D
 import Internal.CLI
 import Internal.Nutrient
 import Internal.NutrientTree
+import Internal.Types.BiNonEmpty (BiNonEmpty)
+import qualified Internal.Types.BiNonEmpty as BN
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
@@ -120,7 +122,7 @@ readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
   -> ExportOptions
-  -> m (NonEmpty SpanFood)
+  -> m (NonEmpty (SpanFood NutrientMass NutrientEnergy))
 readTrees co ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   setNumCapabilities eoThreads
   k <- getStoreAPIKey $ coKey co
@@ -136,8 +138,16 @@ groupByTup =
   fmap (\xs -> (fst $ N.head xs, snd <$> xs))
     . N.groupWith1 fst
 
+groupByTup_ :: Eq a => [(a, b)] -> [(a, NonEmpty b)]
+groupByTup_ =
+  fmap (\xs -> (fst $ N.head xs, snd <$> xs))
+    . N.groupWith fst
+
 flattenNonEmpty :: NonEmpty (a, NonEmpty b) -> NonEmpty (a, b)
 flattenNonEmpty = sconcat . fmap (\(x, ys) -> (x,) <$> ys)
+
+flattenNonEmpty_ :: [(a, NonEmpty b)] -> [(a, b)]
+flattenNonEmpty_ = concatMap (\(x, ys) -> (x,) <$> N.toList ys)
 
 something
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -145,8 +155,19 @@ something
   -> APIKey
   -> NonEmpty (ValidSchedule (Cron, Double))
   -> NonEmpty DaySpan
-  -> m (NonEmpty SpanFood)
+  -> m (NonEmpty (SpanFood NutrientMass NutrientEnergy))
 something frc k vs ds = do
+  -- current steps
+  -- 1. get cartesian product of schedules and date intervals; this is necessary
+  --    to do first since some ingredients may not be needed depending on which
+  --    dates are selected
+  -- 2. flip ingredients out of schedules and group together (so next step can
+  --    run sanely in parallel); keep list of dates and scales under each
+  --    ingredient since each ingredient may have multiople dates and scales
+  --    associated with it
+  -- 3. get json blobs for all ingredients (requires network)
+  -- 4. convert json to food
+  -- 5. expand food by dates and scales
   xs <- expandScheduleIO vs ds
   js <- mapPooledErrorsIO (\(x, y) -> (,y) <$> getJSON x) $ expandIngredients xs
   fs <- mapM (uncurry jsonToFood) $ flattenNonEmpty js
@@ -189,21 +210,25 @@ type IngMeta = (Scientific, [Modification])
 
 expandIngredients
   :: NonEmpty (DaySpan, NonEmpty (ValidSchedule Scientific))
-  -> NonEmpty (FID, NonEmpty (IngMeta, NonEmpty (DaySpan, Scientific)))
+  -> BiNonEmpty (FID, NonEmpty (IngMeta, NonEmpty (DaySpan, Scientific))) ()
 expandIngredients =
   fmap (second groupByTup)
-    . groupByTup
+    . groupByTup_
     . fmap (\(d, (s, (f, fm))) -> (f, (fm, (d, s))))
-    . flattenNonEmpty
+    . flattenNonEmpty_
     . fmap (second (flattenNonEmpty . fmap go))
   where
     go ValidSchedule {vsIngs, vsMeta} = (vsMeta, go' <$> vsIngs)
-    go' Ingredient {ingMass = m, ingModifications = ms, ingFID = f} =
-      (FID $ fromIntegral f, (fromFloatDigits m, ms))
+    go' Ingredient {ingMass = m, ingModifications = ms, ingSource = s} = undefined
+
+-- let s' = case s of
+--       FDC i -> Right $ FID $ fromIntegral i
+--       Custom c -> undefined
+--  in (s', (fromFloatDigits m, ms))
 
 expandFood
-  :: NonEmpty (FinalFood, NonEmpty (DaySpan, Scientific))
-  -> NonEmpty SpanFood
+  :: NonEmpty (FinalGroupedFood, NonEmpty (DaySpan, Scientific))
+  -> NonEmpty (SpanFood NutrientMass NutrientEnergy)
 expandFood =
   fmap (\(d, fs) -> SpanFood (sconcat fs) d)
     . groupByTup
@@ -214,29 +239,34 @@ runMealState
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => FID
   -> [Modification]
-  -> Scientific
+  -> Mass
   -> ParsedFoodItem
-  -> m FinalFood
+  -> m FinalGroupedFood
 runMealState i ms mass pfi = do
   let (ws, mfi) = mapFoodItem $ filterFoodItem pfi
   let (final, unused) = ingredientToTree ms mass mfi
   mapM_ (logWarn . displayText . fmtWarning i) ws
-  mapM_ (logDebug . displayText . uncurry (fmtUnused i)) $ M.toList unused
+  logNutrientMap (Just i) unused
   return final
+
+logNutrientMap :: MonadUnliftIO m => Maybe FID -> NutrientMap -> m ()
+logNutrientMap i =
+  mapM_ (logDebug . displayText . uncurry (fmtUnused i)) . M.toList
 
 displayText :: Text -> Utf8Builder
 displayText = displayBytesUtf8 . encodeUtf8
 
-fmtUnused :: FID -> NID -> ValidNutrient -> T.Text
+fmtUnused :: Maybe FID -> NID -> ValidNutrient -> T.Text
 fmtUnused fi ni n =
   T.concat
-    [ "Unused nutrient with id "
-    , tshow ni
-    , " in food with id "
-    , tshow fi
-    , ": "
-    , tshow n
-    ]
+    ( [ "Unused nutrient with id "
+      , tshow ni
+      ]
+        ++ maybe [] ((: []) . T.append " in food with id " . tshow) fi
+        ++ [ ": "
+           , tshow n
+           ]
+    )
 
 fmtWarning :: FID -> NutrientWarning -> T.Text
 fmtWarning fi (NotGram ni n) =
@@ -366,13 +396,33 @@ readMealPlan f = do
   vs <- mapM checkSched ss
   maybe (logError "meal plan is empty" >> exitFailure) return $ N.nonEmpty vs
 
+-- TODO make sure all masses are positive
 checkSched :: MonadUnliftIO m => Schedule -> m (ValidSchedule (Cron, Double))
 checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
-  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
   fromEither $ checkCronPat schWhen
-  return $ ValidSchedule is (schWhen, s)
+  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
+  bitraverse f g partitionIngredients is
   where
+    -- return $ ValidSchedule is' (schWhen, s)
+
     s = fromMaybe 1.0 schScale
+
+data CustomIngredient = CustomIngredient [Modification] Scientific CustomSource
+
+partitionIngredients
+  :: NonEmpty Ingredient
+  -> (BiNonEmpty ValidFDCIngredient CustomIngredient)
+partitionIngredients = partitionBiNonEmpty go
+  where
+    go Ingredient {ingSource = s, ingMass = m, ingModifications = ms} =
+      case s of
+        FDC i -> Left $ ValidFDCIngredient (FID i) (fromFloatDigits m) ms
+        Custom c -> Right $ CustomIngredient ms (fromFloatDigits m) c
+
+-- Left e -> throwAppErrorIO $ CustomIngError e
+-- Right (f, nm) -> do
+--   logNutrientMap Nothing nm
+--   return $ Right f
 
 isDhall :: FilePath -> Bool
 isDhall = isExtensionOf "dhall"

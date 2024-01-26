@@ -25,13 +25,10 @@ type NutrientMap = M.Map NID ValidNutrient
 type MappedFoodItem = FoodItem FID NutrientMap
 
 data ValidNutrient = ValidNutrient
-  { vnAmount :: Scientific
+  { vnAmount :: Mass
   , vnPrefix :: Prefix
   }
   deriving (Show)
-
--- data ValidCustomIngredient = ValidCustomIngredient
---   { vci
 
 data CLIOptions = CLIOptions CommonOptions SubCommand
 
@@ -83,6 +80,12 @@ type DaySpan = (Day, Int)
 data ValidSchedule a = ValidSchedule
   { vsIngs :: NonEmpty Ingredient
   , vsMeta :: a
+  }
+
+data ValidFDCIngredient = ValidFDCIngredient
+  { viID :: FID
+  , viMass :: Mass
+  , viModifications :: [Modification]
   }
 
 data UnitName
@@ -216,20 +219,27 @@ data UnknownTree = UnknownTree Text [UnknownTree]
 instance ToJSON UnknownTree where
   toJSON (UnknownTree n ts) = object ["name" .= n, "children" .= ts]
 
-data SpanFood = SpanFood
-  { sfFinal :: FinalFood_ NutrientValue
+data SpanFood a b = SpanFood
+  { sfFinal :: FinalFood a b
   , sfDaySpan :: DaySpan
   }
   deriving (Generic, Show)
 
-data FinalFood_ a = FinalFood_
-  { ffMap :: DisplayNode a
-  , ffEnergy :: a
-  }
-  deriving (Generic, Functor, Show)
-  deriving (Semigroup) via GenericSemigroup (FinalFood_ a)
+type FinalScalerFood = FinalFood Mass Energy
 
-type FinalFood = FinalFood_ NutrientValue
+type FinalGroupedFood = FinalFood NutrientMass NutrientEnergy
+
+data FinalFood a b = FinalFood
+  { ffMap :: DisplayNode a
+  , ffEnergy :: b
+  }
+  deriving (Generic, Show)
+  deriving (Semigroup) via GenericSemigroup (FinalFood a b)
+
+instance Bifunctor FinalFood where
+  bimap f g (FinalFood as b) = FinalFood (f <$> as) (g b)
+
+-- type FinalFood = FinalFood_ NutrientValue
 
 data DisplayNode a = DisplayNode
   { dnValue :: a
@@ -288,7 +298,12 @@ instance C.ToNamedRecord DisplayRow where
 
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
-type NutrientValue = NutrientValue_ (Sum Scientific)
+newtype Energy = Energy {unEnergy :: Scientific}
+  deriving (Show, Eq, Ord, Num, ToJSON) via Scientific
+
+type NutrientMass = NutrientValue_ (Sum Mass)
+
+type NutrientEnergy = NutrientValue_ (Sum Energy)
 
 data NutrientValue_ a = NutrientValue
   { nvValue :: a
@@ -298,7 +313,7 @@ data NutrientValue_ a = NutrientValue
   deriving (Show, Generic, Functor)
   deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
 
-instance ToJSON NutrientValue where
+instance ToJSON v => ToJSON (NutrientValue_ (Sum v)) where
   toJSON (NutrientValue (Sum v) ms) =
     object ["value" .= v, "members" .= ms]
 
@@ -331,20 +346,6 @@ data Node
 
 data Aggregation a = AggIdentity a | Priority (NonEmpty a)
 
--- data Prefix
---   = Nano
---   | Micro
---   | Milli
---   | Centi
---   | Deci
---   | Unity
---   | Deca
---   | Hecto
---   | Kilo
---   | Mega
---   | Giga
---   deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON)
-
 instance Exception AppException
 
 newtype AppException = AppException [AppError]
@@ -364,6 +365,12 @@ data AppError
   | EmptyMeal !T.Text
   | MissingAPIKey !FilePath
   | FileTypeError !FilePath
+  | CustomIngError !CustomIngError
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)
+
+data CustomIngError
+  = CustomDups Text (NonEmpty NID)
+  | TooMuchMass Text
+  deriving (Show)

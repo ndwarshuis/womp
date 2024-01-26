@@ -29,6 +29,7 @@ library
       Internal.Nutrient
       Internal.Nutrients
       Internal.NutrientTree
+      Internal.Types.BiNonEmpty
       Internal.Types.Dhall
       Internal.Types.FoodItem
       Internal.Types.Main
