@@ -510,8 +510,5 @@ checkRepeatPat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}
   | r == Just 0 = throwAppError $ DatePatternError s b r ZeroRepeats
   | otherwise = return ()
 
-fromDaySpan :: DaySpan -> (Day, Day)
-fromDaySpan (d, n) = (d, addDays (fromIntegral n + 1) d)
-
 dayToWeekday :: Day -> Int
 dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7

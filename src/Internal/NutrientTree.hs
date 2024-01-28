@@ -4,16 +4,16 @@ module Internal.NutrientTree
   , lookupTree
   , summedToDisplay
   , measToDisplay
-  , fmtFullTree
-  , nodesToRows
-  , finalToJSON
+  , treeToJSON
+  , treeToCSV
   )
 where
 
 import Data.Aeson
+import qualified Data.Csv as C
 import Data.Monoid
 import Data.Scientific
-import Data.Semigroup
+import Data.Semigroup (sconcat)
 import Internal.Nutrients
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
@@ -24,7 +24,6 @@ import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 import RIO.State
 import qualified RIO.Text as T
-import RIO.Time
 
 findMass :: NutrientState m => NID -> m (Maybe Mass)
 findMass i =
@@ -518,76 +517,121 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
-fmtFullTree :: DisplayOptions -> SpanFood NutrientMass NutrientEnergy -> T.Text
-fmtFullTree o (SpanFood (FinalFood m (NutrientValue (Sum v) _)) (start, end)) =
-  T.unlines
-    [ T.unwords ["Start:", tshow start]
-    , T.unwords ["End:", tshow $ addDays (fromIntegral end) start]
-    , T.unwords ["Energy:", tshow v, "kcal"]
-    , fmtTree o m
-    ]
+-- fmtFullTree :: DisplayOptions -> SpanFood NutrientMass NutrientEnergy -> T.Text
+-- fmtFullTree o (SpanFood (FinalFood m (NutrientValue (Sum v) _)) (start, end)) =
+--   T.unlines
+--     [ T.unwords ["Start:", tshow start]
+--     , T.unwords ["End:", tshow $ addDays (fromIntegral end) start]
+--     , T.unwords ["Energy:", tshow v, "kcal"]
+--     , fmtTree o m
+--     ]
 
-fmtTree :: DisplayOptions -> DisplayNode NutrientMass -> T.Text
-fmtTree o@(DisplayOptions u _ _ uy) (DisplayNode v ks us) = T.unlines (header : rest)
+-- fmtTree :: DisplayOptions -> DisplayNode Mass -> T.Text
+-- fmtTree o@(DisplayOptions u _ _ uy) (DisplayNode v ks us) = T.unlines (header : rest)
+--   where
+--     header = T.unwords ["Total mass:", tshow $ getSum $ nvValue v, "g"]
+--     rest = go ks us
+--     go ks' us' =
+--       withMap fmtKnown ks' ++ if u then withMap fmtUnknown us' else fmtUnknownTotal us'
+
+--     withMap f = concatMap (uncurry f) . M.assocs
+
+--     addIndent n = T.append (T.replicate (2 * n) " ")
+
+--     fmtKnown dn (DisplayNode v' ks' us') =
+--       fmtHeader (fmtDisplayNutrient o dn v') $ go ks' us'
+
+--     fmtUnknownTotal =
+--       maybeToList . fmap (fmtUnknownHeader . sconcat) . N.nonEmpty . M.elems
+
+--     fmtUnknown ts v' =
+--       let h = fmtUnknownHeader v'
+--        in fmtHeader h $ if u then concatMap fmtUnknownTree ts else []
+
+--     fmtUnknownHeader v' =
+--       let (p, v'') = unityMaybeSci uy (autoPrefix $ unMass v') (unMass v')
+--        in T.concat
+--             [ "Unknown: "
+--             , tshow v''
+--             , " "
+--             , tunit $ Unit p Gram
+--             ]
+
+--     fmtUnknownTree (UnknownTree n ts) =
+--       fmtHeader n $ concatMap fmtUnknownTree ts
+
+--     fmtHeader h = (h :) . fmap (addIndent 1)
+
+-- fmtDisplayNutrient :: DisplayOptions -> DisplayNutrient -> Mass -> T.Text
+-- fmtDisplayNutrient DisplayOptions {doUnityUnits} (DisplayNutrient n p) v =
+--   T.concat [n, ": ", tshow v', " ", tunit (Unit p' Gram)]
+--   where
+--     (p', v') = unityMaybeSci doUnityUnits p $ unMass v
+
+toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
+toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
+
+fromSumTree :: g -> DisplayTreeSum -> DisplayTree g
+fromSumTree g (DisplayTree_ ms e _) =
+  bimap getSum getSum $ DisplayTree_ ms e g
+
+groupTrees
+  :: Eq g1
+  => (g0 -> g1)
+  -> NonEmpty (DisplayTree g0)
+  -> NonEmpty (DisplayTree g1)
+groupTrees f =
+  fmap go
+    . N.groupWith1 fst
+    . fmap (first f . toSumTree)
   where
-    header = T.unwords ["Total mass:", tshow $ getSum $ nvValue v, "g"]
-    rest = go ks us
-    go ks' us' =
-      withMap fmtKnown ks' ++ if u then withMap fmtUnknown us' else fmtUnknownTotal us'
-
-    withMap f = concatMap (uncurry f) . M.assocs
-
-    addIndent n = T.append (T.replicate (2 * n) " ")
-
-    fmtKnown dn (DisplayNode v' ks' us') =
-      fmtHeader (fmtDisplayNutrient o dn v') $ go ks' us'
-
-    fmtUnknownTotal =
-      maybeToList . fmap (fmtUnknownHeader . sconcat) . N.nonEmpty . M.elems
-
-    fmtUnknown ts v' =
-      let h = fmtUnknownHeader v'
-       in fmtHeader h $ if u then concatMap fmtUnknownTree ts else []
-
-    fmtUnknownHeader (NutrientValue (Sum v') _) =
-      let (p, v'') = unityMaybeSci uy (autoPrefix $ unMass v') (unMass v')
-       in T.concat
-            [ "Unknown: "
-            , tshow v''
-            , " "
-            , tunit $ Unit p Gram
-            ]
-
-    fmtUnknownTree (UnknownTree n ts) =
-      fmtHeader n $ concatMap fmtUnknownTree ts
-
-    fmtHeader h = (h :) . fmap (addIndent 1)
-
-fmtDisplayNutrient :: DisplayOptions -> DisplayNutrient -> NutrientMass -> T.Text
-fmtDisplayNutrient
-  DisplayOptions {doUnityUnits}
-  (DisplayNutrient n p)
-  (NutrientValue (Sum v) _) =
-    T.concat [n, ": ", tshow v', " ", tunit (Unit p' Gram)]
-    where
-      (p', v') = unityMaybeSci doUnityUnits p $ unMass v
-
-finalToJSON :: DisplayOptions -> SpanFood NutrientMass NutrientEnergy -> Value
-finalToJSON o (SpanFood (FinalFood ms c) (start, end)) =
-  object
-    [ "start" .= start
-    , "end" .= addDays (fromIntegral end) start
-    , "energy" .= object ["value" .= c, "unit" .= Unit Kilo Calorie]
-    , "mass" .= treeToJSON o "Total" Unity ms
-    ]
+    go xs@((g, _) :| _) = fromSumTree g $ sconcat $ fmap snd xs
 
 treeToJSON
   :: DisplayOptions
+  -> GroupOptions
+  -> NonEmpty (DisplayTree GroupByNone)
+  -> NonEmpty Value
+treeToJSON dos gos = chooseGrouping gos (treeToJSON_ dos)
+
+treeToCSV
+  :: GroupOptions
+  -> NonEmpty (DisplayTree GroupByNone)
+  -> NonEmpty C.NamedRecord
+treeToCSV gos = sconcat . chooseGrouping gos treeToRows
+
+-- TODO not sure how to get the instance constraints out of the rankN function
+-- (they don't seem necessary)
+chooseGrouping
+  :: GroupOptions
+  -> (forall g. (ToJSON g, C.ToNamedRecord g) => DisplayTree g -> a)
+  -> NonEmpty (DisplayTree GroupByNone)
+  -> NonEmpty a
+chooseGrouping (GroupOptions d m i) f ts = case (d, m, i) of
+  (True, True, True) -> f <$> groupTrees id ts
+  (True, True, False) -> f <$> groupTrees (\g -> g {gvIngredient = ()}) ts
+  (True, False, True) -> f <$> groupTrees (\g -> g {gvMeal = ()}) ts
+  (True, False, False) -> f <$> groupTrees (\g -> g {gvMeal = (), gvIngredient = ()}) ts
+  (False, True, True) -> f <$> groupTrees (\g -> g {gvDaySpan = ()}) ts
+  (False, True, False) -> f <$> groupTrees (\g -> g {gvDaySpan = (), gvIngredient = ()}) ts
+  (False, False, True) -> f <$> groupTrees (\g -> g {gvDaySpan = (), gvMeal = ()}) ts
+  (False, False, False) -> f <$> groupTrees (const (GroupVars () () ())) ts
+
+treeToJSON_ :: ToJSON g => DisplayOptions -> DisplayTree g -> Value
+treeToJSON_ o (DisplayTree_ ms e g) =
+  object
+    [ "group" .= toJSON g
+    , "energy" .= object ["value" .= e, "unit" .= Unit Kilo Calorie]
+    , "mass" .= nodeToJSON o "Total" Unity ms
+    ]
+
+nodeToJSON
+  :: DisplayOptions
   -> Text
   -> Prefix
-  -> DisplayNode NutrientMass
+  -> DisplayNode Mass
   -> Value
-treeToJSON o@(DisplayOptions u m e uy) n p (DisplayNode v ks us) =
+nodeToJSON o@(DisplayOptions u e uy) n p (DisplayNode v ks us) =
   object $
     [ encodeValue v'
     , "name" .= n
@@ -596,22 +640,22 @@ treeToJSON o@(DisplayOptions u m e uy) n p (DisplayNode v ks us) =
     ]
       ++ ["unknown" .= mapU us | u]
   where
-    (p', v') = unityMaybe uy p (fmap (fmap unMass) v)
+    (p', v') = unityMaybe uy p $ unMass v
 
-    mapK = fmap (\(DisplayNutrient n' p'', v'') -> treeToJSON o n' p'' v'') . M.toList
+    mapK = fmap (\(DisplayNutrient n' p'', v'') -> nodeToJSON o n' p'' v'') . M.toList
 
     mapU = fmap (uncurry goUnk) . M.toList
 
     goUnk uts v'' =
       let (p'', v''') =
-            unityMaybe uy (autoPrefix $ unMass $ getSum $ nvValue v'') (fmap (fmap unMass) v'')
+            unityMaybe uy (autoPrefix $ unMass v'') $ unMass v''
        in object
             [ encodeValue v'''
             , encodeUnit p''
             , "trees" .= uts
             ]
 
-    encodeValue v'' = if m then "value" .= v'' else "value" .= getSum (nvValue v'')
+    encodeValue v'' = "value" .= v''
     encodeUnit p'' =
       let u' = Unit p'' Gram
        in if e then "unit" .= u' else "unit" .= tunit u'
@@ -619,31 +663,21 @@ treeToJSON o@(DisplayOptions u m e uy) n p (DisplayNode v ks us) =
 -- | Convert a value and its prefix depending on if we want all values to be
 -- displayed in their native units or all in unity (ie "grams" with no prefix).
 -- Assume the incoming value is in grams
-unityMaybe
-  :: Bool
-  -> Prefix
-  -> NutrientValue_ (Sum Scientific)
-  -> (Prefix, NutrientValue_ (Sum Scientific))
-unityMaybe unity p n@(NutrientValue (Sum v) _) =
-  let (p', v') = unityMaybeSci unity p v
-   in (p', n {nvValue = Sum v'})
+unityMaybe :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
+unityMaybe True _ v = (Unity, v)
+unityMaybe False p v = (p, raisePower (-prefixValue p) v)
 
-unityMaybeSci :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
-unityMaybeSci True _ v = (Unity, v)
-unityMaybeSci False p v = (p, raisePower (-prefixValue p) v)
-
-nodesToRows :: SpanFood NutrientMass NutrientEnergy -> [DisplayRow]
-nodesToRows (SpanFood (FinalFood (DisplayNode v ks us) e) (start, end)) =
-  [energy, totalMass] ++ goK massName ks ++ [goU massName us]
+treeToRows :: C.ToNamedRecord g => DisplayTree g -> NonEmpty C.NamedRecord
+treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
+  energy :| (totalMass : (goK massName ks ++ [goU massName us]))
   where
-    end' = addDays (fromIntegral end) start
+    row n p v' u = C.toNamedRecord $ DisplayRow g n p v' u
 
-    dpyRow n pnt v' u =
-      DisplayRow start end' n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
+    dpyRow n pnt v' u = row n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
 
-    energy = dpyRow "Energy" Nothing (unEnergy $ val e) (Unit Kilo Calorie)
+    energy = dpyRow "Energy" Nothing (unEnergy e) (Unit Kilo Calorie)
 
-    totalMass = dpyRow "Total Mass" Nothing (unMass $ val v) (Unit Unity Gram)
+    totalMass = dpyRow "Total Mass" Nothing (unMass v) (Unit Unity Gram)
 
     massRow n pnt v' p = dpyRow n (Just pnt) v' (Unit p Gram)
 
@@ -651,14 +685,12 @@ nodesToRows (SpanFood (FinalFood (DisplayNode v ks us) e) (start, end)) =
 
     unknownName = "Unknown"
 
-    val = getSum . nvValue
-
     goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
 
     goK_ pnt (DisplayNutrient n p) (DisplayNode v' ks' us') =
-      massRow n pnt (unMass $ val v') p : (goK n ks' ++ [goU n us'])
+      massRow n pnt (unMass v') p : (goK n ks' ++ [goU n us'])
 
     goU pnt us' =
-      let s = unMass $ sum $ val <$> M.elems us'
+      let s = unMass $ sum $ M.elems us'
           p = autoPrefix s
        in massRow unknownName pnt s p

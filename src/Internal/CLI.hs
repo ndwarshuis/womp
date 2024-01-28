@@ -151,11 +151,6 @@ displayOptions =
           <> help "display unknown nutrients in output"
       )
     <*> switch
-      ( long "members"
-          <> short 'm'
-          <> help "display members that are included with each value"
-      )
-    <*> switch
       ( long "expandUnits"
           <> short 'x'
           <> help "show prefix and base unit as separate keys (JSON only)"
