@@ -25,7 +25,7 @@ let CalorieConversion =
       , default = { ccFat = 9.0, ccCarbs = 4.0, ccProtein = 4.0 }
       }
 
-let CustomSource =
+let CustomIngredient =
       { Type =
           { scDesc : Text
           , scRemainder : Natural
@@ -41,7 +41,7 @@ let CustomSource =
         }
       }
 
-let IngredientSource = < Custom : CustomSource.Type | FDC : Natural >
+let IngredientSource = < Custom : Text | FDC : Natural >
 
 let Ingredient =
       { Type =
@@ -136,26 +136,19 @@ let Schedule =
       , default = { schWhen = Cron::{=}, schScale = Some 1.0 }
       }
 
-let EquivalenceGroup = Map Text (List Natural)
-
 let Config =
       { Type =
           { schedule : Schedule.Type
-          , equivalenceGroups : EquivalenceGroup
-          , exclusions : List Natural
+          , customIngredients : Map Text CustomIngredient.Type
           }
-      , default =
-        { equivalenceGroups =
-          [ { mapKey = "Energy", mapValue = [ 2047, 2048 ] } ]
-        , exclusions = [ 1062 ]
-        }
+      , default.customIngredients = [] : Map Text CustomIngredient.Type
       }
 
 in  { Modification
     , Btw
     , Prefix
     , CustomNutrient
-    , CustomSource
+    , CustomIngredient
     , IngredientSource
     , Ingredient
     , Meal

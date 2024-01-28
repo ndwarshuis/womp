@@ -11,12 +11,11 @@ import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
 
-type ParsedFoodItem = FoodItem FID [FoodNutrient]
+type ParsedFoodItem = FoodItem [FoodNutrient]
 
 -- TODO need a way to filter out/warn user on bad nutrient data
-data FoodItem i n = FoodItem
-  { fiId :: i
-  , fiDescription :: Text
+data FoodItem n = FoodItem
+  { fiDescription :: Text
   , fiFoodNutrients :: n
   , fiCalorieConversion :: CalorieConversion
   , fiProteinConversion :: ProteinConversion
@@ -37,8 +36,7 @@ parseFoodItem v = do
   c <- firstM parseCalorieConversion ncf
   p <- firstM parseProteinConversion ncf
   FoodItem
-    <$> v .: "fdcId"
-    <*> v .: "description"
+    <$> v .: "description"
     <*> (v .:? "foodNutrients" .!= [])
     <*> pure (fromMaybe defCalorie c)
     <*> pure (fromMaybe defProtein p)
@@ -114,7 +112,7 @@ newtype NID = NID {unNID :: Natural}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Natural
 
 newtype Mass = Mass {unMass :: Scientific}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional) via Scientific
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional, Real) via Scientific
 
 newtype ProteinConversion = ProteinConversion {unPC :: Scientific}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Scientific

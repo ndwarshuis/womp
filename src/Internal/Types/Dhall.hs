@@ -7,6 +7,7 @@
 module Internal.Types.Dhall where
 
 import Data.Aeson
+import Dhall.Marshal.Decode
 import Dhall.TH
 import Internal.Types.TH
 import RIO
@@ -21,7 +22,7 @@ makeHaskellTypesWith
   , SingleConstructor "CalorieConversion" "CalorieConversion" "(./dhall/Types.dhall).CalorieConversion.Type"
   , SingleConstructor "Btw" "Btw" "(./dhall/Types.dhall).Btw"
   , SingleConstructor "CustomNutrient" "CustomNutrient" "(./dhall/Types.dhall).CustomNutrient"
-  , SingleConstructor "CustomSource" "CustomSource" "(./dhall/Types.dhall).CustomSource.Type"
+  , SingleConstructor "CustomIngredient" "CustomIngredient" "(./dhall/Types.dhall).CustomIngredient.Type"
   , SingleConstructor "RepeatPat" "RepeatPat" "(./dhall/Types.dhall).RepeatPat"
   , SingleConstructor "Modification" "Modification" "(./dhall/Types.dhall).Modification"
   , SingleConstructor "Ingredient" "Ingredient" "(./dhall/Types.dhall).Ingredient.Type"
@@ -35,7 +36,7 @@ deriveProduct
   [ "Weekday"
   , "Prefix"
   , "IngredientSource"
-  , "CustomSource"
+  , "CustomIngredient"
   , "CustomNutrient"
   , "WeekdayPat"
   , "RepeatPat"
@@ -48,6 +49,14 @@ deriveProduct
   , "Schedule"
   , "CalorieConversion"
   ]
+
+type CustomMap = Map Text CustomIngredient
+
+data Config = Config
+  { schedule :: Schedule
+  , customIngredients :: CustomMap
+  }
+  deriving (Eq, Show, Generic, FromDhall)
 
 deriving instance ToJSON Prefix
 

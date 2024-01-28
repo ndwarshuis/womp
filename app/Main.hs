@@ -57,42 +57,6 @@ runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} =
   void . fetchFID foForce foID =<< getStoreAPIKey coKey
 
-fetchFID
-  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
-  => Bool
-  -> FID
-  -> APIKey
-  -> m Text
-fetchFID frc i k = do
-  e <- fidExists i
-  if frc then go else if e then readFID i else go
-  where
-    go = downloadFID k i
-
-fidPath :: MonadUnliftIO m => FID -> m FilePath
-fidPath i = do
-  d <- cacheDir
-  return $ d </> (show i ++ ".json")
-
-fidExists :: MonadUnliftIO m => FID -> m Bool
-fidExists i = doesFileExist =<< fidPath i
-
-downloadFID
-  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
-  => APIKey
-  -> FID
-  -> m Text
-downloadFID k i = do
-  p <- fidPath i
-  j <- getFoodJSON k i
-  createWriteFile p j
-  return j
-
--- | Read FID JSON file
--- ASSUME it has already been downloaded or this will error
-readFID :: MonadUnliftIO m => FID -> m Text
-readFID i = readFileUtf8 =<< fidPath i
-
 runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
 runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
   k <- getStoreAPIKey coKey
@@ -268,9 +232,6 @@ logNutrientMap :: MonadUnliftIO m => Maybe FID -> NutrientMap -> m ()
 logNutrientMap i =
   mapM_ (logDebug . displayText . uncurry (fmtUnused i)) . M.toList
 
-displayText :: Text -> Utf8Builder
-displayText = displayBytesUtf8 . encodeUtf8
-
 fmtUnused :: Maybe FID -> NID -> ValidNutrient -> T.Text
 fmtUnused fi ni n =
   T.concat
@@ -282,28 +243,6 @@ fmtUnused fi ni n =
            , tshow n
            ]
     )
-
-fmtWarning :: FID -> NutrientWarning -> T.Text
-fmtWarning fi (NotGram ni n) =
-  T.unwords
-    [ "Unit"
-    , n
-    , "is not a mass in nutrient with id"
-    , tshow ni
-    , "in food with id"
-    , tshow fi
-    ]
-fmtWarning fi (UnknownUnit ni n) =
-  T.unwords
-    [ "Unit"
-    , n
-    , "cannot be parsed in nutrient with id"
-    , tshow ni
-    , "in food with id"
-    , tshow fi
-    ]
-fmtWarning fi (InvalidNutrient n) =
-  T.unwords ["Food with id", tshow fi, "has invalid food nutrient:", tshow n]
 
 -- where
 --   msg = case t of
@@ -344,33 +283,6 @@ currentDay = do
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "womp"
 
-cacheDir :: MonadUnliftIO m => m FilePath
-cacheDir = getXdgDirectory XdgCache "womp"
-
--- TODO catch errors here
-getFoodJSON
-  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
-  => APIKey
-  -> FID
-  -> m Text
-getFoodJSON k i = do
-  logInfo $ displayBytesUtf8 $ encodeUtf8 $ T.append "downloading " (tshow i)
-  res <-
-    R.runReq R.defaultHttpConfig $
-      R.req R.GET url R.NoReqBody R.bsResponse opts
-  logInfo $ displayBytesUtf8 $ encodeUtf8 $ T.append "downloaded " (tshow i)
-  return $ decodeUtf8Lenient $ R.responseBody res
-  where
-    url = apiFoodURL /~ tshow i
-    opts = R.header "X-Api-Key" $ encodeUtf8 $ unAPIKey k
-
-apiFoodURL :: R.Url 'R.Https
-apiFoodURL =
-  R.https "api.nal.usda.gov"
-    /: "fdc"
-    /~ ("v1" :: Text)
-    /~ ("food" :: Text)
-
 getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m APIKey
 getStoreAPIKey k = do
   f <- (</> apiKeyFile) <$> configDir
@@ -384,11 +296,6 @@ getStoreAPIKey k = do
 
 apiKeyFile :: FilePath
 apiKeyFile = "apikey"
-
-createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
-createWriteFile p t = do
-  createDirectoryIfMissing True $ takeDirectory p
-  writeFileUtf8 p t
 
 readMealPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
@@ -411,17 +318,6 @@ readMealPlan f = do
   vs <- mapM checkSched ss
   maybe (logError "meal plan is empty" >> exitFailure) return $ N.nonEmpty vs
 
--- TODO make sure all masses are positive
-checkSched :: MonadUnliftIO m => Schedule -> m (ValidSchedule (Cron, Double))
-checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
-  fromEither $ checkCronPat schWhen
-  is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  bitraverse f g undefined is
-  where
-    -- return $ ValidSchedule is' (schWhen, s)
-
-    s = fromMaybe 1.0 schScale
-
 -- partitionIngredients
 --   :: NonEmpty Ingredient
 --   -> (BiNonEmpty ValidFDCIngredient CustomIngredient)
@@ -437,78 +333,9 @@ checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
 --   logNutrientMap Nothing nm
 --   return $ Right f
 
-isDhall :: FilePath -> Bool
-isDhall = isExtensionOf "dhall"
-
-isYaml :: FilePath -> Bool
-isYaml f = isExtensionOf "yaml" f || isExtensionOf "yml" f
-
 tsvOptions :: C.EncodeOptions
 tsvOptions =
   C.defaultEncodeOptions
     { C.encDelimiter = fromIntegral (ord '\t')
     , C.encIncludeHeader = True
     }
-
-expandCronPat :: DaySpan -> Cron -> [Day]
-expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =
-  filter validWeekday $
-    mapMaybe (uncurry3 toDay) $
-      takeWhile (\((y, _), m, d) -> (y, m, d) <= (yb1, mb1, db1)) $
-        dropWhile (\((y, _), m, d) -> (y, m, d) < (yb0, mb0, db0)) $
-          [(y, m, d) | y <- (\y -> (y, isLeapYear y)) <$> ys, m <- ms, d <- ds]
-  where
-    ys = case cronYear of
-      Nothing -> [yb0 .. yb1]
-      Just pat ->
-        dropWhile (< yb0) $
-          fromIntegral
-            <$> expandMDYPat (fromIntegral yb0) (fromIntegral yb1) pat
-    ms = expandMD 12 cronMonth
-    ds = expandMD 31 cronDay
-    (s, e) = fromDaySpan b
-    (yb0, mb0, db0) = toGregorian s
-    (yb1, mb1, db1) = toGregorian $ addDays (-1) e
-    expandMD lim =
-      (fromIntegral <$>)
-        . maybe [1 .. lim] (expandMDYPat 1 lim)
-    expandW (OnDay x) = [fromEnum x]
-    expandW (OnDays xs) = fromEnum <$> xs
-    ws = maybe [] expandW cronWeekly
-    validWeekday = if null ws then const True else \day -> dayToWeekday day `elem` ws
-    toDay (y, leap) m d
-      | m == 2 && (not leap && d > 28 || leap && d > 29) = Nothing
-      | m `elem` [4, 6, 9, 11] && d > 30 = Nothing
-      | otherwise = Just $ fromGregorian y m d
-
-uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-uncurry3 f (x, y, z) = f x y z
-
--- ASSUME that the repeat pattern is valid
-expandMDYPat :: Natural -> Natural -> MDYPat -> [Natural]
-expandMDYPat lower upper (Single x) = [x | lower <= x && x <= upper]
-expandMDYPat lower upper (Multi xs) = dropWhile (<= lower) $ takeWhile (<= upper) xs
-expandMDYPat lower upper (After x) = [max lower x .. upper]
-expandMDYPat lower upper (Before x) = [lower .. min upper x]
-expandMDYPat lower upper (Between (Btw btStart btEnd)) =
-  [max lower btStart .. min upper btEnd]
-expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}) =
-  -- ASSUME b and (Just r) > 0
-  let k = maybe upper (\n -> min (s + b * (n - 1)) upper) r
-   in dropWhile (<= lower) $ takeWhile (<= k) [s + i * b | i <- [0 ..]]
-
-checkCronPat :: MonadAppError m => Cron -> m ()
-checkCronPat Cron {cronYear, cronMonth, cronDay} =
-  mapM_ (mapM go) [cronYear, cronMonth, cronDay]
-  where
-    go (Repeat p) = checkRepeatPat p
-    go _ = return ()
-
-checkRepeatPat :: MonadAppError m => RepeatPat -> m ()
-checkRepeatPat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}
-  | b == 0 = throwAppError $ DatePatternError s b r ZeroLength
-  | r == Just 0 = throwAppError $ DatePatternError s b r ZeroRepeats
-  | otherwise = return ()
-
-dayToWeekday :: Day -> Int
-dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7

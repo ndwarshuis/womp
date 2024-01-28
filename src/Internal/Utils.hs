@@ -8,6 +8,7 @@ import RIO
 import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
+import RIO.Time
 
 throwAppError :: MonadAppError m => AppError -> m a
 throwAppError e = throwError $ AppException [e]
@@ -86,6 +87,7 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
+  (MissingCustom c) -> [T.append "Custom ingredient not found: " c]
   (CustomIngError c) -> [fmtCustomError c]
   (FileTypeError f) -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
   (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
@@ -176,3 +178,69 @@ divSci n d
 -- TODO could make this more general...if I feel like it
 findDups :: Ord a => [a] -> [a]
 findDups = fmap N.head . filter ((> 1) . length) . N.group . L.sort
+
+cronPatLength :: Num a => DaySpan -> Cron -> a
+cronPatLength ds = fromIntegral . length . expandCronPat ds
+
+expandCronPat :: DaySpan -> Cron -> [Day]
+expandCronPat b Cron {cronYear, cronMonth, cronDay, cronWeekly} =
+  filter validWeekday $
+    mapMaybe (uncurry3 toDay) $
+      takeWhile (\((y, _), m, d) -> (y, m, d) <= (yb1, mb1, db1)) $
+        dropWhile (\((y, _), m, d) -> (y, m, d) < (yb0, mb0, db0)) $
+          [(y, m, d) | y <- (\y -> (y, isLeapYear y)) <$> ys, m <- ms, d <- ds]
+  where
+    ys = case cronYear of
+      Nothing -> [yb0 .. yb1]
+      Just pat ->
+        dropWhile (< yb0) $
+          fromIntegral
+            <$> expandMDYPat (fromIntegral yb0) (fromIntegral yb1) pat
+    ms = expandMD 12 cronMonth
+    ds = expandMD 31 cronDay
+    (s, e) = fromDaySpan b
+    (yb0, mb0, db0) = toGregorian s
+    (yb1, mb1, db1) = toGregorian $ addDays (-1) e
+    expandMD lim =
+      (fromIntegral <$>)
+        . maybe [1 .. lim] (expandMDYPat 1 lim)
+    expandW (OnDay x) = [fromEnum x]
+    expandW (OnDays xs) = fromEnum <$> xs
+    ws = maybe [] expandW cronWeekly
+    validWeekday = if null ws then const True else \day -> dayToWeekday day `elem` ws
+    toDay (y, leap) m d
+      | m == 2 && (not leap && d > 28 || leap && d > 29) = Nothing
+      | m `elem` [4, 6, 9, 11] && d > 30 = Nothing
+      | otherwise = Just $ fromGregorian y m d
+
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (x, y, z) = f x y z
+
+-- ASSUME that the repeat pattern is valid
+expandMDYPat :: Natural -> Natural -> MDYPat -> [Natural]
+expandMDYPat lower upper (Single x) = [x | lower <= x && x <= upper]
+expandMDYPat lower upper (Multi xs) = dropWhile (<= lower) $ takeWhile (<= upper) xs
+expandMDYPat lower upper (After x) = [max lower x .. upper]
+expandMDYPat lower upper (Before x) = [lower .. min upper x]
+expandMDYPat lower upper (Between (Btw btStart btEnd)) =
+  [max lower btStart .. min upper btEnd]
+expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}) =
+  -- ASSUME b and (Just r) > 0
+  let k = maybe upper (\n -> min (s + b * (n - 1)) upper) r
+   in dropWhile (<= lower) $ takeWhile (<= k) [s + i * b | i <- [0 ..]]
+
+checkCronPat :: MonadAppError m => Cron -> m ()
+checkCronPat Cron {cronYear, cronMonth, cronDay} =
+  mapM_ (mapM go) [cronYear, cronMonth, cronDay]
+  where
+    go (Repeat p) = checkRepeatPat p
+    go _ = return ()
+
+checkRepeatPat :: MonadAppError m => RepeatPat -> m ()
+checkRepeatPat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}
+  | b == 0 = throwAppError $ DatePatternError s b r ZeroLength
+  | r == Just 0 = throwAppError $ DatePatternError s b r ZeroRepeats
+  | otherwise = return ()
+
+dayToWeekday :: Day -> Int
+dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7

@@ -23,7 +23,7 @@ import qualified RIO.Vector as V
 
 type NutrientMap = M.Map NID ValidNutrient
 
-type MappedFoodItem = FoodItem FID NutrientMap
+type MappedFoodItem = FoodItem NutrientMap
 
 data ValidNutrient = ValidNutrient
   { vnAmount :: Mass
@@ -83,12 +83,21 @@ data DisplayOptions = DisplayOptions
 
 type DaySpan = (Day, Int)
 
-data ValidSchedule a = ValidSchedule
+data ValidSchedule = ValidSchedule
   { vsIngs :: NonEmpty Ingredient
-  , vsMeta :: a
+  , vsMeal :: MealGroup
+  , vsCron :: Cron
+  , vsScale :: Scientific
   }
 
-data CustomIngredient = CustomIngredient CustomSource Mass [Modification]
+data IngredientMetadata = IngredientMetadata
+  { imMeal :: MealGroup
+  , imMass :: Mass
+  , imMods :: [Modification]
+  , imDaySpan :: DaySpan
+  }
+
+-- data CustomIngredient = CustomIngredient CustomSource Mass [Modification]
 
 data ValidFDCIngredient = ValidFDCIngredient
   { viID :: FID
@@ -491,7 +500,7 @@ daySpanCsv ds =
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
 newtype Energy = Energy {unEnergy :: Scientific}
-  deriving (Show, Eq, Ord, Num, ToJSON) via Scientific
+  deriving (Show, Eq, Ord, Num, ToJSON, Fractional) via Scientific
 
 -- type NutrientMass = NutrientValue_ (Sum Mass)
 
@@ -558,6 +567,7 @@ data AppError
   | MissingAPIKey !FilePath
   | FileTypeError !FilePath
   | CustomIngError !CustomIngError
+  | MissingCustom !Text
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)
@@ -566,3 +576,8 @@ data CustomIngError
   = CustomDups Text (NonEmpty NID)
   | TooMuchMass Text
   deriving (Show)
+
+data UnusedNutrient = UnusedNutrient
+  { uId :: NID
+  , uNut :: ValidNutrient
+  }
