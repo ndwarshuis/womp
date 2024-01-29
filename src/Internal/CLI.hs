@@ -103,7 +103,7 @@ grouping =
   GroupOptions
     <$> switch (long "date" <> short 'D' <> help "group by date range")
     <*> switch (long "meal" <> short 'M' <> help "group by meal")
-    <*> switch (long "ingredient" <> short 'I' <> help "group by ingredient")
+    <*> switch (long "ingredient" <> short 'G' <> help "group by ingredient")
 
 tree :: Parser TreeOptions
 tree =

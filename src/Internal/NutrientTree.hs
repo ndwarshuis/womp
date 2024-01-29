@@ -518,57 +518,6 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
--- fmtFullTree :: DisplayOptions -> SpanFood NutrientMass NutrientEnergy -> T.Text
--- fmtFullTree o (SpanFood (FinalFood m (NutrientValue (Sum v) _)) (start, end)) =
---   T.unlines
---     [ T.unwords ["Start:", tshow start]
---     , T.unwords ["End:", tshow $ addDays (fromIntegral end) start]
---     , T.unwords ["Energy:", tshow v, "kcal"]
---     , fmtTree o m
---     ]
-
--- fmtTree :: DisplayOptions -> DisplayNode Mass -> T.Text
--- fmtTree o@(DisplayOptions u _ _ uy) (DisplayNode v ks us) = T.unlines (header : rest)
---   where
---     header = T.unwords ["Total mass:", tshow $ getSum $ nvValue v, "g"]
---     rest = go ks us
---     go ks' us' =
---       withMap fmtKnown ks' ++ if u then withMap fmtUnknown us' else fmtUnknownTotal us'
-
---     withMap f = concatMap (uncurry f) . M.assocs
-
---     addIndent n = T.append (T.replicate (2 * n) " ")
-
---     fmtKnown dn (DisplayNode v' ks' us') =
---       fmtHeader (fmtDisplayNutrient o dn v') $ go ks' us'
-
---     fmtUnknownTotal =
---       maybeToList . fmap (fmtUnknownHeader . sconcat) . N.nonEmpty . M.elems
-
---     fmtUnknown ts v' =
---       let h = fmtUnknownHeader v'
---        in fmtHeader h $ if u then concatMap fmtUnknownTree ts else []
-
---     fmtUnknownHeader v' =
---       let (p, v'') = unityMaybeSci uy (autoPrefix $ unMass v') (unMass v')
---        in T.concat
---             [ "Unknown: "
---             , tshow v''
---             , " "
---             , tunit $ Unit p Gram
---             ]
-
---     fmtUnknownTree (UnknownTree n ts) =
---       fmtHeader n $ concatMap fmtUnknownTree ts
-
---     fmtHeader h = (h :) . fmap (addIndent 1)
-
--- fmtDisplayNutrient :: DisplayOptions -> DisplayNutrient -> Mass -> T.Text
--- fmtDisplayNutrient DisplayOptions {doUnityUnits} (DisplayNutrient n p) v =
---   T.concat [n, ": ", tshow v', " ", tunit (Unit p' Gram)]
---   where
---     (p', v') = unityMaybeSci doUnityUnits p $ unMass v
-
 toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
 toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
 
@@ -602,14 +551,24 @@ treeToCSV
   -> BL.ByteString
 treeToCSV eos gos = chooseGrouping gos go
   where
-    go :: (C.ToNamedRecord g, C.DefaultOrdered g) => NonEmpty (DisplayTree g) -> BL.ByteString
+    go
+      :: (C.ToNamedRecord (DisplayRow g), C.DefaultOrdered (DisplayRow g))
+      => NonEmpty (DisplayTree g)
+      -> BL.ByteString
     go = C.encodeDefaultOrderedByNameWith eos . N.toList . sconcat . fmap treeToRows
 
 -- TODO not sure how to get the instance constraints out of the rankN function
 -- (they don't seem necessary)
 chooseGrouping
   :: GroupOptions
-  -> (forall g. (ToJSON g, C.DefaultOrdered g, C.ToNamedRecord g) => NonEmpty (DisplayTree g) -> a)
+  -> ( forall g
+        . ( ToJSON g
+          , C.DefaultOrdered (DisplayRow g)
+          , C.ToNamedRecord (DisplayRow g)
+          )
+       => NonEmpty (DisplayTree g)
+       -> a
+     )
   -> NonEmpty (DisplayTree GroupByAll)
   -> a
 chooseGrouping (GroupOptions d m i) f ts = case (d, m, i) of
@@ -641,8 +600,8 @@ nodeToJSON o@(DisplayOptions u e uy) n p (DisplayNode v ks us) =
     [ encodeValue v'
     , "name" .= n
     , encodeUnit p'
-    , "known" .= mapK ks
     ]
+      ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
       ++ ["unknown" .= mapU us | u]
   where
     (p', v') = unityMaybe uy p $ unMass v
@@ -672,6 +631,7 @@ unityMaybe :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
 unityMaybe True _ v = (Unity, v)
 unityMaybe False p v = (p, raisePower (-prefixValue p) v)
 
+-- TODO add option to remove unknowns
 treeToRows :: DisplayTree g -> NonEmpty (DisplayRow g)
 treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
   energy :| (totalMass : (goK massName ks ++ [goU massName us]))
@@ -680,7 +640,8 @@ treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
 
     dpyRow n pnt v' u = row n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
 
-    energy = dpyRow "Energy" Nothing (unEnergy e) (Unit Kilo Calorie)
+    -- multiply by 1000 here since calories are actually given in kcal
+    energy = dpyRow "Energy" Nothing (unEnergy e * 1000) (Unit Kilo Calorie)
 
     totalMass = dpyRow "Total Mass" Nothing (unMass v) (Unit Unity Gram)
 

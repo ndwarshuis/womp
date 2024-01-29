@@ -19,7 +19,6 @@ import qualified RIO.Map as M
 import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
-import qualified RIO.Vector as V
 
 type NutrientMap = M.Map NID ValidNutrient
 
@@ -308,64 +307,6 @@ type GroupByMealIngredient = GroupVars () MealGroup IngredientGroup
 
 type GroupByAll = GroupVars DaySpan MealGroup IngredientGroup
 
-dateHeaders :: [ByteString]
-dateHeaders = ["start", "end"]
-
-mealHeader :: ByteString
-mealHeader = "meal"
-
-ingredientHeader :: ByteString
-ingredientHeader = "ingredient"
-
-instance C.DefaultOrdered GroupByNone where
-  headerOrder _ = C.header mempty -- TODO is this legal?
-
-instance C.DefaultOrdered GroupByDate where
-  headerOrder _ = C.header dateHeaders
-
-instance C.DefaultOrdered GroupByMeal where
-  headerOrder _ = C.header [mealHeader]
-
-instance C.DefaultOrdered GroupByIngredient where
-  headerOrder _ = C.header [ingredientHeader]
-
-instance C.DefaultOrdered GroupByDateMeal where
-  headerOrder _ = C.header $ dateHeaders ++ [mealHeader]
-
-instance C.DefaultOrdered GroupByDateIngredient where
-  headerOrder _ = C.header [mealHeader, ingredientHeader]
-
-instance C.DefaultOrdered GroupByMealIngredient where
-  headerOrder _ = C.header $ dateHeaders ++ [ingredientHeader]
-
-instance C.DefaultOrdered GroupByAll where
-  headerOrder _ = C.header $ dateHeaders ++ [mealHeader, ingredientHeader]
-
-instance C.ToNamedRecord GroupByNone where
-  toNamedRecord _ = C.namedRecord [] -- TODO this seems odd
-
-instance C.ToNamedRecord GroupByDate where
-  toNamedRecord r@(GroupVars d _ _) = zipApplyV r $ daySpanCsv d
-
-instance C.ToNamedRecord GroupByMeal where
-  toNamedRecord r@(GroupVars _ m _) = zipApplyV r [(C..= m)]
-
-instance C.ToNamedRecord GroupByIngredient where
-  toNamedRecord r@(GroupVars _ _ i) = zipApplyV r [(C..= i)]
-
-instance C.ToNamedRecord GroupByDateMeal where
-  toNamedRecord r@(GroupVars d m _) = zipApplyV r $ daySpanCsv d ++ [(C..= m)]
-
-instance C.ToNamedRecord GroupByDateIngredient where
-  toNamedRecord r@(GroupVars d _ i) = zipApplyV r $ daySpanCsv d ++ [(C..= i)]
-
-instance C.ToNamedRecord GroupByMealIngredient where
-  toNamedRecord r@(GroupVars _ m i) = zipApplyV r [(C..= m), (C..= i)]
-
-instance C.ToNamedRecord GroupByAll where
-  toNamedRecord r@(GroupVars d m i) =
-    zipApplyV r $ daySpanCsv d ++ [(C..= m), (C..= i)]
-
 instance ToJSON GroupByNone where
   toJSON _ = object []
 
@@ -437,22 +378,6 @@ instance Semigroup (DisplayTree_ () (Sum Mass) (Sum Energy)) where
 
 type DisplayTree g = DisplayTree_ g Mass Energy
 
--- type DisplayTreeNoGroup = DisplayTree () () ()
-
--- type DisplayTreeByDate = DisplayTree DaySpan () ()
-
--- type DisplayTreeByMeal = DisplayTree () MealGroup ()
-
--- type DisplayTreeByIngredient = DisplayTree () () IngredientGroup
-
--- type DisplayTreeByDateMeal = DisplayTree DaySpan MealGroup ()
-
--- type DisplayTreeByDateIngredient = DisplayTree DaySpan () IngredientGroup
-
--- type DisplayTreeByMealIngredient = DisplayTree () MealGroup IngredientGroup
-
--- type DisplayTreeByAll = DisplayTree DaySpan MealGroup IngredientGroup
-
 --------------------------------------------------------------------------------
 -- display rows
 
@@ -471,23 +396,107 @@ data DisplayRow g = DisplayRow
 nutrientHeaders :: [ByteString]
 nutrientHeaders = ["nutrient", "parent", "value", "unit"]
 
-instance C.DefaultOrdered g => C.DefaultOrdered (DisplayRow g) where
-  headerOrder DisplayRow {drGroup} =
-    C.headerOrder drGroup <> C.header nutrientHeaders
+dateHeaders :: [ByteString]
+dateHeaders = ["start", "end"]
 
-instance C.ToNamedRecord g => C.ToNamedRecord (DisplayRow g) where
-  toNamedRecord (DisplayRow g n p v u) = gr <> nr
-    where
-      gr = C.toNamedRecord g
-      nr = zipApply nutrientHeaders [(C..= n), (C..= p), (C..= v), (C..= u)]
+mealHeader :: ByteString
+mealHeader = "meal"
+
+ingredientHeader :: ByteString
+ingredientHeader = "ingredient"
+
+byNoneHeader :: [ByteString]
+byNoneHeader = mempty -- TODO is this legal?
+
+byDateHeader :: [ByteString]
+byDateHeader = dateHeaders
+
+byMealHeader :: [ByteString]
+byMealHeader = [mealHeader]
+
+byIngredientHeader :: [ByteString]
+byIngredientHeader = [ingredientHeader]
+
+byDateMealHeader :: [ByteString]
+byDateMealHeader = dateHeaders ++ [mealHeader]
+
+byDateIngredientHeader :: [ByteString]
+byDateIngredientHeader = dateHeaders ++ [ingredientHeader]
+
+byMealIngredientHeader :: [ByteString]
+byMealIngredientHeader = [mealHeader, ingredientHeader]
+
+byAllHeader :: [ByteString]
+byAllHeader = dateHeaders ++ [mealHeader, ingredientHeader]
+
+instance C.DefaultOrdered (DisplayRow GroupByNone) where
+  headerOrder _ = displayRowHeader byNoneHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByDate) where
+  headerOrder _ = displayRowHeader byDateHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByMeal) where
+  headerOrder _ = displayRowHeader byMealHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByIngredient) where
+  headerOrder _ = displayRowHeader byIngredientHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByDateMeal) where
+  headerOrder _ = displayRowHeader byDateMealHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByDateIngredient) where
+  headerOrder _ = displayRowHeader byDateIngredientHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByMealIngredient) where
+  headerOrder _ = displayRowHeader byMealIngredientHeader
+
+instance C.DefaultOrdered (DisplayRow GroupByAll) where
+  headerOrder _ = displayRowHeader byAllHeader
+
+displayRowHeader :: [ByteString] -> C.Header
+displayRowHeader hs = C.header $ hs ++ nutrientHeaders
+
+instance C.ToNamedRecord (DisplayRow GroupByNone) where
+  toNamedRecord r = nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByDate) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars d _ _)} =
+    zipApply byDateHeader (daySpanCsv d) <> nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByMeal) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars _ m _)} =
+    zipApply byMealHeader [(C..= m)] <> nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByIngredient) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars _ _ i)} =
+    zipApply byIngredientHeader [(C..= i)] <> nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByDateMeal) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars d m _)} =
+    zipApply byDateMealHeader (daySpanCsv d ++ [(C..= m)]) <> nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByDateIngredient) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars d _ i)} =
+    zipApply byDateIngredientHeader (daySpanCsv d ++ [(C..= i)])
+      <> nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByMealIngredient) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars _ m i)} =
+    zipApply byMealIngredientHeader [(C..= m), (C..= i)] <> nutrientRecord r
+
+instance C.ToNamedRecord (DisplayRow GroupByAll) where
+  toNamedRecord r@DisplayRow {drGroup = (GroupVars d m i)} =
+    zipApply byAllHeader (daySpanCsv d ++ [(C..= m), (C..= i)])
+      <> nutrientRecord r
+
+nutrientRecord :: DisplayRow g -> C.NamedRecord
+nutrientRecord (DisplayRow _ n p v u) =
+  zipApply nutrientHeaders [(C..= n), (C..= p), (C..= v), (C..= u)]
 
 type PartialField = ByteString -> (ByteString, ByteString)
 
 zipApply :: [ByteString] -> [PartialField] -> C.NamedRecord
 zipApply hs = C.namedRecord . zipWith (\h f -> f h) hs
-
-zipApplyV :: C.DefaultOrdered a => a -> [PartialField] -> C.NamedRecord
-zipApplyV r = zipApply (V.toList (C.headerOrder r))
 
 formatDay :: Day -> String
 formatDay = formatTime defaultTimeLocale "%Y-%m-%d"
@@ -504,25 +513,6 @@ data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
 newtype Energy = Energy {unEnergy :: Scientific}
   deriving (Show, Eq, Ord, Num, ToJSON, Fractional) via Scientific
-
--- type NutrientMass = NutrientValue_ (Sum Mass)
-
--- type NutrientEnergy = NutrientValue_ (Sum Energy)
-
--- data NutrientValue_ a = NutrientValue
---   { nvValue :: a
---   , -- TODO non empty set here
---     nvMembers :: NonEmpty FoodMeta
---   }
---   deriving (Show, Generic, Functor)
---   deriving (Semigroup) via GenericSemigroup (NutrientValue_ a)
-
--- instance ToJSON v => ToJSON (NutrientValue_ (Sum v)) where
---   toJSON (NutrientValue (Sum v) ms) =
---     object ["value" .= v, "members" .= ms]
-
---   toEncoding (NutrientValue (Sum v) ms) =
---     pairs ("value" .= v <> "members" .= ms)
 
 -- | A group of nutrient categories that represent an aggregate mass
 data NutTree = NutTree
