@@ -1,6 +1,11 @@
-module Internal.Nutrient where
+module Internal.Nutrient
+  ( readDisplayTrees
+  , fetchFID
+  )
+where
 
 import Data.Aeson
+import Data.Bitraversable
 import qualified Data.ByteString.Char8 as BC
 import Data.Scientific
 import Data.Semigroup
@@ -23,27 +28,54 @@ import RIO.State
 import qualified RIO.Text as T
 import UnliftIO.Directory
 
--- -- TODO also not DRY
--- customToTree
---   :: [Modification]
---   -> Mass
---   -> CustomSource
---   -> Either CustomIngError (FinalScalerFood, NutrientMap)
--- customToTree ms mass s = do
---   i <- customToItem s
---   return $ first (fmap (scaleNV scale)) $ customItemToTree (foldr modifyItem i ms)
---   where
---     scale = mass / 100
+-- TODO we don't need an API key if we only have custom nutrients (rare but
+-- possible)
+readDisplayTrees
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => Bool
+  -> APIKey
+  -> NonEmpty DaySpan
+  -> FilePath
+  -> m (NonEmpty (DisplayTree GroupByAll))
+readDisplayTrees forceAPI k ds p = do
+  (vs, customMap) <- readPlan p
+  -- current steps
+  -- 1. get cartesian product of schedules and date intervals; this is necessary
+  --    to do first since some ingredients may not be needed depending on which
+  --    dates are selected
+  -- 2. flip ingredients out of schedules and group together (so next step can
+  --    run sanely in parallel); keep list of dates and scales under each
+  --    ingredient since each ingredient may have multiople dates and scales
+  --    associated with it
+  -- 3. get json blobs for all ingredients (requires network)
+  -- 4. convert json to food
+  -- 5. expand food by dates and scales
+  is <- expandScheduleIO vs ds
+  xs <- mapPooledErrorsIO (bimapM (getIngredients forceAPI k customMap) return) is
+  let (ts, unused) = expandIngredientTrees xs
+  mapM_ (logWarn . displayText . fmtUnused) unused
+  return ts
 
--- -- TODO not dry
--- customItemToTree :: FoodItem () NutrientMap -> (FinalScalerFood, NutrientMap)
--- customItemToTree (FoodItem _ d ns cc pc) =
---   first go $ runState (displayTree pc) ns
---   where
---     go t = fmap toNV $ FinalFood t $ computeCalories cc t
---     toNV v = NutrientValue (Sum v) $ pure $ FoodMeta d Nothing
+readPlan
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => FilePath
+  -> m (NonEmpty ValidSchedule, ValidCustomMap)
+readPlan f = do
+  logDebug $ displayText $ T.append "reading schedule at path: " $ T.pack f
+  p <-
+    liftIO $
+      if isDhall f
+        then D.inputFile D.auto f
+        else
+          if isYaml f
+            then Y.decodeFileThrow f
+            else throwAppErrorIO $ FileTypeError f
+  ss <- mapM checkSched $ schedule p
+  vs <- maybeExit "meal plan is empty" $ N.nonEmpty ss
+  cm <- fromCustomMap $ customIngredients p
+  return (vs, cm)
 
-fromCustomMap :: MonadUnliftIO m => CustomMap -> m (Map Text MappedFoodItem)
+fromCustomMap :: MonadUnliftIO m => CustomMap -> m ValidCustomMap
 fromCustomMap =
   mapM (either (throwAppErrorIO . CustomIngError) return . customToItem)
 
@@ -75,43 +107,12 @@ customToItem
         , ValidNutrient (Mass $ fromFloatDigits cnMass) cnPrefix
         )
 
--- TODO this should actually have the meal name as well, which would restrict
--- each ingredient to only be used once in a given meal (which seems like a
--- sane enforcement)
-type IngMeta = (MealGroup, Mass, [Modification])
-
-flattenNonEmpty :: NonEmpty (a, NonEmpty b) -> NonEmpty (a, b)
-flattenNonEmpty = sconcat . fmap (\(x, ys) -> (x,) <$> ys)
-
-readMealPlan
-  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
-  => FilePath
-  -> m (NonEmpty ValidSchedule)
-readMealPlan f = do
-  logDebug $ displayText $ T.append "reading schedule at path: " $ T.pack f
-  ss <-
-    liftIO $
-      if isDhall f
-        then D.inputFile D.auto f
-        else
-          if isYaml f
-            then Y.decodeFileThrow f
-            else throwAppErrorIO $ FileTypeError f
-  vs <- mapM checkSched ss
-  maybeExit "meal plan is empty" $ N.nonEmpty vs
-
 -- TODO make sure all masses are positive
 checkSched :: MonadUnliftIO m => Schedule -> m ValidSchedule
 checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   fromEither $ checkCronPat schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
   return $ ValidSchedule is (MealGroup mlName) schWhen $ fromFloatDigits $ fromMaybe 1.0 schScale
-
-expandSchedule
-  :: NonEmpty ValidSchedule
-  -> NonEmpty DaySpan
-  -> [(Either FID Text, IngredientMetadata)]
-expandSchedule vs = sconcat . N.zipWith expandValid vs
 
 expandScheduleIO
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -122,15 +123,11 @@ expandScheduleIO vs = maybeExit msg . N.nonEmpty . expandSchedule vs
   where
     msg = "Schedule does not intersect with desired date range"
 
-exitError :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m) => Text -> m a
-exitError msg = logError (displayText msg) >> exitFailure
-
-maybeExit
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => Text
-  -> Maybe a
-  -> m a
-maybeExit msg = maybe (exitError msg) return
+expandSchedule
+  :: NonEmpty ValidSchedule
+  -> NonEmpty DaySpan
+  -> [(Either FID Text, IngredientMetadata)]
+expandSchedule vs = sconcat . N.zipWith expandValid vs
 
 expandValid :: ValidSchedule -> DaySpan -> [(Either FID Text, IngredientMetadata)]
 expandValid ValidSchedule {vsIngs, vsMeal, vsCron, vsScale} ds
@@ -161,15 +158,16 @@ isYaml f = isExtensionOf "yaml" f || isExtensionOf "yml" f
 -- TODO use reader for key and map?
 getIngredients
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => APIKey
-  -> Map Text MappedFoodItem
-  -> NonEmpty (Either FID Text, a)
-  -> m (NonEmpty (MappedFoodItem, a))
-getIngredients k cm = mapM (\(x, y) -> (,y) <$> either fromFDC fromCustom x)
+  => Bool
+  -> APIKey
+  -> ValidCustomMap
+  -> Either FID Text
+  -> m MappedFoodItem
+getIngredients forceAPI k cm = either fromFDC fromCustom
   where
     -- TODO do I want to do all this here?
     fromFDC fid = do
-      j <- jsonDecodeIO =<< getFoodJSON k fid
+      j <- jsonDecodeIO =<< fetchFID forceAPI k fid
       let (ws, mfi) = mapFoodItem $ filterFoodItem j
       mapM_ (logWarn . displayText . fmtWarning fid) ws
       return mfi
@@ -188,7 +186,7 @@ ingredientToTree
 ingredientToTree
   IngredientMetadata {imMeal, imMass, imMods, imDaySpan}
   (FoodItem desc ns cc pc) =
-    bimap go nutMapToUnused $
+    bimap go (nutMapToUnused imMeal) $
       runState (displayTree pc) $
         foldr modifyMap ns imMods
     where
@@ -198,8 +196,8 @@ ingredientToTree
         bimap (Mass . scale . unMass) (Energy . scale . unEnergy) $
           DisplayTree_ t (computeCalories cc t) g
 
-nutMapToUnused :: NutrientMap -> [UnusedNutrient]
-nutMapToUnused = fmap (uncurry UnusedNutrient) . M.toList
+nutMapToUnused :: MealGroup -> NutrientMap -> [UnusedNutrient]
+nutMapToUnused m = fmap (uncurry (UnusedNutrient m)) . M.toList
 
 mapFoodItem :: ParsedFoodItem -> ([NutrientWarning], MappedFoodItem)
 mapFoodItem f@FoodItem {fiFoodNutrients = ns} =
@@ -222,20 +220,11 @@ filterFoodItem f@FoodItem {fiFoodNutrients = ns} =
     go fi = maybe True (\i -> not $ S.member i ignoredNutrients) (nId =<< fnNutrient fi)
 
 -- TODO warn user when modifications don't match
--- modifyItem :: Modification -> MappedFoodItem -> MappedFoodItem
--- modifyItem m f = f {fiFoodNutrients = modifyMap m $ fiFoodNutrients f}
-
 modifyMap :: Modification -> NutrientMap -> NutrientMap
 modifyMap Modification {modNutID, modScale} = M.adjust go (fromIntegral modNutID)
   where
     go n@ValidNutrient {vnAmount} =
       n {vnAmount = vnAmount * Mass (fromFloatDigits modScale)}
-
--- TODO use desc somewhere
--- foodItemToTree :: MappedFoodItem -> (DisplayTree (), NutrientMap)
--- foodItemToTree (FoodItem _ ns cc pc) = first go $ runState (displayTree pc) ns
---   where
---     go t = DisplayTree_ t (computeCalories cc t) ()
 
 computeCalories :: CalorieConversion -> DisplayNode Mass -> Energy
 computeCalories (CalorieConversion ff pf cf) dn =
@@ -254,10 +243,10 @@ jsonDecodeIO = either go return . eitherDecodeStrict . encodeUtf8
 fetchFID
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => Bool
-  -> FID
   -> APIKey
+  -> FID
   -> m Text
-fetchFID frc i k = do
+fetchFID frc k i = do
   e <- fidExists i
   if frc then go else if e then readFID i else go
   where
@@ -284,11 +273,6 @@ downloadFID k i = do
   j <- getFoodJSON k i
   createWriteFile p j
   return j
-
-createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
-createWriteFile p t = do
-  createDirectoryIfMissing True $ takeDirectory p
-  writeFileUtf8 p t
 
 -- TODO catch errors here
 getFoodJSON
@@ -319,9 +303,6 @@ apiFoodURL =
     /~ ("v1" :: Text)
     /~ ("food" :: Text)
 
-displayText :: Text -> Utf8Builder
-displayText = displayBytesUtf8 . encodeUtf8
-
 fmtWarning :: FID -> NutrientWarning -> T.Text
 fmtWarning fi (NotGram ni n) =
   T.unwords
@@ -343,3 +324,13 @@ fmtWarning fi (UnknownUnit ni n) =
     ]
 fmtWarning fi (InvalidNutrient n) =
   T.unwords ["Food with id", tshow fi, "has invalid food nutrient:", tshow n]
+
+fmtUnused :: UnusedNutrient -> T.Text
+fmtUnused (UnusedNutrient m i n) =
+  T.concat
+    [ "Unused nutrient with id "
+    , tshow i
+    , T.append " in meal " $ tshow m
+    , ": "
+    , tshow n
+    ]

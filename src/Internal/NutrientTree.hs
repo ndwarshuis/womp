@@ -20,6 +20,7 @@ import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils
 import RIO
+import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 import RIO.State
@@ -590,32 +591,36 @@ groupTrees f =
 treeToJSON
   :: DisplayOptions
   -> GroupOptions
-  -> NonEmpty (DisplayTree GroupByNone)
+  -> NonEmpty (DisplayTree GroupByAll)
   -> NonEmpty Value
-treeToJSON dos gos = chooseGrouping gos (treeToJSON_ dos)
+treeToJSON dos gos = chooseGrouping gos (fmap (treeToJSON_ dos))
 
 treeToCSV
-  :: GroupOptions
-  -> NonEmpty (DisplayTree GroupByNone)
-  -> NonEmpty C.NamedRecord
-treeToCSV gos = sconcat . chooseGrouping gos treeToRows
+  :: C.EncodeOptions
+  -> GroupOptions
+  -> NonEmpty (DisplayTree GroupByAll)
+  -> BL.ByteString
+treeToCSV eos gos = chooseGrouping gos go
+  where
+    go :: (C.ToNamedRecord g, C.DefaultOrdered g) => NonEmpty (DisplayTree g) -> BL.ByteString
+    go = C.encodeDefaultOrderedByNameWith eos . N.toList . sconcat . fmap treeToRows
 
 -- TODO not sure how to get the instance constraints out of the rankN function
 -- (they don't seem necessary)
 chooseGrouping
   :: GroupOptions
-  -> (forall g. (ToJSON g, C.ToNamedRecord g) => DisplayTree g -> a)
-  -> NonEmpty (DisplayTree GroupByNone)
-  -> NonEmpty a
+  -> (forall g. (ToJSON g, C.DefaultOrdered g, C.ToNamedRecord g) => NonEmpty (DisplayTree g) -> a)
+  -> NonEmpty (DisplayTree GroupByAll)
+  -> a
 chooseGrouping (GroupOptions d m i) f ts = case (d, m, i) of
-  (True, True, True) -> f <$> groupTrees id ts
-  (True, True, False) -> f <$> groupTrees (\g -> g {gvIngredient = ()}) ts
-  (True, False, True) -> f <$> groupTrees (\g -> g {gvMeal = ()}) ts
-  (True, False, False) -> f <$> groupTrees (\g -> g {gvMeal = (), gvIngredient = ()}) ts
-  (False, True, True) -> f <$> groupTrees (\g -> g {gvDaySpan = ()}) ts
-  (False, True, False) -> f <$> groupTrees (\g -> g {gvDaySpan = (), gvIngredient = ()}) ts
-  (False, False, True) -> f <$> groupTrees (\g -> g {gvDaySpan = (), gvMeal = ()}) ts
-  (False, False, False) -> f <$> groupTrees (const (GroupVars () () ())) ts
+  (True, True, True) -> f $ groupTrees id ts
+  (True, True, False) -> f $ groupTrees (\g -> g {gvIngredient = ()}) ts
+  (True, False, True) -> f $ groupTrees (\g -> g {gvMeal = ()}) ts
+  (True, False, False) -> f $ groupTrees (\g -> g {gvMeal = (), gvIngredient = ()}) ts
+  (False, True, True) -> f $ groupTrees (\g -> g {gvDaySpan = ()}) ts
+  (False, True, False) -> f $ groupTrees (\g -> g {gvDaySpan = (), gvIngredient = ()}) ts
+  (False, False, True) -> f $ groupTrees (\g -> g {gvDaySpan = (), gvMeal = ()}) ts
+  (False, False, False) -> f $ groupTrees (const (GroupVars () () ())) ts
 
 treeToJSON_ :: ToJSON g => DisplayOptions -> DisplayTree g -> Value
 treeToJSON_ o (DisplayTree_ ms e g) =
@@ -667,11 +672,11 @@ unityMaybe :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
 unityMaybe True _ v = (Unity, v)
 unityMaybe False p v = (p, raisePower (-prefixValue p) v)
 
-treeToRows :: C.ToNamedRecord g => DisplayTree g -> NonEmpty C.NamedRecord
+treeToRows :: DisplayTree g -> NonEmpty (DisplayRow g)
 treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
   energy :| (totalMass : (goK massName ks ++ [goU massName us]))
   where
-    row n p v' u = C.toNamedRecord $ DisplayRow g n p v' u
+    row = DisplayRow g
 
     dpyRow n pnt v' u = row n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
 

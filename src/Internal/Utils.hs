@@ -5,10 +5,12 @@ import Data.Scientific
 import Internal.Types.Dhall
 import Internal.Types.Main
 import RIO
+import RIO.FilePath
 import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
 import RIO.Time
+import UnliftIO.Directory
 
 throwAppError :: MonadAppError m => AppError -> m a
 throwAppError e = throwError $ AppException [e]
@@ -244,3 +246,21 @@ checkRepeatPat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}
 
 dayToWeekday :: Day -> Int
 dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7
+
+maybeExit
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => Text
+  -> Maybe a
+  -> m a
+maybeExit msg = maybe (exitError msg) return
+
+createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
+createWriteFile p t = do
+  createDirectoryIfMissing True $ takeDirectory p
+  writeFileUtf8 p t
+
+exitError :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m) => Text -> m a
+exitError msg = logError (displayText msg) >> exitFailure
+
+displayText :: Text -> Utf8Builder
+displayText = displayBytesUtf8 . encodeUtf8

@@ -52,16 +52,16 @@ subcommand =
               (progDesc "dump JSON for food by ID")
           )
         <> command
-          "export"
+          "table"
           ( info
-              (Export <$> export)
-              (progDesc "export data for aggregated meal(s) in tabular form")
+              (ExportTabular <$> tabular)
+              (progDesc "export meal plan in tabular format")
           )
         <> command
-          "summarize"
+          "tree"
           ( info
-              (Summarize <$> summarize)
-              (progDesc "summarize nutrients for a given time period")
+              (ExportTree <$> tree)
+              (progDesc "export meal plan in tree format")
           )
     )
 
@@ -77,9 +77,9 @@ fetchDump =
       )
     <*> force
 
-export :: Parser ExportOptions
-export =
-  ExportOptions
+tabular :: Parser TabularOptions
+tabular =
+  TabularOptions
     <$> strOption
       ( long "config"
           <> short 'c'
@@ -96,17 +96,25 @@ export =
           <> help "number of threads for processing ingredients"
           <> value 2
       )
+    <*> grouping
 
-summarize :: Parser SummarizeOptions
-summarize =
-  SummarizeOptions
+grouping :: Parser GroupOptions
+grouping =
+  GroupOptions
+    <$> switch (long "date" <> short 'D' <> help "group by date range")
+    <*> switch (long "meal" <> short 'M' <> help "group by meal")
+    <*> switch (long "ingredient" <> short 'I' <> help "group by ingredient")
+
+tree :: Parser TreeOptions
+tree =
+  TreeOptions
     <$> displayOptions
     <*> switch
       ( long "json"
           <> short 'j'
           <> help "summarize output in JSON (display options are ignored)"
       )
-    <*> export
+    <*> tabular
 
 force :: Parser Bool
 force = switch (long "force" <> short 'f' <> help "force retrieve")

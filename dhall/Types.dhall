@@ -136,9 +136,9 @@ let Schedule =
       , default = { schWhen = Cron::{=}, schScale = Some 1.0 }
       }
 
-let Config =
+let Plan =
       { Type =
-          { schedule : Schedule.Type
+          { schedule : List Schedule.Type
           , customIngredients : Map Text CustomIngredient.Type
           }
       , default.customIngredients = [] : Map Text CustomIngredient.Type
@@ -158,6 +158,6 @@ in  { Modification
     , WeekdayPat
     , Cron
     , Schedule
-    , Config
+    , Plan
     , CalorieConversion
     }

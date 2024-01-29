@@ -52,11 +52,11 @@ deriveProduct
 
 type CustomMap = Map Text CustomIngredient
 
-data Config = Config
-  { schedule :: Schedule
+data Plan = Plan
+  { schedule :: [Schedule]
   , customIngredients :: CustomMap
   }
-  deriving (Eq, Show, Generic, FromDhall)
+  deriving (Eq, Show, Generic, FromDhall, FromJSON)
 
 deriving instance ToJSON Prefix
 

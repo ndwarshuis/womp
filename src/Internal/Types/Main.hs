@@ -25,6 +25,8 @@ type NutrientMap = M.Map NID ValidNutrient
 
 type MappedFoodItem = FoodItem NutrientMap
 
+type ValidCustomMap = Map Text MappedFoodItem
+
 data ValidNutrient = ValidNutrient
   { vnAmount :: Mass
   , vnPrefix :: Prefix
@@ -43,22 +45,23 @@ newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
 data SubCommand
   = Fetch !FetchDumpOptions
   | Dump !FetchDumpOptions
-  | Export !ExportOptions
-  | Summarize !SummarizeOptions
+  | ExportTabular !TabularOptions
+  | ExportTree !TreeOptions
 
 data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
 
-data ExportOptions = ExportOptions
+data TabularOptions = TabularOptions
   { eoMealPath :: !FilePath
   , eoDateInterval :: !DateIntervalOptions
   , eoForce :: !Bool
   , eoThreads :: !Int
+  , eoGroup :: !GroupOptions
   }
 
-data SummarizeOptions = SummarizeOptions
+data TreeOptions = TreeOptions
   { soDisplay :: !DisplayOptions
   , soJSON :: !Bool
-  , soExport :: !ExportOptions
+  , soExport :: !TabularOptions
   }
 
 data GroupOptions = GroupOptions
@@ -578,6 +581,7 @@ data CustomIngError
   deriving (Show)
 
 data UnusedNutrient = UnusedNutrient
-  { uId :: NID
+  { uMeal :: MealGroup
+  , uId :: NID
   , uNut :: ValidNutrient
   }
