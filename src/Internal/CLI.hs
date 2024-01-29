@@ -63,6 +63,12 @@ subcommand =
               (ExportTree <$> tree)
               (progDesc "export meal plan in tree format")
           )
+        <> command
+          "nutrients"
+          ( info
+              (pure ListNutrients)
+              (progDesc "list nutrients available for parsing")
+          )
     )
 
 fetchDump :: Parser FetchDumpOptions

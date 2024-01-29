@@ -47,6 +47,7 @@ data SubCommand
   | Dump !FetchDumpOptions
   | ExportTabular !TabularOptions
   | ExportTree !TreeOptions
+  | ListNutrients
 
 data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
 
@@ -514,6 +515,22 @@ data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
 newtype Energy = Energy {unEnergy :: Scientific}
   deriving (Show, Eq, Ord, Num, ToJSON, Fractional) via Scientific
+
+data NutTreeRow = NutTreeRow
+  { ntrNutrient :: Text
+  , ntrParent :: Maybe Text
+  , ntrId :: Maybe NID
+  }
+
+nutTreeRowHeader :: [ByteString]
+nutTreeRowHeader = ["nutrient", "parent", "id"]
+
+instance C.DefaultOrdered NutTreeRow where
+  headerOrder _ = C.header nutTreeRowHeader
+
+instance C.ToNamedRecord NutTreeRow where
+  toNamedRecord (NutTreeRow n p i) =
+    zipApply nutTreeRowHeader [(C..= n), (C..= p), (C..= i)]
 
 -- | A group of nutrient categories that represent an aggregate mass
 data NutTree = NutTree

@@ -37,6 +37,7 @@ run (CLIOptions c@CommonOptions {coVerbosity} s) = do
       Dump o -> runDump c o
       ExportTabular o -> runExportTabular c o
       ExportTree o -> runExportTree c o
+      ListNutrients -> runListNutrients
   where
     err (AppException es) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
@@ -77,6 +78,9 @@ readTrees co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = d
   readDisplayTrees eoForce k ds eoMealPath
 
 -- n = dioNormalize eoDateInterval
+
+runListNutrients :: MonadUnliftIO m => m ()
+runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpNutrientTree
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do

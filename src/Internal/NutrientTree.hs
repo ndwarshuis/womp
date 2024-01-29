@@ -6,6 +6,7 @@ module Internal.NutrientTree
   , measToDisplay
   , treeToJSON
   , treeToCSV
+  , dumpNutrientTree
   )
 where
 
@@ -660,3 +661,31 @@ treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
       let s = unMass $ sum $ M.elems us'
           p = autoPrefix s
        in massRow unknownName pnt s p
+
+dumpNutrientTree :: [NutTreeRow]
+dumpNutrientTree = goTree Nothing $ nutHierarchy 0
+  where
+    goTree parent (NutTree bs umh umt) =
+      concatMap (goBranch parent) bs
+        ++ [goSummed parent umh]
+        ++ maybe [] (goTree parent) umt
+
+    goBranch parent (AggIdentity n) = goNode parent n
+    goBranch parent (Priority ns) = concatMap (goNode parent) ns
+
+    goNode parent (MeasuredHeader h t) =
+      goMeasured parent h ++ goTree (Just $ measuredName h) t
+    goNode parent (UnmeasuredHeader h bs) =
+      goSummed parent h : concatMap (goBranch (Just $ snName h)) bs
+    goNode parent (Leaf m) = goMeasured parent m
+
+    measuredName (Direct DirectNutrient {mnName}) = mnName
+    measuredName (Alternate AltNutrient {anName}) = anName
+
+    goMeasured parent m = case m of
+      (Direct DirectNutrient {mnName, mnId}) ->
+        [NutTreeRow mnName parent $ Just mnId]
+      (Alternate AltNutrient {anName, anChoices}) ->
+        NutTreeRow anName parent . Just . fst <$> N.toList anChoices
+
+    goSummed parent SummedNutrient {snName} = NutTreeRow snName parent Nothing

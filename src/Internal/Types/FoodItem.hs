@@ -4,6 +4,7 @@ module Internal.Types.FoodItem where
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Csv (ToField)
 import Data.Scientific
 import GHC.Generics
 import Internal.Types.Dhall
@@ -109,7 +110,7 @@ newtype FID = FID {unFID :: Natural}
   deriving (Eq, Read, Show, FromJSON, ToJSON) via Natural
 
 newtype NID = NID {unNID :: Natural}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Natural
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, ToField) via Natural
 
 newtype Mass = Mass {unMass :: Scientific}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional, Real) via Scientific
