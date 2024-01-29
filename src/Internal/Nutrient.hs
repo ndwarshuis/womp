@@ -98,13 +98,13 @@ customToItem
       pc = ProteinConversion $ fromFloatDigits scProtein
       nuts = go <$> scNutrients
       nutMass = sum $ vnAmount . snd <$> nuts
-      remNut = ValidNutrient (standardMass - nutMass) scRemainderPrefix
+      remNut = ValidNutrient (standardMass - nutMass) scRemainderPrefix Nothing
       remId = NID scRemainder
       dups = findDups $ remId : fmap fst nuts
       nutMap = M.fromList $ (remId, remNut) : nuts
       go CustomNutrient {cnID, cnMass, cnPrefix} =
         ( NID cnID
-        , ValidNutrient (Mass $ fromFloatDigits cnMass) cnPrefix
+        , ValidNutrient (Mass $ fromFloatDigits cnMass) cnPrefix Nothing
         )
 
 -- TODO make sure all masses are positive
@@ -205,10 +205,10 @@ mapFoodItem f@FoodItem {fiFoodNutrients = ns} =
     partitionEithers $
       fmap go ns
   where
-    go (FoodNutrient (Just (Nutrient (Just i) (Just _) (Just u))) (Just v)) =
+    go (FoodNutrient (Just (Nutrient (Just i) (Just n) (Just u))) (Just v)) =
       case parseUnit u of
         Just (Unit p Gram) ->
-          Right (i, ValidNutrient (Mass $ raisePower (prefixValue p) $ unMass v) p)
+          Right (i, ValidNutrient (Mass $ raisePower (prefixValue p) $ unMass v) p $ Just n)
         Just _ -> Left $ NotGram i u
         Nothing -> Left $ UnknownUnit i u
     go n = Left $ InvalidNutrient n

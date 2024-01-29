@@ -29,6 +29,7 @@ type ValidCustomMap = Map Text MappedFoodItem
 data ValidNutrient = ValidNutrient
   { vnAmount :: Mass
   , vnPrefix :: Prefix
+  , vnName :: Maybe Text
   }
   deriving (Show)
 
