@@ -113,7 +113,7 @@ newtype NID = NID {unNID :: Natural}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, ToField) via Natural
 
 newtype Mass = Mass {unMass :: Scientific}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional, Real) via Scientific
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional, Real, ToField) via Scientific
 
 newtype ProteinConversion = ProteinConversion {unPC :: Scientific}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Scientific

@@ -38,6 +38,7 @@ run (CLIOptions c@CommonOptions {coVerbosity} s) = do
       ExportTabular o -> runExportTabular c o
       ExportTree o -> runExportTree c o
       ListNutrients -> runListNutrients
+      Summarize o -> runSummarize c o
   where
     err (AppException es) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
@@ -81,6 +82,18 @@ readTrees co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = d
 
 runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpNutrientTree
+
+runSummarize
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => CommonOptions
+  -> TabularOptions
+  -> m ()
+runSummarize co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
+  setNumCapabilities eoThreads
+  k <- getStoreAPIKey $ coKey co
+  ds <- dateIntervalToDaySpan eoDateInterval
+  s <- readSummary eoForce k ds eoMealPath
+  BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions $ N.toList s
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do

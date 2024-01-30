@@ -48,6 +48,8 @@ data SubCommand
   | ExportTabular !TabularOptions
   | ExportTree !TreeOptions
   | ListNutrients
+  | -- TODO this is a bit crude
+    Summarize !TabularOptions
 
 data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
 
@@ -94,12 +96,34 @@ data ValidSchedule = ValidSchedule
   , vsScale :: Scientific
   }
 
-data IngredientMetadata = IngredientMetadata
+type IngredientMetadata = IngredientMetadata_ [Modification] DaySpan
+
+-- TODO bad name
+type IngredientMealMeta = IngredientMetadata_ () Day
+
+data IngredientMetadata_ ms d = IngredientMetadata_
   { imMeal :: MealGroup
   , imMass :: Mass
-  , imMods :: [Modification]
-  , imDaySpan :: DaySpan
+  , imMods :: ms
+  , imDaySpan :: d
   }
+
+data SummaryRow = SummaryRow
+  { srDay :: Day
+  , srMeal :: MealGroup
+  , srIngredient :: IngredientGroup
+  , srMass :: Mass
+  }
+
+summaryRowHeader :: [ByteString]
+summaryRowHeader = ["day", "meal", "ingredient", "mass"]
+
+instance C.DefaultOrdered SummaryRow where
+  headerOrder _ = C.header summaryRowHeader
+
+instance C.ToNamedRecord SummaryRow where
+  toNamedRecord (SummaryRow d m i v) =
+    zipApply summaryRowHeader [(C..= formatDay d), (C..= m), (C..= i), (C..= v)]
 
 -- data CustomIngredient = CustomIngredient CustomSource Mass [Modification]
 

@@ -1,6 +1,7 @@
 module Internal.Nutrient
   ( readDisplayTrees
   , fetchFID
+  , readSummary
   )
 where
 
@@ -55,6 +56,19 @@ readDisplayTrees forceAPI k ds p = do
   let (ts, unused) = expandIngredientTrees xs
   mapM_ (logWarn . displayText . fmtUnused) unused
   return ts
+
+readSummary
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => Bool
+  -> APIKey
+  -> NonEmpty DaySpan
+  -> FilePath
+  -> m (NonEmpty SummaryRow)
+readSummary forceAPI k ds p = do
+  (vs, customMap) <- readPlan p
+  is <- expandPlanIO vs ds
+  xs <- mapPooledErrorsIO (bimapM (getIngredients forceAPI k customMap) return) is
+  return $ fmap (uncurry expandIngredientSummary) xs
 
 readPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
@@ -114,6 +128,35 @@ checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
   return $ ValidSchedule is (MealGroup mlName) schWhen $ fromFloatDigits $ fromMaybe 1.0 schScale
 
+-- TODO terrible name
+expandPlanIO
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => NonEmpty ValidSchedule
+  -> NonEmpty DaySpan
+  -> m (NonEmpty (Either FID Text, IngredientMealMeta))
+expandPlanIO vs = maybeExit msg . N.nonEmpty . expandPlan vs
+  where
+    msg = "Schedule does not intersect with desired date range"
+
+-- TODO not dry
+expandPlan
+  :: NonEmpty ValidSchedule
+  -> NonEmpty DaySpan
+  -> [(Either FID Text, IngredientMealMeta)]
+expandPlan vs = sconcat . N.zipWith expandValidToSummary vs
+
+expandValidToSummary
+  :: ValidSchedule
+  -> DaySpan
+  -> [(Either FID Text, IngredientMealMeta)]
+expandValidToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
+  [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
+  where
+    go (Ingredient {ingMass, ingSource}) d =
+      ( sourceToEither ingSource
+      , IngredientMetadata_ vsMeal (Mass $ (vsScale * fromFloatDigits ingMass)) () d
+      )
+
 expandScheduleIO
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => NonEmpty ValidSchedule
@@ -143,11 +186,13 @@ expandIngredient
   -> Ingredient
   -> (Either FID Text, IngredientMetadata)
 expandIngredient mg s ds Ingredient {ingMass, ingModifications, ingSource} =
-  (fromSource ingSource, IngredientMetadata mg mass ingModifications ds)
+  (sourceToEither ingSource, IngredientMetadata_ mg mass ingModifications ds)
   where
     mass = Mass $ s * fromFloatDigits ingMass
-    fromSource (FDC i) = Left $ FID i
-    fromSource (Custom c) = Right c
+
+sourceToEither :: IngredientSource -> Either FID Text
+sourceToEither (FDC i) = Left $ FID i
+sourceToEither (Custom c) = Right c
 
 isDhall :: FilePath -> Bool
 isDhall = isExtensionOf "dhall"
@@ -179,12 +224,18 @@ expandIngredientTrees
 expandIngredientTrees =
   second sconcat . N.unzip . fmap (uncurry (flip ingredientToTree))
 
+expandIngredientSummary :: MappedFoodItem -> IngredientMealMeta -> SummaryRow
+expandIngredientSummary
+  FoodItem {fiDescription}
+  IngredientMetadata_ {imMeal, imMass, imDaySpan} =
+    SummaryRow imDaySpan imMeal (IngredientGroup fiDescription) imMass
+
 ingredientToTree
   :: IngredientMetadata
   -> MappedFoodItem
   -> (DisplayTree GroupByAll, [UnusedNutrient])
 ingredientToTree
-  IngredientMetadata {imMeal, imMass, imMods, imDaySpan}
+  IngredientMetadata_ {imMeal, imMass, imMods, imDaySpan}
   (FoodItem desc ns cc pc) =
     bimap go (nutMapToUnused imMeal) $
       runState (displayTree pc) $

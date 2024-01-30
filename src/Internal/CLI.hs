@@ -69,6 +69,12 @@ subcommand =
               (pure ListNutrients)
               (progDesc "list nutrients available for parsing")
           )
+        <> command
+          "summarize"
+          ( info
+              (Summarize <$> tabular)
+              (progDesc "print table of meals and their ingredients")
+          )
     )
 
 fetchDump :: Parser FetchDumpOptions
