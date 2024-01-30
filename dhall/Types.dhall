@@ -38,6 +38,7 @@ let CustomIngredient =
         { scCalorie = CalorieConversion::{=}
         , scProtein = 6.25
         , scNutrients = [] : List CustomNutrient
+        , scRemainderPrefix = Prefix.Unity
         }
       }
 

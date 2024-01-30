@@ -16,6 +16,7 @@ import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
 import RIO.FilePath
 import qualified RIO.NonEmpty as N
+import qualified RIO.Text as T
 import RIO.Time
 import UnliftIO.Concurrent
 import UnliftIO.Directory
@@ -129,16 +130,24 @@ currentDay = do
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "womp"
 
-getStoreAPIKey :: MonadUnliftIO m => Maybe APIKey -> m APIKey
+getStoreAPIKey
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => Maybe APIKey
+  -> m APIKey
 getStoreAPIKey k = do
   f <- (</> apiKeyFile) <$> configDir
   case k of
     Just k' -> do
+      logDebug $ displayText $ T.append "writing api key to " $ T.pack f
       createWriteFile f (unAPIKey k')
       return k'
     Nothing -> do
       e <- doesFileExist f
-      if e then APIKey <$> readFileUtf8 f else throwAppErrorIO $ MissingAPIKey f
+      if e then go f else throwAppErrorIO $ MissingAPIKey f
+  where
+    go f = do
+      logDebug $ displayText $ T.append "reading api key from " $ T.pack f
+      APIKey <$> readFileUtf8 f
 
 apiKeyFile :: FilePath
 apiKeyFile = "apikey"
