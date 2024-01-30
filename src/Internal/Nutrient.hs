@@ -37,9 +37,10 @@ readDisplayTrees
   -> APIKey
   -> NonEmpty DaySpan
   -> FilePath
+  -> Int
   -> m (NonEmpty (DisplayTree GroupByAll))
-readDisplayTrees forceAPI k ds p = do
-  (vs, customMap) <- readPlan p
+readDisplayTrees forceAPI k ds p norm = do
+  (vs, customMap) <- readPlan p norm
   -- current steps
   -- 1. get cartesian product of schedules and date intervals; this is necessary
   --    to do first since some ingredients may not be needed depending on which
@@ -63,9 +64,10 @@ readSummary
   -> APIKey
   -> NonEmpty DaySpan
   -> FilePath
+  -> Int
   -> m (NonEmpty SummaryRow)
-readSummary forceAPI k ds p = do
-  (vs, customMap) <- readPlan p
+readSummary forceAPI k ds p norm = do
+  (vs, customMap) <- readPlan p norm
   is <- expandPlanIO vs ds
   xs <- mapPooledErrorsIO (bimapM (getIngredients forceAPI k customMap) return) is
   return $ fmap (uncurry expandIngredientSummary) xs
@@ -73,8 +75,9 @@ readSummary forceAPI k ds p = do
 readPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => FilePath
+  -> Int
   -> m (NonEmpty ValidSchedule, ValidCustomMap)
-readPlan f = do
+readPlan f norm = do
   logDebug $ displayText $ T.append "reading schedule at path: " $ T.pack f
   p <-
     liftIO $
@@ -84,7 +87,7 @@ readPlan f = do
           if isYaml f
             then Y.decodeFileThrow f
             else throwAppErrorIO $ FileTypeError f
-  ss <- mapM checkSched $ schedule p
+  ss <- mapM (`checkSched` norm) $ schedule p
   vs <- maybeExit "meal plan is empty" $ N.nonEmpty ss
   cm <- fromCustomMap $ customIngredients p
   return (vs, cm)
@@ -122,11 +125,13 @@ customToItem
         )
 
 -- TODO make sure all masses are positive
-checkSched :: MonadUnliftIO m => Schedule -> m ValidSchedule
-checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
+checkSched :: MonadUnliftIO m => Schedule -> Int -> m ValidSchedule
+checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} norm = do
   fromEither $ checkCronPat schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  return $ ValidSchedule is (MealGroup mlName) schWhen $ fromFloatDigits $ fromMaybe 1.0 schScale
+  return $
+    ValidSchedule is (MealGroup mlName) schWhen $
+      fromFloatDigits (fromMaybe 1.0 schScale / fromIntegral norm)
 
 -- TODO terrible name
 expandPlanIO
@@ -152,9 +157,9 @@ expandValidToSummary
 expandValidToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
   [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
   where
-    go (Ingredient {ingMass, ingSource}) d =
+    go Ingredient {ingMass, ingSource} d =
       ( sourceToEither ingSource
-      , IngredientMetadata_ vsMeal (Mass $ (vsScale * fromFloatDigits ingMass)) () d
+      , IngredientMetadata_ vsMeal (Mass (vsScale * fromFloatDigits ingMass)) () d
       )
 
 expandScheduleIO

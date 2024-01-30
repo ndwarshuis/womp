@@ -76,13 +76,14 @@ readTrees co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = d
   setNumCapabilities eoThreads
   k <- getStoreAPIKey $ coKey co
   ds <- dateIntervalToDaySpan eoDateInterval
-  readDisplayTrees eoForce k ds eoMealPath
+  readDisplayTrees eoForce k ds eoMealPath (dioNormalize eoDateInterval)
 
 -- n = dioNormalize eoDateInterval
 
 runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpNutrientTree
 
+-- TODO not DRY
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => CommonOptions
@@ -92,7 +93,7 @@ runSummarize co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} 
   setNumCapabilities eoThreads
   k <- getStoreAPIKey $ coKey co
   ds <- dateIntervalToDaySpan eoDateInterval
-  s <- readSummary eoForce k ds eoMealPath
+  s <- readSummary eoForce k ds eoMealPath (dioNormalize eoDateInterval)
   BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions $ N.toList s
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
