@@ -14,12 +14,9 @@ import Options.Applicative
 import RIO hiding (force)
 import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
-import RIO.FilePath
 import qualified RIO.NonEmpty as N
-import qualified RIO.Text as T
 import RIO.Time
 import UnliftIO.Concurrent
-import UnliftIO.Directory
 
 main :: IO ()
 main = run =<< parseCLI
@@ -75,11 +72,8 @@ readTrees
   -> m (NonEmpty (DisplayTree GroupByAll))
 readTrees co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   setNumCapabilities eoThreads
-  k <- getStoreAPIKey $ coKey co
   ds <- dateIntervalToDaySpan eoDateInterval
-  readDisplayTrees eoForce k ds eoMealPath (dioNormalize eoDateInterval)
-
--- n = dioNormalize eoDateInterval
+  readDisplayTrees eoForce (coKey co) ds eoMealPath (dioNormalize eoDateInterval)
 
 runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpNutrientTree
@@ -92,9 +86,8 @@ runSummarize
   -> m ()
 runSummarize co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
   setNumCapabilities eoThreads
-  k <- getStoreAPIKey $ coKey co
   ds <- dateIntervalToDaySpan eoDateInterval
-  s <- readSummary eoForce k ds eoMealPath (dioNormalize eoDateInterval)
+  s <- readSummary eoForce (coKey co) ds eoMealPath (dioNormalize eoDateInterval)
   BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions $ N.toList s
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
@@ -126,31 +119,6 @@ currentDay = do
   u <- getCurrentTime
   z <- getCurrentTimeZone
   return $ localDay $ utcToLocalTime z u
-
-configDir :: MonadUnliftIO m => m FilePath
-configDir = getXdgDirectory XdgConfig "womp"
-
-getStoreAPIKey
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => Maybe APIKey
-  -> m APIKey
-getStoreAPIKey k = do
-  f <- (</> apiKeyFile) <$> configDir
-  case k of
-    Just k' -> do
-      logDebug $ displayText $ T.append "writing api key to " $ T.pack f
-      createWriteFile f (unAPIKey k')
-      return k'
-    Nothing -> do
-      e <- doesFileExist f
-      if e then go f else throwAppErrorIO $ MissingAPIKey f
-  where
-    go f = do
-      logDebug $ displayText $ T.append "reading api key from " $ T.pack f
-      APIKey <$> readFileUtf8 f
-
-apiKeyFile :: FilePath
-apiKeyFile = "apikey"
 
 tsvOptions :: C.EncodeOptions
 tsvOptions =

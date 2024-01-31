@@ -2,11 +2,11 @@ module Internal.Nutrient
   ( readDisplayTrees
   , fetchFID
   , readSummary
+  , getStoreAPIKey
   )
 where
 
 import Data.Aeson
-import Data.Bitraversable
 import qualified Data.ByteString.Char8 as BC
 import Data.Scientific
 import Data.Semigroup
@@ -29,48 +29,82 @@ import RIO.State
 import qualified RIO.Text as T
 import UnliftIO.Directory
 
--- TODO we don't need an API key if we only have custom nutrients (rare but
--- possible)
 readDisplayTrees
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => Bool
-  -> APIKey
+  -> Maybe APIKey
   -> NonEmpty DaySpan
   -> FilePath
   -> Int
   -> m (NonEmpty (DisplayTree GroupByAll))
-readDisplayTrees forceAPI k ds p norm = do
-  (vs, customMap) <- readPlan p norm
-  -- current steps
-  -- 1. get cartesian product of schedules and date intervals; this is necessary
-  --    to do first since some ingredients may not be needed depending on which
-  --    dates are selected
-  -- 2. flip ingredients out of schedules and group together (so next step can
-  --    run sanely in parallel); keep list of dates and scales under each
-  --    ingredient since each ingredient may have multiople dates and scales
-  --    associated with it
-  -- 3. get json blobs for all ingredients (requires network)
-  -- 4. convert json to food
-  -- 5. expand food by dates and scales
-  is <- expandScheduleIO vs ds
-  xs <- mapPooledErrorsIO (bimapM (getIngredients forceAPI k customMap) return) is
-  let (ts, unused) = expandIngredientTrees xs
+readDisplayTrees frc k ds p norm = do
+  is <- readMappedItems validToIngredient frc k ds p norm
+  let (ts, unused) = expandIngredientTrees is
   mapM_ (logWarn . displayText . fmtUnused) unused
   return ts
 
 readSummary
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => Bool
-  -> APIKey
+  -> Maybe APIKey
   -> NonEmpty DaySpan
   -> FilePath
   -> Int
   -> m (NonEmpty SummaryRow)
-readSummary forceAPI k ds p norm = do
+readSummary frc k ds p norm = do
+  is <- readMappedItems validToSummary frc k ds p norm
+  return $ fmap (uncurry expandIngredientSummary) is
+
+readMappedItems
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  => (ValidSchedule -> DaySpan -> [(Either FID Text, a)])
+  -> Bool
+  -> Maybe APIKey
+  -> NonEmpty DaySpan
+  -> FilePath
+  -> Int
+  -> m (NonEmpty (MappedFoodItem, a))
+readMappedItems f forceAPI k ds p norm = do
   (vs, customMap) <- readPlan p norm
-  is <- expandPlanIO vs ds
-  xs <- mapPooledErrorsIO (bimapM (getIngredients forceAPI k customMap) return) is
-  return $ fmap (uncurry expandIngredientSummary) xs
+  is <- expandSchedule f vs ds
+  let (fs, cs) = N.unzip is
+  fs' <- mapM (either return (fromCustom customMap)) =<< mapFIDs k (fromFDC forceAPI) fs
+  return $ N.zip fs' cs
+
+-- | Map over a non-empty list which contains no/some FIDs
+-- If the list has no FIDs, don't ask for an API key (which will fail if
+-- not available). This is useful for cases where none of the ingredients in
+-- the plan require an API lookup, in which case the program will not fail if
+-- an API key is not provided.
+mapFIDs
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => Maybe APIKey
+  -> (APIKey -> FID -> m a)
+  -> NonEmpty (Either FID b)
+  -> m (NonEmpty (Either a b))
+mapFIDs k f (x :| xs) = case x of
+  Left y -> (`append` zs') <$> go (y :| ys)
+  Right y ->
+    let rs = Right y :| zs'
+     in maybe (pure rs) (fmap (append rs . N.toList) . go) $ N.nonEmpty ys
+  where
+    (ys, zs) = partitionEithers xs
+    zs' = Right <$> zs
+    go = fmap (fmap Left) . mapWithAPIKey k f
+
+-- | Transform a non-empty list of FIDs with an API key
+mapWithAPIKey
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => Maybe APIKey
+  -> (APIKey -> FID -> m a)
+  -> NonEmpty FID
+  -> m (NonEmpty a)
+mapWithAPIKey k f xs = do
+  k' <- getStoreAPIKey k
+  mapPooledErrorsIO (f k') xs
+
+append :: NonEmpty a -> [a] -> NonEmpty a
+append (x :| xs) ys = x :| xs ++ ys
 
 readPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
@@ -133,28 +167,22 @@ checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} norm = 
     ValidSchedule is (MealGroup mlName) schWhen $
       fromFloatDigits (fromMaybe 1.0 schScale / fromIntegral norm)
 
--- TODO terrible name
-expandPlanIO
+expandSchedule
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => NonEmpty ValidSchedule
+  => (ValidSchedule -> DaySpan -> [(Either FID Text, a)])
+  -> NonEmpty ValidSchedule
   -> NonEmpty DaySpan
-  -> m (NonEmpty (Either FID Text, IngredientMealMeta))
-expandPlanIO vs = maybeExit msg . N.nonEmpty . expandPlan vs
+  -> m (NonEmpty (Either FID Text, a))
+expandSchedule f vs = maybeExit msg . N.nonEmpty . go
   where
     msg = "Schedule does not intersect with desired date range"
+    go = sconcat . N.zipWith f vs
 
--- TODO not dry
-expandPlan
-  :: NonEmpty ValidSchedule
-  -> NonEmpty DaySpan
-  -> [(Either FID Text, IngredientMealMeta)]
-expandPlan vs = sconcat . N.zipWith expandValidToSummary vs
-
-expandValidToSummary
+validToSummary
   :: ValidSchedule
   -> DaySpan
   -> [(Either FID Text, IngredientMealMeta)]
-expandValidToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
+validToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
   [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
   where
     go Ingredient {ingMass, ingSource} d =
@@ -162,23 +190,8 @@ expandValidToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
       , IngredientMetadata_ vsMeal (Mass (vsScale * fromFloatDigits ingMass)) () d
       )
 
-expandScheduleIO
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => NonEmpty ValidSchedule
-  -> NonEmpty DaySpan
-  -> m (NonEmpty (Either FID Text, IngredientMetadata))
-expandScheduleIO vs = maybeExit msg . N.nonEmpty . expandSchedule vs
-  where
-    msg = "Schedule does not intersect with desired date range"
-
-expandSchedule
-  :: NonEmpty ValidSchedule
-  -> NonEmpty DaySpan
-  -> [(Either FID Text, IngredientMetadata)]
-expandSchedule vs = sconcat . N.zipWith expandValid vs
-
-expandValid :: ValidSchedule -> DaySpan -> [(Either FID Text, IngredientMetadata)]
-expandValid ValidSchedule {vsIngs, vsMeal, vsCron, vsScale} ds
+validToIngredient :: ValidSchedule -> DaySpan -> [(Either FID Text, IngredientMetadata)]
+validToIngredient ValidSchedule {vsIngs, vsMeal, vsCron, vsScale} ds
   | d == 0 = []
   | otherwise = N.toList $ fmap (expandIngredient vsMeal (d * vsScale) ds) vsIngs
   where
@@ -205,23 +218,20 @@ isDhall = isExtensionOf "dhall"
 isYaml :: FilePath -> Bool
 isYaml f = isExtensionOf "yaml" f || isExtensionOf "yml" f
 
--- TODO use reader for key and map?
-getIngredients
+fromFDC
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => Bool
   -> APIKey
-  -> ValidCustomMap
-  -> Either FID Text
+  -> FID
   -> m MappedFoodItem
-getIngredients forceAPI k cm = either fromFDC fromCustom
-  where
-    -- TODO do I want to do all this here?
-    fromFDC fid = do
-      j <- jsonDecodeIO =<< fetchFID forceAPI k fid
-      let (ws, mfi) = mapFoodItem $ filterFoodItem j
-      mapM_ (logWarn . displayText . fmtWarning fid) ws
-      return mfi
-    fromCustom n = maybe (throwAppErrorIO $ MissingCustom n) return $ M.lookup n cm
+fromFDC forceAPI k fid = do
+  j <- jsonDecodeIO =<< fetchFID forceAPI k fid
+  let (ws, mfi) = mapFoodItem $ filterFoodItem j
+  mapM_ (logWarn . displayText . fmtWarning fid) ws
+  return mfi
+
+fromCustom :: MonadUnliftIO m => ValidCustomMap -> Text -> m MappedFoodItem
+fromCustom cm n = maybe (throwAppErrorIO $ MissingCustom n) return $ M.lookup n cm
 
 expandIngredientTrees
   :: NonEmpty (MappedFoodItem, IngredientMetadata)
@@ -390,3 +400,28 @@ fmtUnused (UnusedNutrient m i n) =
     , ": "
     , tshow n
     ]
+
+getStoreAPIKey
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => Maybe APIKey
+  -> m APIKey
+getStoreAPIKey k = do
+  f <- (</> apiKeyFile) <$> configDir
+  case k of
+    Just k' -> do
+      logDebug $ displayText $ T.append "writing api key to " $ T.pack f
+      createWriteFile f (unAPIKey k')
+      return k'
+    Nothing -> do
+      e <- doesFileExist f
+      if e then go f else throwAppErrorIO $ MissingAPIKey f
+  where
+    go f = do
+      logDebug $ displayText $ T.append "reading api key from " $ T.pack f
+      APIKey <$> readFileUtf8 f
+
+apiKeyFile :: FilePath
+apiKeyFile = "apikey"
+
+configDir :: MonadUnliftIO m => m FilePath
+configDir = getXdgDirectory XdgConfig "womp"
