@@ -3,6 +3,7 @@ module Internal.Nutrient
   , fetchFID
   , readSummary
   , getStoreAPIKey
+  , parseSortKeys
   )
 where
 
@@ -22,6 +23,7 @@ import Network.HTTP.Req ((/:), (/~))
 import qualified Network.HTTP.Req as R
 import RIO
 import RIO.FilePath
+import qualified RIO.List as L
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 import qualified RIO.Set as S
@@ -427,3 +429,25 @@ apiKeyFile = "apikey"
 
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "womp"
+
+parseSortKeys :: Text -> Maybe [SortKey]
+parseSortKeys "" = Just []
+parseSortKeys s = fmap L.nub $ mapM parseSortKey $ T.split (== ',') s
+
+parseSortKey :: Text -> Maybe SortKey
+parseSortKey = go <=< T.uncons
+  where
+    go (p, rest) = do
+      a <- case p of
+        '+' -> pure True
+        '-' -> pure False
+        _ -> Nothing
+      f <- case rest of
+        "date" -> pure SortDate
+        "meal" -> pure SortMeal
+        "ingredient" -> pure SortIngredient
+        "nutrient" -> pure SortNutrient
+        "parent" -> pure SortParent
+        "value" -> pure SortValue
+        _ -> Nothing
+      pure $ SortKey f a

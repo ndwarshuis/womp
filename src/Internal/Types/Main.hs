@@ -55,17 +55,23 @@ data FetchDumpOptions = FetchDumpOptions
   , foKey :: !(Maybe APIKey)
   }
 
+-- TODO what does this name really mean?
+data CommonExportOptions = CommonExportOptions
+  { ceoExport :: !ExportOptions
+  , ceoGroup :: !GroupOptions
+  , ceoShowUnknowns :: !Bool
+  , ceoUnityUnits :: !Bool
+  }
+
 data TabularExportOptions = TabularExportOptions
-  { teoExport :: !ExportOptions
-  , teoGroup :: !GroupOptions
-  , teoShowUnknowns :: !Bool
-  , teoUnityUnits :: !Bool
+  { tabCommonExport :: !CommonExportOptions
+  , tabSort :: !Text
   }
 
 data TreeExportOptions = TreeExportOptions
-  { teoDisplay :: !TreeDisplayOptions
-  , teoJSON :: !Bool
-  , teoTabularExport :: !TabularExportOptions
+  { treeDisplay :: !TreeDisplayOptions
+  , treeJSON :: !Bool
+  , treeCommonExport :: !CommonExportOptions
   }
 
 data ExportOptions = ExportOptions
@@ -106,7 +112,25 @@ data AllTabularDisplayOptions = AllTabularDisplayOptions
   { atabShowUnknowns :: !Bool
   , atabUnityUnits :: !Bool
   , atabRoundDigits :: !Int
+  , atabSort :: ![SortKey]
   }
+
+type TableSort = forall r. DisplayRow r -> DisplayRow r -> Bool
+
+data SortKey = SortKey
+  { skField :: SortField
+  , skAsc :: Bool
+  }
+  deriving (Eq)
+
+data SortField
+  = SortDate
+  | SortMeal
+  | SortIngredient
+  | SortNutrient
+  | SortParent
+  | SortValue
+  deriving (Eq)
 
 type DaySpan = (Day, Int)
 
@@ -146,8 +170,6 @@ instance C.ToNamedRecord SummaryRow where
   toNamedRecord (SummaryRow d m i v) =
     zipApply summaryRowHeader [(C..= formatDay d), (C..= m), (C..= i), (C..= v)]
 
--- data CustomIngredient = CustomIngredient CustomSource Mass [Modification]
-
 data ValidFDCIngredient = ValidFDCIngredient
   { viID :: FID
   , viMass :: Mass
@@ -157,7 +179,7 @@ data ValidFDCIngredient = ValidFDCIngredient
 data UnitName
   = Gram
   | Calorie
-  deriving (Show, Eq, Generic, ToJSON)
+  deriving (Show, Eq, Ord, Generic, ToJSON)
 
 data Unit = Unit
   { unitBase :: Prefix
@@ -326,10 +348,10 @@ instance Semigroup a => Semigroup (DisplayNode a) where
 -- collecting dates within a given range.
 
 newtype MealGroup = MealGroup {unMealGroup :: Text}
-  deriving (Show, Eq, ToJSON, C.ToField) via Text
+  deriving (Show, Eq, Ord, ToJSON, C.ToField) via Text
 
 newtype IngredientGroup = IngredientGroup {unIngredientGroup :: Text}
-  deriving (Show, Eq, ToJSON, C.ToField) via Text
+  deriving (Show, Eq, Ord, ToJSON, C.ToField) via Text
 
 data GroupVars d m i = GroupVars
   { gvDaySpan :: d

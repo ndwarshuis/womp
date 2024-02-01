@@ -15,6 +15,7 @@ import RIO hiding (force)
 import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.NonEmpty as N
+import qualified RIO.Text as T
 import RIO.Time
 import UnliftIO.Concurrent
 
@@ -53,42 +54,49 @@ runDump FetchDumpOptions {foID, foForce, foKey} = do
   liftIO $ TI.putStr j
 
 runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
-runExportTabular tos = go =<< readTrees (teoExport tos)
+runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort} = do
+  case parseSortKeys tabSort of
+    Nothing -> exitError $ T.append "unable to parse sort order: " tabSort
+    Just ks -> go ks =<< readTrees (ceoExport tabCommonExport)
   where
-    go =
+    go ks =
       liftIO
         . BL.putStr
-        . treeToCSV (allTabularDisplayOpts tos) tsvOptions (teoGroup tos)
+        . treeToCSV (allTabularDisplayOpts ks tos) tsvOptions (ceoGroup tabCommonExport)
 
 runExportTree :: TreeExportOptions -> RIO SimpleApp ()
-runExportTree t@TreeExportOptions {teoJSON, teoTabularExport} = do
-  ts <- readTrees $ teoExport teoTabularExport
+runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
+  ts <- readTrees $ ceoExport treeCommonExport
   liftIO $ go $ treeToJSON (allTreeDisplayOpts t) gos ts
   where
-    gos = teoGroup teoTabularExport
-    go = if teoJSON then BL.putStr . A.encode else B.putStr . Y.encode
+    gos = ceoGroup treeCommonExport
+    go = if treeJSON then BL.putStr . A.encode else B.putStr . Y.encode
 
 allTreeDisplayOpts :: TreeExportOptions -> AllTreeDisplayOptions
 allTreeDisplayOpts
   TreeExportOptions
-    { teoDisplay
-    , teoTabularExport =
-      TabularExportOptions
-        { teoShowUnknowns
-        , teoUnityUnits
-        , teoExport = ExportOptions {eoRoundDigits}
+    { treeDisplay
+    , treeCommonExport =
+      CommonExportOptions
+        { ceoShowUnknowns
+        , ceoUnityUnits
+        , ceoExport = ExportOptions {eoRoundDigits}
         }
     } =
-    AllTreeDisplayOptions teoDisplay teoShowUnknowns teoUnityUnits eoRoundDigits
+    AllTreeDisplayOptions treeDisplay ceoShowUnknowns ceoUnityUnits eoRoundDigits
 
-allTabularDisplayOpts :: TabularExportOptions -> AllTabularDisplayOptions
+allTabularDisplayOpts :: [SortKey] -> TabularExportOptions -> AllTabularDisplayOptions
 allTabularDisplayOpts
+  ks
   TabularExportOptions
-    { teoShowUnknowns
-    , teoUnityUnits
-    , teoExport = ExportOptions {eoRoundDigits}
+    { tabCommonExport =
+      CommonExportOptions
+        { ceoShowUnknowns
+        , ceoUnityUnits
+        , ceoExport = ExportOptions {eoRoundDigits}
+        }
     } =
-    AllTabularDisplayOptions teoShowUnknowns teoUnityUnits eoRoundDigits
+    AllTabularDisplayOptions ceoShowUnknowns ceoUnityUnits eoRoundDigits ks
 
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)

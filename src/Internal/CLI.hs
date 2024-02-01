@@ -111,9 +111,9 @@ export =
           <> value 3
       )
 
-tabular :: Parser TabularExportOptions
-tabular =
-  TabularExportOptions
+common :: Parser CommonExportOptions
+common =
+  CommonExportOptions
     <$> export
     <*> grouping
     <*> switch
@@ -125,6 +125,18 @@ tabular =
       ( long "unknowns"
           <> short 'u'
           <> help "display unknown nutrients in output"
+      )
+
+tabular :: Parser TabularExportOptions
+tabular =
+  TabularExportOptions
+    <$> common
+    <*> strOption
+      ( long "sort"
+          <> short 'S'
+          <> metavar "SORT"
+          <> help "comma separated list of sort options"
+          <> value ""
       )
 
 grouping :: Parser GroupOptions
@@ -143,7 +155,7 @@ tree =
           <> short 'j'
           <> help "summarize output in JSON (display options are ignored)"
       )
-    <*> tabular
+    <*> common
 
 force :: Parser Bool
 force = switch (long "force" <> short 'f' <> help "force retrieve")

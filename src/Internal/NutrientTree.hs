@@ -554,21 +554,34 @@ treeToCSV
 treeToCSV tos eos gos = chooseGrouping gos go
   where
     go
-      :: (C.ToNamedRecord (DisplayRow g), C.DefaultOrdered (DisplayRow g))
-      => NonEmpty (DisplayTree g)
+      :: ( Ord d
+         , Ord m
+         , Ord i
+         , C.ToNamedRecord (DisplayRow (GroupVars d m i))
+         , C.DefaultOrdered (DisplayRow (GroupVars d m i))
+         )
+      => NonEmpty (DisplayTree (GroupVars d m i))
       -> BL.ByteString
-    go = C.encodeDefaultOrderedByNameWith eos . N.toList . sconcat . fmap (treeToRows tos)
+    go =
+      C.encodeDefaultOrderedByNameWith eos
+        . N.toList
+        . N.sortBy (compareRow (atabSort tos))
+        . sconcat
+        . fmap (treeToRows tos)
 
 -- TODO not sure how to get the instance constraints out of the rankN function
 -- (they don't seem necessary)
 chooseGrouping
   :: GroupOptions
-  -> ( forall g
-        . ( ToJSON g
-          , C.DefaultOrdered (DisplayRow g)
-          , C.ToNamedRecord (DisplayRow g)
+  -> ( forall d m i
+        . ( Ord d
+          , Ord m
+          , Ord i
+          , ToJSON (GroupVars d m i)
+          , C.DefaultOrdered (DisplayRow (GroupVars d m i))
+          , C.ToNamedRecord (DisplayRow (GroupVars d m i))
           )
-       => NonEmpty (DisplayTree g)
+       => NonEmpty (DisplayTree (GroupVars d m i))
        -> a
      )
   -> NonEmpty (DisplayTree GroupByAll)
@@ -637,9 +650,11 @@ unityMaybe :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
 unityMaybe True _ v = (Unity, v)
 unityMaybe False p v = (p, raisePower (-prefixValue p) v)
 
--- TODO add option to remove unknowns
+toUnity :: Prefix -> Scientific -> Scientific
+toUnity p = raisePower (prefixValue p)
+
 treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> NonEmpty (DisplayRow g)
-treeToRows (AllTabularDisplayOptions su uu r) (DisplayTree_ (DisplayNode v ks us) e g) =
+treeToRows (AllTabularDisplayOptions su uu r _) (DisplayTree_ (DisplayNode v ks us) e g) =
   energy :| (totalMass : (goK massName ks ++ [goU massName us | su]))
   where
     row = DisplayRow g
@@ -668,6 +683,43 @@ treeToRows (AllTabularDisplayOptions su uu r) (DisplayTree_ (DisplayNode v ks us
       let s = unMass $ sum $ M.elems us'
           p = autoPrefix s
        in massRow unknownName pnt s p
+
+compareRow
+  :: (Ord d, Ord m, Ord i)
+  => [SortKey]
+  -> DisplayRow (GroupVars d m i)
+  -> DisplayRow (GroupVars d m i)
+  -> Ordering
+compareRow ks a b = maybe EQ (sconcat . fmap (compareRowKey a b)) $ N.nonEmpty ks
+
+compareRowKey
+  :: (Ord d, Ord m, Ord i)
+  => DisplayRow (GroupVars d m i)
+  -> DisplayRow (GroupVars d m i)
+  -> SortKey
+  -> Ordering
+compareRowKey a b SortKey {skField, skAsc} = case (f a b, skAsc) of
+  (LT, True) -> GT
+  (GT, True) -> LT
+  (EQ, _) -> EQ
+  (x, False) -> x
+  where
+    f = case skField of
+      SortDate -> go (gvDaySpan . drGroup)
+      SortMeal -> go (gvMeal . drGroup)
+      SortIngredient -> go (gvIngredient . drGroup)
+      SortNutrient -> go drNutrient
+      SortParent -> go drParentNutrient
+      SortValue -> compareValue
+    go g x y = compare (g x) (g y)
+    compareValue x y =
+      -- compare units first so that calories and grams will sort separately,
+      -- and sort the prefix last such that "small looking" things are below
+      -- "large looking" things
+      go (unitName . drUnit) x y
+        <> go getValue x y
+        <> go (unitBase . drUnit) x y
+    getValue x = toUnity (unitBase $ drUnit x) (drValue x)
 
 dumpNutrientTree :: [NutTreeRow]
 dumpNutrientTree = goTree Nothing $ nutHierarchy 0
