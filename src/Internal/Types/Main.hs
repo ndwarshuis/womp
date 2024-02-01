@@ -31,7 +31,7 @@ data ValidNutrient = ValidNutrient
   , vnPrefix :: Prefix
   , vnName :: Maybe Text
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 data CLIOptions = CLIOptions CommonOptions SubCommand
 
@@ -661,3 +661,4 @@ data UnusedNutrient = UnusedNutrient
   , uId :: NID
   , uNut :: ValidNutrient
   }
+  deriving (Eq)

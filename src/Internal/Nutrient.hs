@@ -42,7 +42,8 @@ readDisplayTrees
 readDisplayTrees frc k ds p norm = do
   is <- readMappedItems validToIngredient frc k ds p norm
   let (ts, unused) = expandIngredientTrees is
-  mapM_ (logWarn . displayText . fmtUnused) unused
+  -- TODO nub hack to deal with repeated warnings
+  mapM_ (logWarn . displayText . fmtUnused) $ L.nub unused
   return ts
 
 readSummary
@@ -70,9 +71,18 @@ readMappedItems
 readMappedItems f forceAPI k ds p norm = do
   (vs, customMap) <- readPlan p norm
   is <- expandSchedule f vs ds
-  let (fs, cs) = N.unzip is
-  fs' <- mapM (either return (fromCustom customMap)) =<< mapFIDs k (fromFDC forceAPI) fs
-  return $ N.zip fs' cs
+  let (fs, cs) = N.unzip $ groupByTup is
+  ms <- mapFIDs k (fromFDC forceAPI) fs
+  fs' <- mapM (either return (fromCustom customMap)) ms
+  return $ flatten $ N.zip fs' cs
+
+groupByTup :: Eq a => NonEmpty (a, b) -> NonEmpty (a, NonEmpty b)
+groupByTup = fmap (\xs -> (fst $ N.head xs, snd <$> xs)) . N.groupWith1 fst
+
+flatten :: NonEmpty (a, NonEmpty b) -> NonEmpty (a, b)
+flatten = sconcat . fmap go
+  where
+    go (x, ys) = (x,) <$> ys
 
 -- | Map over a non-empty list which contains no/some FIDs
 -- If the list has no FIDs, don't ask for an API key (which will fail if
@@ -239,6 +249,8 @@ fromFDC forceAPI k fid = do
 fromCustom :: MonadUnliftIO m => ValidCustomMap -> Text -> m MappedFoodItem
 fromCustom cm n = maybe (throwAppErrorIO $ MissingCustom n) return $ M.lookup n cm
 
+-- TODO this is run after the nonempty tree is flattened and thus will print
+-- warnings for each group combination, which is super annoying
 expandIngredientTrees
   :: NonEmpty (MappedFoodItem, IngredientMetadata)
   -> (NonEmpty (DisplayTree GroupByAll), [UnusedNutrient])
