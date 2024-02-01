@@ -179,7 +179,10 @@ expandSchedule
 expandSchedule f vs = maybeExit msg . N.nonEmpty . go
   where
     msg = "Schedule does not intersect with desired date range"
-    go = sconcat . N.zipWith f vs
+    go = sconcat . nonEmptyProduct f vs
+
+nonEmptyProduct :: (a -> b -> c) -> NonEmpty a -> NonEmpty b -> NonEmpty c
+nonEmptyProduct f xs = sconcat . fmap (\y -> fmap (`f` y) xs)
 
 validToSummary
   :: ValidSchedule

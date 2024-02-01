@@ -152,6 +152,7 @@ data IngredientMetadata_ ms d = IngredientMetadata_
   , imMods :: ms
   , imDaySpan :: d
   }
+  deriving (Show)
 
 data SummaryRow = SummaryRow
   { srDay :: Day
