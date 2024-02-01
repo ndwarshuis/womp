@@ -546,17 +546,18 @@ treeToJSON
 treeToJSON dos gos = chooseGrouping gos (fmap (treeToJSON_ dos))
 
 treeToCSV
-  :: C.EncodeOptions
+  :: AllTabularDisplayOptions
+  -> C.EncodeOptions
   -> GroupOptions
   -> NonEmpty (DisplayTree GroupByAll)
   -> BL.ByteString
-treeToCSV eos gos = chooseGrouping gos go
+treeToCSV tos eos gos = chooseGrouping gos go
   where
     go
       :: (C.ToNamedRecord (DisplayRow g), C.DefaultOrdered (DisplayRow g))
       => NonEmpty (DisplayTree g)
       -> BL.ByteString
-    go = C.encodeDefaultOrderedByNameWith eos . N.toList . sconcat . fmap treeToRows
+    go = C.encodeDefaultOrderedByNameWith eos . N.toList . sconcat . fmap (treeToRows tos)
 
 -- TODO not sure how to get the instance constraints out of the rankN function
 -- (they don't seem necessary)
@@ -586,7 +587,11 @@ treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
 treeToJSON_ o (DisplayTree_ ms e g) =
   object
     [ "group" .= toJSON g
-    , "energy" .= object ["value" .= e, "unit" .= Unit Kilo Calorie]
+    , "energy"
+        .= object
+          [ "value" .= roundDigits (atdoRoundDigits o) e
+          , "unit" .= Unit Kilo Calorie
+          ]
     , "mass" .= nodeToJSON o "Total" Unity ms
     ]
 
@@ -596,7 +601,7 @@ nodeToJSON
   -> Prefix
   -> DisplayNode Mass
   -> Value
-nodeToJSON o@(AllTreeDisplayOptions u e uy) n p (DisplayNode v ks us) =
+nodeToJSON o@(AllTreeDisplayOptions u e uy r) n p (DisplayNode v ks us) =
   object $
     [ encodeValue v'
     , "name" .= n
@@ -620,7 +625,7 @@ nodeToJSON o@(AllTreeDisplayOptions u e uy) n p (DisplayNode v ks us) =
             , "trees" .= uts
             ]
 
-    encodeValue v'' = "value" .= v''
+    encodeValue = ("value" .=) . roundDigits r
     encodeUnit p'' =
       let u' = Unit p'' Gram
        in if e then "unit" .= u' else "unit" .= tunit u'
@@ -633,13 +638,15 @@ unityMaybe True _ v = (Unity, v)
 unityMaybe False p v = (p, raisePower (-prefixValue p) v)
 
 -- TODO add option to remove unknowns
-treeToRows :: DisplayTree g -> NonEmpty (DisplayRow g)
-treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
-  energy :| (totalMass : (goK massName ks ++ [goU massName us]))
+treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> NonEmpty (DisplayRow g)
+treeToRows (AllTabularDisplayOptions su uu r) (DisplayTree_ (DisplayNode v ks us) e g) =
+  energy :| (totalMass : (goK massName ks ++ [goU massName us | su]))
   where
     row = DisplayRow g
 
-    dpyRow n pnt v' u = row n pnt (raisePower (-(prefixValue $ unitBase u)) v') u
+    dpyRow n pnt v' u =
+      let (p'', v'') = unityMaybe uu (unitBase u) v'
+       in row n pnt (roundDigits r v'') (u {unitBase = p''})
 
     -- multiply by 1000 here since calories are actually given in kcal
     energy = dpyRow "Energy" Nothing (unEnergy e * 1000) (Unit Kilo Calorie)
@@ -655,7 +662,7 @@ treeToRows (DisplayTree_ (DisplayNode v ks us) e g) =
     goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
 
     goK_ pnt (DisplayNutrient n p) (DisplayNode v' ks' us') =
-      massRow n pnt (unMass v') p : (goK n ks' ++ [goU n us'])
+      massRow n pnt (unMass v') p : (goK n ks' ++ [goU n us' | su])
 
     goU pnt us' =
       let s = unMass $ sum $ M.elems us'

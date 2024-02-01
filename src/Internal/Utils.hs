@@ -153,6 +153,13 @@ parseUnit s = catchError nonUnity (const def)
 raisePower :: Int -> Scientific -> Scientific
 raisePower x s = scientific (coefficient s) (base10Exponent s + x)
 
+roundDigits :: forall a. RealFrac a => Int -> a -> a
+roundDigits p = (/ d) . go . round . (* d)
+  where
+    d = 10 ^ p
+    go :: Int -> a
+    go = fromIntegral
+
 autoPrefix :: Scientific -> Prefix
 autoPrefix s =
   maybe maxBound fst $

@@ -50,10 +50,11 @@ readSummary
   -> NonEmpty DaySpan
   -> FilePath
   -> Int
+  -> Int
   -> m (NonEmpty SummaryRow)
-readSummary frc k ds p norm = do
+readSummary frc k ds p norm r = do
   is <- readMappedItems validToSummary frc k ds p norm
-  return $ fmap (uncurry expandIngredientSummary) is
+  return $ fmap (uncurry (expandIngredientSummary r)) is
 
 readMappedItems
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
@@ -239,11 +240,12 @@ expandIngredientTrees
 expandIngredientTrees =
   second sconcat . N.unzip . fmap (uncurry (flip ingredientToTree))
 
-expandIngredientSummary :: MappedFoodItem -> IngredientMealMeta -> SummaryRow
+expandIngredientSummary :: Int -> MappedFoodItem -> IngredientMealMeta -> SummaryRow
 expandIngredientSummary
+  r
   FoodItem {fiDescription}
   IngredientMetadata_ {imMeal, imMass, imDaySpan} =
-    SummaryRow imDaySpan imMeal (IngredientGroup fiDescription) imMass
+    SummaryRow imDaySpan imMeal (IngredientGroup fiDescription) (roundDigits r imMass)
 
 ingredientToTree
   :: IngredientMetadata

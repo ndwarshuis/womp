@@ -99,6 +99,13 @@ data AllTreeDisplayOptions = AllTreeDisplayOptions
   { atdoOpts :: !TreeDisplayOptions
   , atdoShowUnknowns :: !Bool
   , atdoUnityUnits :: !Bool
+  , atdoRoundDigits :: !Int
+  }
+
+data AllTabularDisplayOptions = AllTabularDisplayOptions
+  { atabShowUnknowns :: !Bool
+  , atabUnityUnits :: !Bool
+  , atabRoundDigits :: !Int
   }
 
 type DaySpan = (Day, Int)
@@ -552,7 +559,7 @@ daySpanCsv ds =
 data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
 
 newtype Energy = Energy {unEnergy :: Scientific}
-  deriving (Show, Eq, Ord, Num, ToJSON, Fractional) via Scientific
+  deriving (Show, Eq, Ord, Num, ToJSON, Fractional, Real, RealFrac) via Scientific
 
 data NutTreeRow = NutTreeRow
   { ntrNutrient :: Text

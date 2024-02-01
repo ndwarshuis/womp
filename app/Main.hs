@@ -55,7 +55,10 @@ runDump FetchDumpOptions {foID, foForce, foKey} = do
 runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
 runExportTabular tos = go =<< readTrees (teoExport tos)
   where
-    go = liftIO . BL.putStr . treeToCSV tsvOptions (teoGroup tos)
+    go =
+      liftIO
+        . BL.putStr
+        . treeToCSV (allTabularDisplayOpts tos) tsvOptions (teoGroup tos)
 
 runExportTree :: TreeExportOptions -> RIO SimpleApp ()
 runExportTree t@TreeExportOptions {teoJSON, teoTabularExport} = do
@@ -69,9 +72,23 @@ allTreeDisplayOpts :: TreeExportOptions -> AllTreeDisplayOptions
 allTreeDisplayOpts
   TreeExportOptions
     { teoDisplay
-    , teoTabularExport = TabularExportOptions {teoShowUnknowns, teoUnityUnits}
+    , teoTabularExport =
+      TabularExportOptions
+        { teoShowUnknowns
+        , teoUnityUnits
+        , teoExport = ExportOptions {eoRoundDigits}
+        }
     } =
-    AllTreeDisplayOptions teoDisplay teoShowUnknowns teoUnityUnits
+    AllTreeDisplayOptions teoDisplay teoShowUnknowns teoUnityUnits eoRoundDigits
+
+allTabularDisplayOpts :: TabularExportOptions -> AllTabularDisplayOptions
+allTabularDisplayOpts
+  TabularExportOptions
+    { teoShowUnknowns
+    , teoUnityUnits
+    , teoExport = ExportOptions {eoRoundDigits}
+    } =
+    AllTabularDisplayOptions teoShowUnknowns teoUnityUnits eoRoundDigits
 
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -90,10 +107,10 @@ runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => ExportOptions
   -> m ()
-runSummarize ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} = do
+runSummarize ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey, eoRoundDigits} = do
   setNumCapabilities eoThreads
   ds <- dateIntervalToDaySpan eoDateInterval
-  s <- readSummary eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval)
+  s <- readSummary eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval) eoRoundDigits
   BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions $ N.toList s
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
