@@ -35,9 +35,8 @@ data ValidNutrient = ValidNutrient
 
 data CLIOptions = CLIOptions CommonOptions SubCommand
 
-data CommonOptions = CommonOptions
-  { coKey :: !(Maybe APIKey)
-  , coVerbosity :: !Bool
+newtype CommonOptions = CommonOptions
+  { coVerbosity :: Bool
   }
 
 newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
@@ -45,46 +44,61 @@ newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
 data SubCommand
   = Fetch !FetchDumpOptions
   | Dump !FetchDumpOptions
-  | ExportTabular !TabularOptions
-  | ExportTree !TreeOptions
+  | ExportTabular !TabularExportOptions
+  | ExportTree !TreeExportOptions
   | ListNutrients
-  | -- TODO this is a bit crude
-    Summarize !TabularOptions
+  | Summarize !ExportOptions
 
-data FetchDumpOptions = FetchDumpOptions {foID :: !FID, foForce :: !Bool}
+data FetchDumpOptions = FetchDumpOptions
+  { foID :: !FID
+  , foForce :: !Bool
+  , foKey :: !(Maybe APIKey)
+  }
 
-data TabularOptions = TabularOptions
+data TabularExportOptions = TabularExportOptions
+  { teoExport :: !ExportOptions
+  , teoGroup :: !GroupOptions
+  , teoShowUnknowns :: !Bool
+  , teoUnityUnits :: !Bool
+  }
+
+data TreeExportOptions = TreeExportOptions
+  { teoDisplay :: !TreeDisplayOptions
+  , teoJSON :: !Bool
+  , teoTabularExport :: !TabularExportOptions
+  }
+
+data ExportOptions = ExportOptions
   { eoMealPath :: !FilePath
   , eoDateInterval :: !DateIntervalOptions
   , eoForce :: !Bool
   , eoThreads :: !Int
-  , eoGroup :: !GroupOptions
-  }
-
-data TreeOptions = TreeOptions
-  { soDisplay :: !DisplayOptions
-  , soJSON :: !Bool
-  , soExport :: !TabularOptions
+  , eoKey :: !(Maybe APIKey)
+  , eoRoundDigits :: !Int
   }
 
 data GroupOptions = GroupOptions
-  { goDate :: Bool
-  , goMeal :: Bool
-  , goIngredient :: Bool
+  { goDate :: !Bool
+  , goMeal :: !Bool
+  , goIngredient :: !Bool
   }
 
 data DateIntervalOptions = DateIntervalOptions
-  { dioStart :: Maybe Day
-  , dioEnd :: Maybe Day
-  , dioDays :: Int
-  , dioInterval :: Maybe Int
-  , dioNormalize :: Int
+  { dioStart :: !(Maybe Day)
+  , dioEnd :: !(Maybe Day)
+  , dioDays :: !Int
+  , dioInterval :: !(Maybe Int)
+  , dioNormalize :: !Int
   }
 
-data DisplayOptions = DisplayOptions
-  { doUnknowns :: !Bool
-  , doExpandedUnits :: !Bool
-  , doUnityUnits :: !Bool
+newtype TreeDisplayOptions = TreeDisplayOptions
+  { doExpandedUnits :: Bool
+  }
+
+data AllTreeDisplayOptions = AllTreeDisplayOptions
+  { atdoOpts :: !TreeDisplayOptions
+  , atdoShowUnknowns :: !Bool
+  , atdoUnityUnits :: !Bool
   }
 
 type DaySpan = (Day, Int)

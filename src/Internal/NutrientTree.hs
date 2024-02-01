@@ -539,7 +539,7 @@ groupTrees f =
     go xs@((g, _) :| _) = fromSumTree g $ sconcat $ fmap snd xs
 
 treeToJSON
-  :: DisplayOptions
+  :: AllTreeDisplayOptions
   -> GroupOptions
   -> NonEmpty (DisplayTree GroupByAll)
   -> NonEmpty Value
@@ -582,7 +582,7 @@ chooseGrouping (GroupOptions d m i) f ts = case (d, m, i) of
   (False, False, True) -> f $ groupTrees (\g -> g {gvDaySpan = (), gvMeal = ()}) ts
   (False, False, False) -> f $ groupTrees (const (GroupVars () () ())) ts
 
-treeToJSON_ :: ToJSON g => DisplayOptions -> DisplayTree g -> Value
+treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
 treeToJSON_ o (DisplayTree_ ms e g) =
   object
     [ "group" .= toJSON g
@@ -591,19 +591,19 @@ treeToJSON_ o (DisplayTree_ ms e g) =
     ]
 
 nodeToJSON
-  :: DisplayOptions
+  :: AllTreeDisplayOptions
   -> Text
   -> Prefix
   -> DisplayNode Mass
   -> Value
-nodeToJSON o@(DisplayOptions u e uy) n p (DisplayNode v ks us) =
+nodeToJSON o@(AllTreeDisplayOptions u e uy) n p (DisplayNode v ks us) =
   object $
     [ encodeValue v'
     , "name" .= n
     , encodeUnit p'
     ]
       ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
-      ++ ["unknown" .= mapU us | u]
+      ++ ["unknown" .= mapU us | doExpandedUnits u]
   where
     (p', v') = unityMaybe uy p $ unMass v
 

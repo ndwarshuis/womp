@@ -22,15 +22,7 @@ options = CLIOptions <$> commonOptions <*> subcommand
 commonOptions :: Parser CommonOptions
 commonOptions =
   CommonOptions
-    <$> optional
-      ( strOption
-          ( long "apikey"
-              <> short 'k'
-              <> metavar "APIKEY"
-              <> help "API key for USDA FoodData Central"
-          )
-      )
-    <*> switch
+    <$> switch
       ( long "verbose"
           <> short 'v'
           <> help "be obnoxious"
@@ -72,7 +64,7 @@ subcommand =
         <> command
           "summarize"
           ( info
-              (Summarize <$> tabular)
+              (Summarize <$> export)
               (progDesc "print table of meals and their ingredients")
           )
     )
@@ -88,10 +80,11 @@ fetchDump =
           <> help "ID for the food to pull from the database"
       )
     <*> force
+    <*> apikey
 
-tabular :: Parser TabularOptions
-tabular =
-  TabularOptions
+export :: Parser ExportOptions
+export =
+  ExportOptions
     <$> strOption
       ( long "config"
           <> short 'c'
@@ -108,7 +101,31 @@ tabular =
           <> help "number of threads for processing ingredients"
           <> value 2
       )
+    <*> apikey
+    <*> option
+      auto
+      ( long "round"
+          <> short 'r'
+          <> metavar "ROUND"
+          <> help "number of digits after decimal to keep"
+          <> value 3
+      )
+
+tabular :: Parser TabularExportOptions
+tabular =
+  TabularExportOptions
+    <$> export
     <*> grouping
+    <*> switch
+      ( long "expandUnits"
+          <> short 'x'
+          <> help "show prefix and base unit as separate keys (JSON only)"
+      )
+    <*> switch
+      ( long "unknowns"
+          <> short 'u'
+          <> help "display unknown nutrients in output"
+      )
 
 grouping :: Parser GroupOptions
 grouping =
@@ -117,9 +134,9 @@ grouping =
     <*> switch (long "meal" <> short 'M' <> help "group by meal")
     <*> switch (long "ingredient" <> short 'G' <> help "group by ingredient")
 
-tree :: Parser TreeOptions
+tree :: Parser TreeExportOptions
 tree =
-  TreeOptions
+  TreeExportOptions
     <$> displayOptions
     <*> switch
       ( long "json"
@@ -162,20 +179,10 @@ dateInterval =
           <> value 1
       )
 
-displayOptions :: Parser DisplayOptions
+displayOptions :: Parser TreeDisplayOptions
 displayOptions =
-  DisplayOptions
+  TreeDisplayOptions
     <$> switch
-      ( long "unknowns"
-          <> short 'u'
-          <> help "display unknown nutrients in output"
-      )
-    <*> switch
-      ( long "expandUnits"
-          <> short 'x'
-          <> help "show prefix and base unit as separate keys (JSON only)"
-      )
-    <*> switch
       ( long "unityUnits"
           <> short 'U'
           <> help "show all masses in grams (no prefix)"
@@ -209,3 +216,14 @@ parseDay l s d =
 
 readDay :: String -> Day
 readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
+
+apikey :: Parser (Maybe APIKey)
+apikey =
+  optional
+    ( strOption
+        ( long "apikey"
+            <> short 'k'
+            <> metavar "APIKEY"
+            <> help "API key for USDA FoodData Central"
+        )
+    )

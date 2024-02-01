@@ -22,7 +22,7 @@ main :: IO ()
 main = run =<< parseCLI
 
 run :: MonadUnliftIO m => CLIOptions -> m ()
-run (CLIOptions c@CommonOptions {coVerbosity} s) = do
+run (CLIOptions CommonOptions {coVerbosity} s) = do
   logOpts <-
     setLogVerboseFormat True
       . setLogUseTime False
@@ -31,49 +31,56 @@ run (CLIOptions c@CommonOptions {coVerbosity} s) = do
   withLogFunc logOpts $ \lf -> do
     env <- mkSimpleApp lf Nothing
     runRIO env $ handle err $ case s of
-      Fetch o -> runFetch c o
-      Dump o -> runDump c o
-      ExportTabular o -> runExportTabular c o
-      ExportTree o -> runExportTree c o
+      Fetch o -> runFetch o
+      Dump o -> runDump o
+      ExportTabular o -> runExportTabular o
+      ExportTree o -> runExportTree o
       ListNutrients -> runListNutrients
-      Summarize o -> runSummarize c o
+      Summarize o -> runSummarize o
   where
     err (AppException es) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
       exitFailure
 
-runFetch :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
-runFetch CommonOptions {coKey} FetchDumpOptions {foID, foForce} =
-  void . (\k -> fetchFID foForce k foID) =<< getStoreAPIKey coKey
+runFetch :: FetchDumpOptions -> RIO SimpleApp ()
+runFetch FetchDumpOptions {foID, foForce, foKey} =
+  void . (\k -> fetchFID foForce k foID) =<< getStoreAPIKey foKey
 
-runDump :: CommonOptions -> FetchDumpOptions -> RIO SimpleApp ()
-runDump CommonOptions {coKey} FetchDumpOptions {foID, foForce} = do
-  k <- getStoreAPIKey coKey
+runDump :: FetchDumpOptions -> RIO SimpleApp ()
+runDump FetchDumpOptions {foID, foForce, foKey} = do
+  k <- getStoreAPIKey foKey
   j <- fetchFID foForce k foID
   liftIO $ TI.putStr j
 
-runExportTabular :: CommonOptions -> TabularOptions -> RIO SimpleApp ()
-runExportTabular co tos = go =<< readTrees co tos
+runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
+runExportTabular tos = go =<< readTrees (teoExport tos)
   where
-    go = liftIO . BL.putStr . treeToCSV tsvOptions (eoGroup tos)
+    go = liftIO . BL.putStr . treeToCSV tsvOptions (teoGroup tos)
 
-runExportTree :: CommonOptions -> TreeOptions -> RIO SimpleApp ()
-runExportTree co (TreeOptions dos j tos) = do
-  liftIO . go . treeToJSON dos gos =<< readTrees co tos
+runExportTree :: TreeExportOptions -> RIO SimpleApp ()
+runExportTree t@TreeExportOptions {teoJSON, teoTabularExport} = do
+  ts <- readTrees $ teoExport teoTabularExport
+  liftIO $ go $ treeToJSON (allTreeDisplayOpts t) gos ts
   where
-    gos = eoGroup tos
-    go = if j then BL.putStr . A.encode else B.putStr . Y.encode
+    gos = teoGroup teoTabularExport
+    go = if teoJSON then BL.putStr . A.encode else B.putStr . Y.encode
 
--- TODO need to normalize somehow
+allTreeDisplayOpts :: TreeExportOptions -> AllTreeDisplayOptions
+allTreeDisplayOpts
+  TreeExportOptions
+    { teoDisplay
+    , teoTabularExport = TabularExportOptions {teoShowUnknowns, teoUnityUnits}
+    } =
+    AllTreeDisplayOptions teoDisplay teoShowUnknowns teoUnityUnits
+
 readTrees
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
-  -> TabularOptions
+  => ExportOptions
   -> m (NonEmpty (DisplayTree GroupByAll))
-readTrees co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
+readTrees ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} = do
   setNumCapabilities eoThreads
   ds <- dateIntervalToDaySpan eoDateInterval
-  readDisplayTrees eoForce (coKey co) ds eoMealPath (dioNormalize eoDateInterval)
+  readDisplayTrees eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval)
 
 runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpNutrientTree
@@ -81,13 +88,12 @@ runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpN
 -- TODO not DRY
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => CommonOptions
-  -> TabularOptions
+  => ExportOptions
   -> m ()
-runSummarize co TabularOptions {eoForce, eoMealPath, eoDateInterval, eoThreads} = do
+runSummarize ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} = do
   setNumCapabilities eoThreads
   ds <- dateIntervalToDaySpan eoDateInterval
-  s <- readSummary eoForce (coKey co) ds eoMealPath (dioNormalize eoDateInterval)
+  s <- readSummary eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval)
   BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions $ N.toList s
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
