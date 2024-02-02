@@ -654,7 +654,10 @@ data AppError
   | FileTypeError !FilePath
   | CustomIngError !CustomIngError
   | MissingCustom !Text
+  | MassError !IngredientSource !Double
   | SortKeys !Text
+  | EmptySchedule !Bool
+  | NormalizeError !Int
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)

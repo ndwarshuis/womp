@@ -106,17 +106,21 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
+  NormalizeError x -> [T.append "Normalization constant must be 1 or more, got " $ tshow x]
+  EmptySchedule True -> ["Empty schedule after expanding date ranges"]
+  EmptySchedule False -> ["Schedule in plan is empty"]
+  MassError s m -> [T.concat ["negative mass ", tshow m, " for ingredient ", tshow s]]
   DateDaysEndError x -> [T.append "--end must be 1 or more, got " $ tshow x]
   IntervalError x -> [T.append "--interval must be 1 or more, got " $ tshow x]
-  (SortKeys s) -> [T.append "unable to parse sort order: " s]
-  (MissingCustom c) -> [T.append "Custom ingredient not found: " c]
-  (CustomIngError c) -> [fmtCustomError c]
-  (FileTypeError f) -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
-  (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
-  (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
-  (MissingAPIKey p) -> [T.append "Could not read API key from path: " $ T.pack p]
+  SortKeys s -> [T.append "unable to parse sort order: " s]
+  MissingCustom c -> [T.append "Custom ingredient not found: " c]
+  CustomIngError c -> [fmtCustomError c]
+  FileTypeError f -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
+  JSONError e -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
+  EmptyMeal n -> [T.append "Meal has no ingredients: " n]
+  MissingAPIKey p -> [T.append "Could not read API key from path: " $ T.pack p]
   DaySpanError -> ["end date must be at least one day after start date"]
-  (DatePatternError s b r p) -> [T.unwords [msg, "in pattern: ", pat]]
+  DatePatternError s b r p -> [T.unwords [msg, "in pattern: ", pat]]
     where
       pat =
         keyVals $
@@ -273,20 +277,10 @@ checkRepeatPat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r}
 dayToWeekday :: Day -> Int
 dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7
 
-maybeExit
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => Text
-  -> Maybe a
-  -> m a
-maybeExit msg = maybe (exitError msg) return
-
 createWriteFile :: MonadUnliftIO m => FilePath -> Text -> m ()
 createWriteFile p t = do
   createDirectoryIfMissing True $ takeDirectory p
   writeFileUtf8 p t
-
-exitError :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m) => Text -> m a
-exitError msg = logError (displayText msg) >> exitFailure
 
 displayText :: Text -> Utf8Builder
 displayText = displayBytesUtf8 . encodeUtf8

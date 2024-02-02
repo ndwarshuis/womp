@@ -122,9 +122,6 @@ readPlan
   -> Int
   -> m (NonEmpty ValidSchedule, ValidCustomMap)
 readPlan f norm = do
-  -- TODO don't exit here, throw and exception so that I can catch multiple
-  -- issues at once and alert the user
-  when (norm < 1) $ exitError "normalization constant must be 1 or more"
   logDebug $ displayText $ T.append "reading schedule at path: " $ T.pack f
   p <-
     liftIO $
@@ -135,7 +132,7 @@ readPlan f norm = do
             then Y.decodeFileThrow f
             else throwAppErrorIO $ FileTypeError f
   ss <- mapM (`checkSched` norm) $ schedule p
-  vs <- maybeExit "meal plan is empty" $ N.nonEmpty ss
+  vs <- maybe (throwAppErrorIO (EmptySchedule False)) return $ N.nonEmpty ss
   cm <- fromCustomMap $ customIngredients p
   return (vs, cm)
 
@@ -171,24 +168,28 @@ customToItem
         , ValidNutrient (Mass $ fromFloatDigits cnMass) cnPrefix Nothing
         )
 
--- TODO make sure all masses are positive
 checkSched :: MonadUnliftIO m => Schedule -> Int -> m ValidSchedule
 checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} norm = do
   fromEither $ checkCronPat schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
+  _ <- mapErrorsIO checkIngredient is
   return $
     ValidSchedule is (MealGroup mlName) schWhen $
       fromFloatDigits (fromMaybe 1.0 schScale / fromIntegral norm)
 
+checkIngredient :: MonadUnliftIO m => Ingredient -> m ()
+checkIngredient Ingredient {ingMass, ingSource} =
+  -- TODO check that modifications are valid
+  when (ingMass < 0) $ throwAppErrorIO $ MassError ingSource ingMass
+
 expandSchedule
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  :: MonadUnliftIO m
   => (ValidSchedule -> DaySpan -> [(Either FID Text, a)])
   -> NonEmpty ValidSchedule
   -> NonEmpty DaySpan
   -> m (NonEmpty (Either FID Text, a))
-expandSchedule f vs = maybeExit msg . N.nonEmpty . go
+expandSchedule f vs = maybe (throwAppErrorIO (EmptySchedule True)) return . N.nonEmpty . go
   where
-    msg = "Schedule does not intersect with desired date range"
     go = sconcat . nonEmptyProduct f vs
 
 nonEmptyProduct :: (a -> b -> c) -> NonEmpty a -> NonEmpty b -> NonEmpty c

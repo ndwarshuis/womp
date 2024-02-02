@@ -112,8 +112,17 @@ readTrees
   -> m (NonEmpty (DisplayTree GroupByAll))
 readTrees ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} = do
   setThreads eoThreads
-  ds <- dateIntervalToDaySpan eoDateInterval
-  readDisplayTrees eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval)
+  -- TODO not DRY
+  ds <- combineErrorIO2 (dateIntervalToDaySpan eoDateInterval) (checkNormalize n) const
+  readDisplayTrees eoForce eoKey ds eoMealPath n
+  where
+    n = dioNormalize eoDateInterval
+
+-- TODO can be ultra-paranoid about this pattern by returning the input
+-- wrapped in a newtype that isn't exported, so the only way to get the type
+-- is by running the check function
+checkNormalize :: MonadUnliftIO m => Int -> m ()
+checkNormalize x = when (x < 1) $ throwAppErrorIO (NormalizeError x)
 
 setThreads :: MonadUnliftIO m => Int -> m ()
 setThreads n
@@ -143,9 +152,11 @@ runSummarize
         }
     } = do
     setNumCapabilities eoThreads
-    ds <- dateIntervalToDaySpan eoDateInterval
-    s <- readSummary eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval) eoRoundDigits
+    ds <- combineErrorIO2 (dateIntervalToDaySpan eoDateInterval) (checkNormalize n) const
+    s <- readSummary eoForce eoKey ds eoMealPath n eoRoundDigits
     BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions soHeader) $ N.toList s
+    where
+      n = dioNormalize eoDateInterval
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
