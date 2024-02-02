@@ -27,11 +27,11 @@ commonOptions =
     c =
       long "verbose"
         <> short 'v'
-        <> help "be obnoxious"
+        <> help "be obnoxious (multiple times to escalate)"
 
 subcommand :: Parser SubCommand
 subcommand =
-  subparser
+  hsubparser
     ( command
         "fetch"
         ( info
