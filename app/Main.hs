@@ -27,7 +27,7 @@ run (CLIOptions CommonOptions {coVerbosity} s) = do
   logOpts <-
     setLogVerboseFormat True
       . setLogUseTime False
-      . setLogMinLevel (if coVerbosity then LevelDebug else LevelInfo)
+      . setLogMinLevel (level coVerbosity)
       <$> logOptionsHandle stderr False
   withLogFunc logOpts $ \lf -> do
     env <- mkSimpleApp lf Nothing
@@ -42,6 +42,11 @@ run (CLIOptions CommonOptions {coVerbosity} s) = do
     err (AppException es) = do
       mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
       exitFailure
+    level x
+      | x == 0 = LevelError
+      | x == 1 = LevelWarn
+      | x == 2 = LevelInfo
+      | otherwise = LevelDebug
 
 runFetch :: FetchDumpOptions -> RIO SimpleApp ()
 runFetch FetchDumpOptions {foID, foForce, foKey} =

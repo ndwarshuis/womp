@@ -36,7 +36,7 @@ data ValidNutrient = ValidNutrient
 data CLIOptions = CLIOptions CommonOptions SubCommand
 
 newtype CommonOptions = CommonOptions
-  { coVerbosity :: Bool
+  { coVerbosity :: Int
   }
 
 newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text

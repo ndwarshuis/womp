@@ -22,11 +22,12 @@ options = CLIOptions <$> commonOptions <*> subcommand
 commonOptions :: Parser CommonOptions
 commonOptions =
   CommonOptions
-    <$> switch
-      ( long "verbose"
-          <> short 'v'
-          <> help "be obnoxious"
-      )
+    <$> (length <$> many (flag' () c))
+  where
+    c =
+      long "verbose"
+        <> short 'v'
+        <> help "be obnoxious"
 
 subcommand :: Parser SubCommand
 subcommand =
