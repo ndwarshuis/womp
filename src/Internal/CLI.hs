@@ -1,6 +1,5 @@
 module Internal.CLI (parseCLI) where
 
-import Data.Char (toUpper)
 import Internal.Types.Main
 import Options.Applicative
 import RIO hiding (force)
@@ -89,7 +88,7 @@ export =
     <$> strOption
       ( long "config"
           <> short 'c'
-          <> metavar "CONFIG"
+          <> metavar "PATH"
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
@@ -98,8 +97,13 @@ export =
       auto
       ( long "threads"
           <> short 't'
-          <> metavar "THREADS"
-          <> help "number of threads for processing ingredients"
+          <> metavar "NUM"
+          <> help
+            ( unwords
+                [ "number of threads for processing ingredients;"
+                , "anything less than 1 will use all available cores"
+                ]
+            )
           <> value 2
       )
     <*> apikey
@@ -141,7 +145,7 @@ tabular =
     <*> strOption
       ( long "sort"
           <> short 'S'
-          <> metavar "SORT"
+          <> metavar "KEYLIST"
           <> help sortHelp
           <> value ""
       )
@@ -209,7 +213,7 @@ dateInterval =
           ( long "interval"
               <> short 'I'
               <> metavar "DAYS"
-              <> help "aggregate in intervals of this length throughout the time denoted by --start and --end"
+              <> help "aggregate in intervals of this length throughout the time denoted by --start and --end/--days"
           )
       )
     <*> option
@@ -251,7 +255,7 @@ parseDay l s d =
       ( strOption
           ( long l
               <> short s
-              <> metavar (fmap toUpper l)
+              <> metavar "YYYY-MM-DD"
               <> help d
           )
       )

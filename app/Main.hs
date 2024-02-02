@@ -5,6 +5,7 @@ import Data.Char (ord)
 import qualified Data.Csv as C
 import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
+import GHC.Conc (getNumProcessors)
 import Internal.CLI
 import Internal.Nutrient
 import Internal.NutrientTree
@@ -15,7 +16,6 @@ import RIO hiding (force)
 import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.NonEmpty as N
-import qualified RIO.Text as T
 import RIO.Time
 import UnliftIO.Concurrent
 
@@ -61,7 +61,7 @@ runDump FetchDumpOptions {foID, foForce, foKey} = do
 runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
 runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} = do
   case parseSortKeys tabSort of
-    Nothing -> exitError $ T.append "unable to parse sort order: " tabSort
+    Nothing -> throwAppErrorIO (SortKeys tabSort)
     Just ks -> go ks =<< readTrees (ceoExport tabCommonExport)
   where
     go ks =
@@ -111,12 +111,18 @@ readTrees
   => ExportOptions
   -> m (NonEmpty (DisplayTree GroupByAll))
 readTrees ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} = do
-  setNumCapabilities eoThreads
+  setThreads eoThreads
   ds <- dateIntervalToDaySpan eoDateInterval
   readDisplayTrees eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval)
 
+setThreads :: MonadUnliftIO m => Int -> m ()
+setThreads n
+  | n > 0 = setNumCapabilities n
+  | otherwise = setNumCapabilities =<< liftIO getNumProcessors
+
 runListNutrients :: MonadUnliftIO m => m ()
-runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
+runListNutrients =
+  BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
 
 -- TODO not DRY
 runSummarize
@@ -144,22 +150,28 @@ runSummarize
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
   start <- maybe currentDay return dioStart
-  let totalLen = maybe dioDays (\e -> fromIntegral $ diffDays e start) dioEnd
+  totalLen <- combineErrorIO2 (getLen start) checkInterval const
   let span1 = genSpans 1 totalLen start
-  when (totalLen < 1) $ throwAppErrorIO $ DaySpanError totalLen
-  case dioInterval of
+  return $ case dioInterval of
     Just i
-      | i >= totalLen -> return span1
-      | otherwise -> do
-          when (i < 1) $ throwAppErrorIO $ IntervalError i
+      | i >= totalLen -> span1
+      | otherwise ->
           let (n, r) = divMod totalLen i
-          let spanN = genSpans n i start
-          return $
-            if r == 0
-              then spanN
-              else spanN <> genSpans 1 r (addDays (fromIntegral $ n * i) start)
-    Nothing -> return span1
+              lastStart = addDays (fromIntegral $ n * i) start
+              last = if r == 0 then [] else N.toList $ genSpans 1 r lastStart
+           in append (genSpans n i start) last
+    Nothing -> span1
   where
+    getLenStartEnd start end = do
+      when (end <= start) $ throwAppErrorIO DaySpanError
+      return $ fromIntegral $ diffDays end start
+    getLenDays = do
+      when (dioDays < 1) $ throwAppErrorIO (DateDaysEndError dioDays)
+      return dioDays
+    getLen start = maybe getLenDays (getLenStartEnd start) dioEnd
+    checkInterval = case dioInterval of
+      Nothing -> return ()
+      Just i -> when (i < 1) $ throwAppErrorIO $ IntervalError i
     genSpans n s = take1 n . fmap (,s - 1) . N.iterate (addDays $ fromIntegral s)
 
 take1 :: Int -> NonEmpty a -> NonEmpty a

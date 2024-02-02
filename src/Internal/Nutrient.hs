@@ -116,15 +116,15 @@ mapWithAPIKey k f xs = do
   k' <- getStoreAPIKey k
   mapPooledErrorsIO (f k') xs
 
-append :: NonEmpty a -> [a] -> NonEmpty a
-append (x :| xs) ys = x :| xs ++ ys
-
 readPlan
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => FilePath
   -> Int
   -> m (NonEmpty ValidSchedule, ValidCustomMap)
 readPlan f norm = do
+  -- TODO don't exit here, throw and exception so that I can catch multiple
+  -- issues at once and alert the user
+  when (norm < 1) $ exitError "normalization constant must be 1 or more"
   logDebug $ displayText $ T.append "reading schedule at path: " $ T.pack f
   p <-
     liftIO $

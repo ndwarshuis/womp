@@ -645,7 +645,8 @@ type AppExceptT = ExceptT AppException
 
 data AppError
   = DatePatternError !Natural !Natural !(Maybe Natural) !PatternSuberr
-  | DaySpanError !Int
+  | DateDaysEndError !Int
+  | DaySpanError
   | IntervalError !Int
   | JSONError !ByteString
   | EmptyMeal !T.Text
@@ -653,6 +654,7 @@ data AppError
   | FileTypeError !FilePath
   | CustomIngError !CustomIngError
   | MissingCustom !Text
+  | SortKeys !Text
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)

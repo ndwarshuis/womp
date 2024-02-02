@@ -51,6 +51,23 @@ combineErrorM a b f = do
     throwError =<< catchError (e <$ b) (return . (e <>))
   f a' =<< b
 
+combineErrorIO2 :: MonadUnliftIO m => m a -> m b -> (a -> b -> c) -> m c
+combineErrorIO2 a b f = combineErrorIOM2 a b (\x y -> pure $ f x y)
+
+combineErrorIO3 :: MonadUnliftIO m => m a -> m b -> m c -> (a -> b -> c -> d) -> m d
+combineErrorIO3 a b c f = combineErrorIOM3 a b c (\x y z -> pure $ f x y z)
+
+combineErrorIOM2 :: MonadUnliftIO m => m a -> m b -> (a -> b -> m c) -> m c
+combineErrorIOM2 a b f = do
+  a' <- catch a $ \(AppException es) ->
+    (throwIO . AppException)
+      =<< catch (es <$ b) (\(AppException es') -> return (es' ++ es))
+  f a' =<< b
+
+combineErrorIOM3 :: MonadUnliftIO m => m a -> m b -> m c -> (a -> b -> c -> m d) -> m d
+combineErrorIOM3 a b c f =
+  combineErrorIOM2 (combineErrorIOM2 a b (curry return)) c $ \(x, y) z -> f x y z
+
 -- liftExcept :: MonadError e m => Except e a -> m a
 -- liftExcept = either throwM return . runExcept
 
@@ -89,14 +106,16 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
 
 showError :: AppError -> [T.Text]
 showError other = case other of
+  DateDaysEndError x -> [T.append "--end must be 1 or more, got " $ tshow x]
+  IntervalError x -> [T.append "--interval must be 1 or more, got " $ tshow x]
+  (SortKeys s) -> [T.append "unable to parse sort order: " s]
   (MissingCustom c) -> [T.append "Custom ingredient not found: " c]
   (CustomIngError c) -> [fmtCustomError c]
   (FileTypeError f) -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
   (JSONError e) -> [T.append "JSON parse error: " $ decodeUtf8Lenient e]
   (EmptyMeal n) -> [T.append "Meal has no ingredients: " n]
   (MissingAPIKey p) -> [T.append "Could not read API key from path: " $ T.pack p]
-  (DaySpanError d) -> [T.unwords ["day interval must be positive, got", tshow d, "days"]]
-  (IntervalError d) -> [T.unwords ["aggregation interval must be positive, got", tshow d, "days"]]
+  DaySpanError -> ["end date must be at least one day after start date"]
   (DatePatternError s b r p) -> [T.unwords [msg, "in pattern: ", pat]]
     where
       pat =
@@ -271,3 +290,6 @@ exitError msg = logError (displayText msg) >> exitFailure
 
 displayText :: Text -> Utf8Builder
 displayText = displayBytesUtf8 . encodeUtf8
+
+append :: NonEmpty a -> [a] -> NonEmpty a
+append (x :| xs) ys = x :| xs ++ ys
