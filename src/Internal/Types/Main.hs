@@ -47,7 +47,7 @@ data SubCommand
   | ExportTabular !TabularExportOptions
   | ExportTree !TreeExportOptions
   | ListNutrients
-  | Summarize !ExportOptions
+  | Summarize !SummarizeOptions
 
 data FetchDumpOptions = FetchDumpOptions
   { foID :: !FID
@@ -66,6 +66,12 @@ data CommonExportOptions = CommonExportOptions
 data TabularExportOptions = TabularExportOptions
   { tabCommonExport :: !CommonExportOptions
   , tabSort :: !Text
+  , tabHeader :: !Bool
+  }
+
+data SummarizeOptions = SummarizeOptions
+  { soExportOptions :: !ExportOptions
+  , soHeader :: !Bool
   }
 
 data TreeExportOptions = TreeExportOptions

@@ -54,7 +54,7 @@ runDump FetchDumpOptions {foID, foForce, foKey} = do
   liftIO $ TI.putStr j
 
 runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
-runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort} = do
+runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} = do
   case parseSortKeys tabSort of
     Nothing -> exitError $ T.append "unable to parse sort order: " tabSort
     Just ks -> go ks =<< readTrees (ceoExport tabCommonExport)
@@ -62,7 +62,10 @@ runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort} = do
     go ks =
       liftIO
         . BL.putStr
-        . treeToCSV (allTabularDisplayOpts ks tos) tsvOptions (ceoGroup tabCommonExport)
+        . treeToCSV
+          (allTabularDisplayOpts ks tos)
+          (tsvOptions tabHeader)
+          (ceoGroup tabCommonExport)
 
 runExportTree :: TreeExportOptions -> RIO SimpleApp ()
 runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
@@ -108,18 +111,30 @@ readTrees ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} 
   readDisplayTrees eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval)
 
 runListNutrients :: MonadUnliftIO m => m ()
-runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions dumpNutrientTree
+runListNutrients = BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
 
 -- TODO not DRY
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => ExportOptions
+  => SummarizeOptions
   -> m ()
-runSummarize ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey, eoRoundDigits} = do
-  setNumCapabilities eoThreads
-  ds <- dateIntervalToDaySpan eoDateInterval
-  s <- readSummary eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval) eoRoundDigits
-  BL.putStr $ C.encodeDefaultOrderedByNameWith tsvOptions $ N.toList s
+runSummarize
+  SummarizeOptions
+    { soHeader
+    , soExportOptions =
+      ExportOptions
+        { eoForce
+        , eoMealPath
+        , eoDateInterval
+        , eoThreads
+        , eoKey
+        , eoRoundDigits
+        }
+    } = do
+    setNumCapabilities eoThreads
+    ds <- dateIntervalToDaySpan eoDateInterval
+    s <- readSummary eoForce eoKey ds eoMealPath (dioNormalize eoDateInterval) eoRoundDigits
+    BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions soHeader) $ N.toList s
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
@@ -151,9 +166,9 @@ currentDay = do
   z <- getCurrentTimeZone
   return $ localDay $ utcToLocalTime z u
 
-tsvOptions :: C.EncodeOptions
-tsvOptions =
+tsvOptions :: Bool -> C.EncodeOptions
+tsvOptions h =
   C.defaultEncodeOptions
     { C.encDelimiter = fromIntegral (ord '\t')
-    , C.encIncludeHeader = True
+    , C.encIncludeHeader = h
     }

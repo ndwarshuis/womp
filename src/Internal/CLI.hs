@@ -64,7 +64,7 @@ subcommand =
         <> command
           "summarize"
           ( info
-              (Summarize <$> export)
+              (Summarize <$> summarize)
               (progDesc "print table of meals and their ingredients")
           )
     )
@@ -111,6 +111,12 @@ export =
           <> value 3
       )
 
+summarize :: Parser SummarizeOptions
+summarize =
+  SummarizeOptions
+    <$> export
+    <*> headerTab
+
 common :: Parser CommonExportOptions
 common =
   CommonExportOptions
@@ -138,6 +144,15 @@ tabular =
           <> help "comma separated list of sort options"
           <> value ""
       )
+    <*> headerTab
+
+headerTab :: Parser Bool
+headerTab =
+  switch
+    ( long "header"
+        <> short 'H'
+        <> help "include header above the table"
+    )
 
 grouping :: Parser GroupOptions
 grouping =
