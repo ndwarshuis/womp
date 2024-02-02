@@ -107,7 +107,7 @@ export =
       auto
       ( long "round"
           <> short 'r'
-          <> metavar "ROUND"
+          <> metavar "DIGITS"
           <> help "number of digits after decimal to keep"
           <> value 3
       )
@@ -124,14 +124,14 @@ common =
     <$> export
     <*> grouping
     <*> switch
-      ( long "expandUnits"
-          <> short 'x'
-          <> help "show prefix and base unit as separate keys (JSON only)"
-      )
-    <*> switch
       ( long "unknowns"
           <> short 'u'
           <> help "display unknown nutrients in output"
+      )
+    <*> switch
+      ( long "unityUnits"
+          <> short 'U'
+          <> help "show all masses in grams (no prefix)"
       )
 
 tabular :: Parser TabularExportOptions
@@ -142,10 +142,19 @@ tabular =
       ( long "sort"
           <> short 'S'
           <> metavar "SORT"
-          <> help "comma separated list of sort options"
+          <> help sortHelp
           <> value ""
       )
     <*> headerTab
+  where
+    sortHelp =
+      unwords
+        [ "comma separated list of sort keys; valid keys are"
+        , "'date', 'meal', 'ingredient', 'nutrient', 'parent'"
+        , "and 'value' which correspond to the headers to be sorted;"
+        , "each must be prefixed with '+' or '-' for ascending or"
+        , "descending respectively"
+        ]
 
 headerTab :: Parser Bool
 headerTab =
@@ -167,14 +176,19 @@ tree =
   TreeExportOptions
     <$> displayOptions
     <*> switch
-      ( long "json"
-          <> short 'j'
-          <> help "summarize output in JSON (display options are ignored)"
+      ( long "expandUnits"
+          <> short 'x'
+          <> help "show prefix and base unit as separate keys"
       )
     <*> common
 
 force :: Parser Bool
-force = switch (long "force" <> short 'f' <> help "force retrieve")
+force =
+  switch
+    ( long "force"
+        <> short 'f'
+        <> help "download ingredients even if they are already cached"
+    )
 
 dateInterval :: Parser DateIntervalOptions
 dateInterval =
@@ -194,8 +208,8 @@ dateInterval =
           auto
           ( long "interval"
               <> short 'I'
-              <> metavar "INTERVAL"
-              <> help "length of time (in days) to aggregate summary"
+              <> metavar "DAYS"
+              <> help "aggregate in intervals of this length throughout the time denoted by --start and --end"
           )
       )
     <*> option
