@@ -213,7 +213,7 @@ roundDigits p = (/ d) . go . round . (* d)
     go :: Int -> a
     go = fromIntegral
 
-autoPrefix :: Scientific -> Prefix
+autoPrefix :: (Ord a, Fractional a) => a -> Prefix
 autoPrefix s =
   maybe maxBound fst $
     L.find ((abs s <) . snd) $

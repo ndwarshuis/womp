@@ -158,30 +158,24 @@ treeToRows (AllTabularDisplayOptions su uu r _) (DisplayTree_ (DisplayNode v ks 
   where
     row = DisplayRow g
 
-    dpyRow n pnt v' u =
-      let (p'', v'') = convertWithPrefix uu (unitPrefix u) r v'
-       in row n pnt v'' (u {unitPrefix = p''})
-
-    -- multiply by 1000 here since calories are actually given in kcal
     energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
 
-    totalMass = dpyRow "Total Mass" Nothing (unMass v) (Unit Unity Gram)
+    totalMass = massRow massName Nothing v Unity
 
-    massRow n pnt v' p = dpyRow n (Just pnt) v' (Unit p Gram)
-
-    massName = "Total Mass"
-
-    unknownName = "Unknown"
+    massRow n pnt v' p =
+      let (p', v'') = convertWithPrefix uu p r $ unMass v'
+       in row n pnt v'' (Unit p' Gram)
 
     goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
 
     goK_ pnt (DisplayNutrient n p) (DisplayNode v' ks' us') =
-      massRow n pnt (unMass v') p : (goK n ks' ++ [goU n us' | su])
+      massRow n (Just pnt) v' p : (goK n ks' ++ [goU n us' | su])
 
     goU pnt us' =
-      let s = unMass $ sum $ M.elems us'
-          p = autoPrefix s
-       in massRow unknownName pnt s p
+      let s = sum $ M.elems us'
+       in massRow "Unknown" (Just pnt) s (autoPrefix s)
+
+    massName = "Total Mass"
 
 compareRow
   :: (Ord d, Ord m, Ord i)
