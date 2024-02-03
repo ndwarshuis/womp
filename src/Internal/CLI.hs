@@ -1,6 +1,6 @@
 module Internal.CLI (parseCLI) where
 
-import Internal.Types.Main
+import Internal.Types.CLI
 import Options.Applicative
 import RIO hiding (force)
 import RIO.Time
@@ -82,9 +82,9 @@ fetchDump =
     <*> force
     <*> apikey
 
-export :: Parser ExportOptions
-export =
-  ExportOptions
+mealplan :: Parser MealplanOptions
+mealplan =
+  MealplanOptions
     <$> strOption
       ( long "config"
           <> short 'c'
@@ -119,13 +119,13 @@ export =
 summarize :: Parser SummarizeOptions
 summarize =
   SummarizeOptions
-    <$> export
+    <$> mealplan
     <*> headerTab
 
 common :: Parser CommonExportOptions
 common =
   CommonExportOptions
-    <$> export
+    <$> mealplan
     <*> grouping
     <*> switch
       ( long "unknowns"

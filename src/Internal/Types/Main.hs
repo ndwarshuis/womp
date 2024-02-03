@@ -4,7 +4,6 @@
 module Internal.Types.Main where
 
 import Control.Monad.Error.Class
-import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Aeson.Types (Pair)
 import qualified Data.Csv as C
@@ -12,100 +11,15 @@ import qualified Data.Map.Merge.Strict as MMS
 import Data.Monoid
 import Data.Scientific
 import GHC.Generics
+import Internal.Types.CLI
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import RIO
-import qualified RIO.Map as M
-import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
 
-type NutrientMap = M.Map NID ValidNutrient
-
-type MappedFoodItem = FoodItem NutrientMap
-
-type ValidCustomMap = Map Text MappedFoodItem
-
-data ValidNutrient = ValidNutrient
-  { vnAmount :: Mass
-  , vnPrefix :: Prefix
-  , vnName :: Maybe Text
-  }
-  deriving (Show, Eq)
-
-data CLIOptions = CLIOptions CommonOptions SubCommand
-
-newtype CommonOptions = CommonOptions
-  { coVerbosity :: Int
-  }
-
-newtype APIKey = APIKey {unAPIKey :: Text} deriving (IsString) via Text
-
-data SubCommand
-  = Fetch !FetchDumpOptions
-  | Dump !FetchDumpOptions
-  | ExportTabular !TabularExportOptions
-  | ExportTree !TreeExportOptions
-  | ListNutrients
-  | Summarize !SummarizeOptions
-
-data FetchDumpOptions = FetchDumpOptions
-  { foID :: !FID
-  , foForce :: !Bool
-  , foKey :: !(Maybe APIKey)
-  }
-
--- TODO what does this name really mean?
-data CommonExportOptions = CommonExportOptions
-  { ceoExport :: !ExportOptions
-  , ceoGroup :: !GroupOptions
-  , ceoShowUnknowns :: !Bool
-  , ceoUnityUnits :: !Bool
-  }
-
-data TabularExportOptions = TabularExportOptions
-  { tabCommonExport :: !CommonExportOptions
-  , tabSort :: !Text
-  , tabHeader :: !Bool
-  }
-
-data SummarizeOptions = SummarizeOptions
-  { soExportOptions :: !ExportOptions
-  , soHeader :: !Bool
-  }
-
-data TreeExportOptions = TreeExportOptions
-  { treeDisplay :: !TreeDisplayOptions
-  , treeJSON :: !Bool
-  , treeCommonExport :: !CommonExportOptions
-  }
-
-data ExportOptions = ExportOptions
-  { eoMealPath :: !FilePath
-  , eoDateInterval :: !DateIntervalOptions
-  , eoForce :: !Bool
-  , eoThreads :: !Int
-  , eoKey :: !(Maybe APIKey)
-  , eoRoundDigits :: !Int
-  }
-
-data GroupOptions = GroupOptions
-  { goDate :: !Bool
-  , goMeal :: !Bool
-  , goIngredient :: !Bool
-  }
-
-data DateIntervalOptions = DateIntervalOptions
-  { dioStart :: !(Maybe Day)
-  , dioEnd :: !(Maybe Day)
-  , dioDays :: !Int
-  , dioInterval :: !(Maybe Int)
-  , dioNormalize :: !Int
-  }
-
-newtype TreeDisplayOptions = TreeDisplayOptions
-  { doExpandedUnits :: Bool
-  }
+--------------------------------------------------------------------------------
+-- CLI (repackaged)
 
 data AllTreeDisplayOptions = AllTreeDisplayOptions
   { atdoOpts :: !TreeDisplayOptions
@@ -120,8 +34,6 @@ data AllTabularDisplayOptions = AllTabularDisplayOptions
   , atabRoundDigits :: !Int
   , atabSort :: ![SortKey]
   }
-
-type TableSort = forall r. DisplayRow r -> DisplayRow r -> Bool
 
 data SortKey = SortKey
   { skField :: SortField
@@ -138,121 +50,44 @@ data SortField
   | SortValue
   deriving (Eq)
 
-type DaySpan = (Day, Int)
+--------------------------------------------------------------------------------
+-- Nutrient tree
+--
+-- Built-in structure that represents the hierarchy of nutrients to measure.
 
-data ValidSchedule = ValidSchedule
-  { vsIngs :: NonEmpty Ingredient
-  , vsMeal :: MealGroup
-  , vsCron :: Cron
-  , vsScale :: Scientific
+-- | A group of nutrient categories that represent an aggregate mass
+data NutTree = NutTree
+  { ntFractions :: Branches
+  -- ^ Categories (at least one) that sum to a known mass. The mass of these
+  -- categories may be 1) a known mass 2) a known mass with additional
+  -- subcategories underneath 3) an unknown mass determined by subcategories
+  -- beneath it or 4) a placeholder with at least one of 1-3 underneath it.
+  , ntUnmeasuredHeader :: SummedNutrient
+  -- ^ The header for the one unmeasured category (ie the total mass represented
+  -- by this entire type minus the sum of all fractions)
+  , ntUnmeasuredTree :: Maybe NutTree
+  -- ^ An optional tree by which the unmeasured category may be subdivided. If
+  -- there is no tree, then the unmeasured category is simply a "leaf" (ie
+  -- nothing under it)
   }
 
-type IngredientMetadata = IngredientMetadata_ [Modification] DaySpan
+type Branches = NonEmpty (NutrientChoice Node)
 
--- TODO bad name
-type IngredientMealMeta = IngredientMetadata_ () Day
+data Node
+  = MeasuredHeader MeasuredNutrient NutTree
+  | UnmeasuredHeader SummedNutrient Branches
+  | Leaf MeasuredNutrient
 
-data IngredientMetadata_ ms d = IngredientMetadata_
-  { imMeal :: MealGroup
-  , imMass :: Mass
-  , imMods :: ms
-  , imDaySpan :: d
-  }
-  deriving (Show)
+data NutrientChoice a = NutrientSingle a | NutrientMany (NonEmpty a)
 
-data SummaryRow = SummaryRow
-  { srDay :: Day
-  , srMeal :: MealGroup
-  , srIngredient :: IngredientGroup
-  , srMass :: Mass
-  }
-
-summaryRowHeader :: [ByteString]
-summaryRowHeader = ["day", "meal", "ingredient", "mass"]
-
-instance C.DefaultOrdered SummaryRow where
-  headerOrder _ = C.header summaryRowHeader
-
-instance C.ToNamedRecord SummaryRow where
-  toNamedRecord (SummaryRow d m i v) =
-    zipApply summaryRowHeader [(C..= formatDay d), (C..= m), (C..= i), (C..= v)]
-
-data ValidFDCIngredient = ValidFDCIngredient
-  { viID :: FID
-  , viMass :: Mass
-  , viModifications :: [Modification]
-  }
-
-data UnitName
-  = Gram
-  | Calorie
-  deriving (Show, Eq, Ord, Generic, ToJSON)
-
-data Unit = Unit
-  { unitBase :: Prefix
-  , unitName :: UnitName
-  }
-  deriving (Show, Eq, Generic, ToJSON)
-
-prefixValue :: Prefix -> Int
-prefixValue Nano = -9
-prefixValue Micro = -6
-prefixValue Milli = -3
-prefixValue Centi = -2
-prefixValue Deci = -1
-prefixValue Unity = 0
-prefixValue Deca = 1
-prefixValue Hecto = 2
-prefixValue Kilo = 3
-prefixValue Mega = 6
-prefixValue Giga = 9
-
-prefixSymbol :: Prefix -> Text
-prefixSymbol Nano = "n"
-prefixSymbol Micro = "μ"
-prefixSymbol Milli = "m"
-prefixSymbol Centi = "c"
-prefixSymbol Deci = "d"
-prefixSymbol Unity = ""
-prefixSymbol Deca = "da"
-prefixSymbol Hecto = "h"
-prefixSymbol Kilo = "k"
-prefixSymbol Mega = "M"
-prefixSymbol Giga = "G"
-
-unitSymbol :: UnitName -> Text
-unitSymbol Calorie = "cal"
-unitSymbol Gram = "g"
-
-tunit :: Unit -> Text
-tunit (Unit p n) = T.append (prefixSymbol p) (unitSymbol n)
-
-instance C.ToField Unit where
-  toField = encodeUtf8 . tunit
-
-type NutrientReader = MonadReader FoodMeta
-
-data FoodState = FoodState
-  { fsNutrients :: [FoodNutrient]
-  , fsWarnings :: [NutrientWarning]
-  }
-
--- TODO add name to this so that the user is less confused
-data NutrientWarning
-  = NotGram !NID !Text
-  | UnknownUnit !NID !Text
-  | InvalidNutrient !FoodNutrient
-
-type NutrientState = MonadState NutrientMap
-
-type MealState = MonadState [NutrientWarning]
-
+-- | Nutrient that should be directly measured. If it is not measured, it will
+-- be summed from the value of its children if defined.
 data MeasuredNutrient
   = Direct DirectNutrient
-  | -- | Computed ComputedNutrient
-    Alternate AltNutrient
+  | Alternate AltNutrient
   deriving (Show, Eq, Ord)
 
+-- | Single nutrient ID to be directly measured
 data DirectNutrient = DirectNutrient
   { mnId :: NID
   , mnName :: Text
@@ -260,6 +95,8 @@ data DirectNutrient = DirectNutrient
   }
   deriving (Show, Eq, Ord)
 
+-- | Multiple nutrient IDs to be directly measured. Used for cases like protein
+-- and nitrogen, where some provide one or the other and they differ by a ratio.
 data AltNutrient = AltNutrient
   { anName :: Text
   , anDisplayPrefix :: Prefix
@@ -267,45 +104,55 @@ data AltNutrient = AltNutrient
   }
   deriving (Show, Eq, Ord)
 
+-- | Nutrient which is to be summed from other directly measured nutrients
 data SummedNutrient = SummedNutrient
   { snName :: Text
   , snDisplayPrefix :: Prefix
   }
   deriving (Show, Eq, Ord)
 
+--------------------------------------------------------------------------------
+-- Intermediate Nutrient Tree
+--
+-- An intermediate tree structure which makes traversing FoodItem's using the
+-- nutrient tree efficient and clear. Specifically, this makes a distinction b/t
+-- "Quantified" and "Unquantified" nodes, which are those that do and don't have
+-- measured values associated with them respectively.
+
 data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
   deriving (Show, Eq, Ord)
 
--- TODO we don't have id for custom ingredients
-data FoodMeta = FoodMeta
-  { fmDesc :: Text
-  , fmId :: Maybe FID
-  }
-  deriving (Show, Generic, ToJSON)
-
-data FoodTreeNode a = FullNode (FullNode_ a) | PartialNode (PartialNode_ a)
-  deriving (Functor)
-
-data FullNode_ a = FullNode_
+-- | Node with a value associated with it.
+-- It may no children (in which case it is a nutrient leaf) or many children,
+-- which many be a mixture of known and unknown.
+data QuantifiedNode a = QuantifiedNode
   { fnValue :: a
   -- ^ Mass of this node
   , fnNut :: DisplayNutrient
-  -- ^ Nutrient associated with this node
-  , fnKnown :: [FoodTreeNode a]
+  -- ^ Nutrient identifier associated with this node
+  , fnKnown :: [ParsedTreeNode a]
   -- ^ Subnutrients underneath this node with known mass
-  , fnUnknown :: Either [UnknownTree] (FullNode_ a)
+  , fnUnknown :: Either [UnknownTree] (QuantifiedNode a)
   -- ^ Subnutrients underneath this node with no known individual masses but
   -- known collective masses. This mass and all those under the "known" field
   -- must sum to that of the "value" field
   }
   deriving (Functor)
 
-data PartialNode_ a = PartialNode_
+-- | Node with no value associated with it, which means a) it must have at
+-- least one child, b) its value must be summed from its child(ren) and c)
+-- it cannot have unknown children.
+data UnquantifiedNode a = UnquantifiedNode
   { pnNut :: DisplayNutrient
   -- ^ Nutrient associated with this node
-  , pnKnown :: NonEmpty (FoodTreeNode a)
+  , pnKnown :: NonEmpty (ParsedTreeNode a)
   -- ^ Subnutrients underneath this node with known mass
   }
+  deriving (Functor)
+
+data ParsedTreeNode a
+  = Quantified (QuantifiedNode a)
+  | Unquantified (UnquantifiedNode a)
   deriving (Functor)
 
 data UnknownTree = UnknownTree Text [UnknownTree]
@@ -313,38 +160,6 @@ data UnknownTree = UnknownTree Text [UnknownTree]
 
 instance ToJSON UnknownTree where
   toJSON (UnknownTree n ts) = object ["name" .= n, "children" .= ts]
-
--- data SpanFood a b = SpanFood
---   { sfFinal :: DisplayTree a b
---   , sfDaySpan :: DaySpan
---   }
---   deriving (Generic, Show)
-
--- type FinalScalerFood = DisplayTree Mass Energy
-
--- type FinalGroupedFood = DisplayTree NutrientMass NutrientEnergy
-
-data DisplayNode a = DisplayNode
-  { dnValue :: a
-  , dnKnown :: M.Map DisplayNutrient (DisplayNode a)
-  , dnUnknown :: M.Map [UnknownTree] a
-  }
-  deriving (Functor, Show)
-
-instance Semigroup a => Semigroup (DisplayNode a) where
-  (<>) a b =
-    DisplayNode
-      { dnValue = dnValue a <> dnValue b
-      , dnKnown = merge_ (dnKnown a) (dnKnown b)
-      , dnUnknown = merge_ (dnUnknown a) (dnUnknown b)
-      }
-    where
-      merge_ :: (Ord k, Semigroup v) => M.Map k v -> M.Map k v -> M.Map k v
-      merge_ =
-        MMS.merge
-          MMS.preserveMissing
-          MMS.preserveMissing
-          (MMS.zipWithMatched (\_ x y -> x <> y))
 
 --------------------------------------------------------------------------------
 -- display tree
@@ -434,6 +249,28 @@ mealJSON = (.=) "meal"
 ingredientJSON :: IngredientGroup -> Pair
 ingredientJSON = (.=) "ingredient"
 
+data DisplayNode a = DisplayNode
+  { dnValue :: a
+  , dnKnown :: Map DisplayNutrient (DisplayNode a)
+  , dnUnknown :: Map [UnknownTree] a
+  }
+  deriving (Functor, Show)
+
+instance Semigroup a => Semigroup (DisplayNode a) where
+  (<>) a b =
+    DisplayNode
+      { dnValue = dnValue a <> dnValue b
+      , dnKnown = merge_ (dnKnown a) (dnKnown b)
+      , dnUnknown = merge_ (dnUnknown a) (dnUnknown b)
+      }
+    where
+      merge_ :: (Ord k, Semigroup v) => Map k v -> Map k v -> Map k v
+      merge_ =
+        MMS.merge
+          MMS.preserveMissing
+          MMS.preserveMissing
+          (MMS.zipWithMatched (\_ x y -> x <> y))
+
 data DisplayTree_ g a b = DisplayTree_
   { ffMap :: DisplayNode a
   , ffEnergy :: b
@@ -457,7 +294,7 @@ type DisplayTree g = DisplayTree_ g Mass Energy
 --------------------------------------------------------------------------------
 -- display rows
 
--- Types for exporting nutrient date in a csv-like format. This is analogous
+-- Types for exporting nutrient data in a csv-like format. This is analogous
 -- to DisplayTree above
 
 data DisplayRow g = DisplayRow
@@ -585,10 +422,32 @@ daySpanCsv ds =
   let (s, e) = fromDaySpan ds
    in [(C..= formatDay s), (C..= formatDay e)]
 
-data PrefixValue = PrefixValue {pvPrefix :: Prefix, pvX :: Scientific}
+--------------------------------------------------------------------------------
+-- Summary rows
+--
+-- For displaying the summary in csv-like format
 
-newtype Energy = Energy {unEnergy :: Scientific}
-  deriving (Show, Eq, Ord, Num, ToJSON, Fractional, Real, RealFrac) via Scientific
+data SummaryRow = SummaryRow
+  { srDay :: Day
+  , srMeal :: MealGroup
+  , srIngredient :: IngredientGroup
+  , srMass :: Mass
+  }
+
+summaryRowHeader :: [ByteString]
+summaryRowHeader = ["day", "meal", "ingredient", "mass"]
+
+instance C.DefaultOrdered SummaryRow where
+  headerOrder _ = C.header summaryRowHeader
+
+instance C.ToNamedRecord SummaryRow where
+  toNamedRecord (SummaryRow d m i v) =
+    zipApply summaryRowHeader [(C..= formatDay d), (C..= m), (C..= i), (C..= v)]
+
+--------------------------------------------------------------------------------
+-- Nutrient Tree Rows
+--
+-- For displaying the available nutrients in a table
 
 data NutTreeRow = NutTreeRow
   { ntrNutrient :: Text
@@ -606,31 +465,12 @@ instance C.ToNamedRecord NutTreeRow where
   toNamedRecord (NutTreeRow n p i) =
     zipApply nutTreeRowHeader [(C..= n), (C..= p), (C..= i)]
 
--- | A group of nutrient categories that represent an aggregate mass
-data NutTree = NutTree
-  { ntFractions :: Branches
-  -- ^ Categories (at least one) that sum to a known mass. The mass of these
-  -- categories may be 1) a known mass 2) a known mass with additional
-  -- subcategories underneath 3) an unknown mass determined by subcategories
-  -- beneath it or 4) a placeholder with at least one of 1-3 underneath it.
-  , ntUnmeasuredHeader :: SummedNutrient
-  -- ^ The header for the one unmeasured category (ie the total mass represented
-  -- by this entire type minus the sum of all fractions)
-  , ntUnmeasuredTree :: Maybe NutTree
-  -- ^ An optional tree by which the unmeasured category may be subdivided. If
-  -- there is no tree, then the unmeasured category is simply a "leaf" (ie
-  -- nothing under it)
-  }
-
-type Branches = NonEmpty (Aggregation Node)
-
-data Node
-  = MeasuredHeader MeasuredNutrient NutTree
-  | UnmeasuredHeader SummedNutrient Branches
-  | -- | GroupHeader SummedNutrient Branches
-    Leaf MeasuredNutrient
-
-data Aggregation a = AggIdentity a | Priority (NonEmpty a)
+--------------------------------------------------------------------------------
+-- Application-wide errors
+--
+-- Use one centralized error type for the entire application, which will allow
+-- raising errors at any point, potentially multiple at once, and then catching
+-- them at the top level
 
 instance Exception AppException
 
@@ -638,10 +478,6 @@ newtype AppException = AppException [AppError]
   deriving (Show, Semigroup) via [AppError]
 
 type MonadAppError = MonadError AppException
-
-type AppExcept = AppExceptT Identity
-
-type AppExceptT = ExceptT AppException
 
 data AppError
   = DatePatternError !Natural !Natural !(Maybe Natural) !PatternSuberr
@@ -667,9 +503,60 @@ data CustomIngError
   | TooMuchMass Text
   deriving (Show)
 
+--------------------------------------------------------------------------------
+-- units
+
+data UnitName
+  = Gram
+  | Calorie
+  deriving (Show, Eq, Ord, Generic, ToJSON)
+
+data Unit = Unit
+  { unitBase :: Prefix
+  , unitName :: UnitName
+  }
+  deriving (Show, Eq, Generic, ToJSON)
+
+prefixSymbol :: Prefix -> Text
+prefixSymbol Nano = "n"
+prefixSymbol Micro = "μ"
+prefixSymbol Milli = "m"
+prefixSymbol Centi = "c"
+prefixSymbol Deci = "d"
+prefixSymbol Unity = ""
+prefixSymbol Deca = "da"
+prefixSymbol Hecto = "h"
+prefixSymbol Kilo = "k"
+prefixSymbol Mega = "M"
+prefixSymbol Giga = "G"
+
+unitSymbol :: UnitName -> Text
+unitSymbol Calorie = "cal"
+unitSymbol Gram = "g"
+
+tunit :: Unit -> Text
+tunit (Unit p n) = T.append (prefixSymbol p) (unitSymbol n)
+
+instance C.ToField Unit where
+  toField = encodeUtf8 . tunit
+
+--------------------------------------------------------------------------------
+-- Misc
+
+type DaySpan = (Day, Int)
+
+newtype Energy = Energy {unEnergy :: Scientific}
+  deriving (Show, Eq, Ord, Num, ToJSON, Fractional, Real, RealFrac) via Scientific
+
 data UnusedNutrient = UnusedNutrient
   { uMeal :: MealGroup
   , uId :: NID
   , uNut :: ValidNutrient
   }
   deriving (Eq)
+
+-- TODO add name to this so that the user is less confused
+data NutrientWarning
+  = NotGram !NID !Text
+  | UnknownUnit !NID !Text
+  | InvalidNutrient !FoodNutrient

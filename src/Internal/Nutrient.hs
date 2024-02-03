@@ -15,6 +15,7 @@ import qualified Data.Yaml as Y
 import qualified Dhall as D
 import Internal.NutrientTree
 import Internal.Nutrients
+import Internal.Types.CLI
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
@@ -29,6 +30,7 @@ import qualified RIO.NonEmpty as N
 import qualified RIO.Set as S
 import RIO.State
 import qualified RIO.Text as T
+import RIO.Time
 import UnliftIO.Directory
 
 readDisplayTrees
@@ -198,16 +200,16 @@ nonEmptyProduct f xs = sconcat . fmap (\y -> fmap (`f` y) xs)
 validToSummary
   :: ValidSchedule
   -> DaySpan
-  -> [(Either FID Text, IngredientMealMeta)]
+  -> [(Either FID Text, SummaryIngredientMetadata)]
 validToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
   [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
   where
     go Ingredient {ingMass, ingSource} d =
       ( sourceToEither ingSource
-      , IngredientMetadata_ vsMeal (Mass (vsScale * fromFloatDigits ingMass)) () d
+      , IngredientMetadata vsMeal (Mass (vsScale * fromFloatDigits ingMass)) () d
       )
 
-validToIngredient :: ValidSchedule -> DaySpan -> [(Either FID Text, IngredientMetadata)]
+validToIngredient :: ValidSchedule -> DaySpan -> [(Either FID Text, ExportIngredientMetadata)]
 validToIngredient ValidSchedule {vsIngs, vsMeal, vsCron, vsScale} ds
   | d == 0 = []
   | otherwise = N.toList $ fmap (expandIngredient vsMeal (d * vsScale) ds) vsIngs
@@ -219,9 +221,9 @@ expandIngredient
   -> Scientific
   -> DaySpan
   -> Ingredient
-  -> (Either FID Text, IngredientMetadata)
+  -> (Either FID Text, ExportIngredientMetadata)
 expandIngredient mg s ds Ingredient {ingMass, ingModifications, ingSource} =
-  (sourceToEither ingSource, IngredientMetadata_ mg mass ingModifications ds)
+  (sourceToEither ingSource, IngredientMetadata mg mass ingModifications ds)
   where
     mass = Mass $ s * fromFloatDigits ingMass
 
@@ -253,24 +255,28 @@ fromCustom cm n = maybe (throwAppErrorIO $ MissingCustom n) return $ M.lookup n 
 -- TODO this is run after the nonempty tree is flattened and thus will print
 -- warnings for each group combination, which is super annoying
 expandIngredientTrees
-  :: NonEmpty (MappedFoodItem, IngredientMetadata)
+  :: NonEmpty (MappedFoodItem, ExportIngredientMetadata)
   -> (NonEmpty (DisplayTree GroupByAll), [UnusedNutrient])
 expandIngredientTrees =
   second sconcat . N.unzip . fmap (uncurry (flip ingredientToTree))
 
-expandIngredientSummary :: Int -> MappedFoodItem -> IngredientMealMeta -> SummaryRow
+expandIngredientSummary
+  :: Int
+  -> MappedFoodItem
+  -> SummaryIngredientMetadata
+  -> SummaryRow
 expandIngredientSummary
   r
   FoodItem {fiDescription}
-  IngredientMetadata_ {imMeal, imMass, imDaySpan} =
+  IngredientMetadata {imMeal, imMass, imDaySpan} =
     SummaryRow imDaySpan imMeal (IngredientGroup fiDescription) (roundDigits r imMass)
 
 ingredientToTree
-  :: IngredientMetadata
+  :: ExportIngredientMetadata
   -> MappedFoodItem
   -> (DisplayTree GroupByAll, [UnusedNutrient])
 ingredientToTree
-  IngredientMetadata_ {imMeal, imMass, imMods, imDaySpan}
+  IngredientMetadata {imMeal, imMass, imMods, imDaySpan}
   (FoodItem desc ns cc pc) =
     bimap go (nutMapToUnused imMeal) $
       runState (displayTree pc) $
@@ -467,3 +473,24 @@ parseSortKey = go <=< T.uncons
         "value" -> pure SortValue
         _ -> Nothing
       pure $ SortKey f a
+
+type ExportIngredientMetadata = IngredientMetadata [Modification] DaySpan
+
+type SummaryIngredientMetadata = IngredientMetadata () Day
+
+data IngredientMetadata ms d = IngredientMetadata
+  { imMeal :: MealGroup
+  , imMass :: Mass
+  , imMods :: ms
+  , imDaySpan :: d
+  }
+  deriving (Show)
+
+data ValidSchedule = ValidSchedule
+  { vsIngs :: NonEmpty Ingredient
+  , vsMeal :: MealGroup
+  , vsCron :: Cron
+  , vsScale :: Scientific
+  }
+
+type ValidCustomMap = Map Text MappedFoodItem

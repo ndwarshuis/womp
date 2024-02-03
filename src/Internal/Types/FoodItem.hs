@@ -1,6 +1,19 @@
 {-# LANGUAGE DerivingVia #-}
 
-module Internal.Types.FoodItem where
+module Internal.Types.FoodItem
+  ( ParsedFoodItem
+  , MappedFoodItem
+  , NutrientMap
+  , FoodItem (..)
+  , FoodNutrient (..)
+  , Nutrient (..)
+  , ValidNutrient (..)
+  , FID (..)
+  , NID (..)
+  , Mass (..)
+  , ProteinConversion (..)
+  )
+where
 
 import Data.Aeson
 import Data.Aeson.Types
@@ -12,7 +25,22 @@ import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
 
+-- | Food item with its nutrients validated and put into a convenient map
+type MappedFoodItem = FoodItem NutrientMap
+
+-- | Food item freshly parsed from JSON
 type ParsedFoodItem = FoodItem [FoodNutrient]
+
+type NutrientMap = Map NID ValidNutrient
+
+-- | Nutrient that has been validated (which means it has an ID, non-negative
+-- mass, unit, etc)
+data ValidNutrient = ValidNutrient
+  { vnAmount :: Mass
+  , vnPrefix :: Prefix
+  , vnName :: Maybe Text
+  }
+  deriving (Show, Eq)
 
 -- TODO need a way to filter out/warn user on bad nutrient data
 data FoodItem n = FoodItem
@@ -66,26 +94,6 @@ parseProteinConversion v = do
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM _ [] = return Nothing
 firstM f (x : xs) = maybe (firstM f xs) (return . Just) =<< f x
-
-data LabelNutrient = LabelNutrient
-  { lnFat :: Maybe Scientific
-  , lnSaturatedFat :: Maybe Scientific
-  , lnTransFat :: Maybe Scientific
-  , lnCholesterol :: Maybe Scientific
-  , lnSodium :: Maybe Scientific
-  , lnCarbohydrates :: Maybe Scientific
-  , lnFiber :: Maybe Scientific
-  , lnSugars :: Maybe Scientific
-  , lnProtein :: Maybe Scientific
-  , lnCalcium :: Maybe Scientific
-  , lnIron :: Maybe Scientific
-  , lnPotassium :: Maybe Scientific
-  , lnCalories :: Maybe Scientific
-  }
-  deriving (Show, Generic)
-
-instance FromJSON LabelNutrient where
-  parseJSON = recordParseJSON "ln"
 
 data FoodNutrient = FoodNutrient
   { fnNutrient :: Maybe Nutrient

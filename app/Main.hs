@@ -5,10 +5,10 @@ import Data.Char (ord)
 import qualified Data.Csv as C
 import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
-import GHC.Conc (getNumProcessors)
 import Internal.CLI
 import Internal.Nutrient
 import Internal.NutrientTree
+import Internal.Types.CLI
 import Internal.Types.Main
 import Internal.Utils
 import Options.Applicative
@@ -17,7 +17,6 @@ import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.NonEmpty as N
 import RIO.Time
-import UnliftIO.Concurrent
 
 main :: IO ()
 main = run =<< parseCLI
@@ -62,7 +61,7 @@ runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
 runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} = do
   case parseSortKeys tabSort of
     Nothing -> throwAppErrorIO (SortKeys tabSort)
-    Just ks -> go ks =<< readTrees (ceoExport tabCommonExport)
+    Just ks -> go ks =<< readTrees (ceoMealplan tabCommonExport)
   where
     go ks =
       liftIO
@@ -71,67 +70,6 @@ runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} 
           (allTabularDisplayOpts ks tos)
           (tsvOptions tabHeader)
           (ceoGroup tabCommonExport)
-
-runExportTree :: TreeExportOptions -> RIO SimpleApp ()
-runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
-  ts <- readTrees $ ceoExport treeCommonExport
-  liftIO $ go $ treeToJSON (allTreeDisplayOpts t) gos ts
-  where
-    gos = ceoGroup treeCommonExport
-    go = if treeJSON then BL.putStr . A.encode else B.putStr . Y.encode
-
-allTreeDisplayOpts :: TreeExportOptions -> AllTreeDisplayOptions
-allTreeDisplayOpts
-  TreeExportOptions
-    { treeDisplay
-    , treeCommonExport =
-      CommonExportOptions
-        { ceoShowUnknowns
-        , ceoUnityUnits
-        , ceoExport = ExportOptions {eoRoundDigits}
-        }
-    } =
-    AllTreeDisplayOptions treeDisplay ceoShowUnknowns ceoUnityUnits eoRoundDigits
-
-allTabularDisplayOpts :: [SortKey] -> TabularExportOptions -> AllTabularDisplayOptions
-allTabularDisplayOpts
-  ks
-  TabularExportOptions
-    { tabCommonExport =
-      CommonExportOptions
-        { ceoShowUnknowns
-        , ceoUnityUnits
-        , ceoExport = ExportOptions {eoRoundDigits}
-        }
-    } =
-    AllTabularDisplayOptions ceoShowUnknowns ceoUnityUnits eoRoundDigits ks
-
-readTrees
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => ExportOptions
-  -> m (NonEmpty (DisplayTree GroupByAll))
-readTrees ExportOptions {eoForce, eoMealPath, eoDateInterval, eoThreads, eoKey} = do
-  setThreads eoThreads
-  -- TODO not DRY
-  ds <- combineErrorIO2 (dateIntervalToDaySpan eoDateInterval) (checkNormalize n) const
-  readDisplayTrees eoForce eoKey ds eoMealPath n
-  where
-    n = dioNormalize eoDateInterval
-
--- TODO can be ultra-paranoid about this pattern by returning the input
--- wrapped in a newtype that isn't exported, so the only way to get the type
--- is by running the check function
-checkNormalize :: MonadUnliftIO m => Int -> m ()
-checkNormalize x = when (x < 1) $ throwAppErrorIO (NormalizeError x)
-
-setThreads :: MonadUnliftIO m => Int -> m ()
-setThreads n
-  | n > 0 = setNumCapabilities n
-  | otherwise = setNumCapabilities =<< liftIO getNumProcessors
-
-runListNutrients :: MonadUnliftIO m => m ()
-runListNutrients =
-  BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
 
 -- TODO not DRY
 runSummarize
@@ -142,21 +80,77 @@ runSummarize
   SummarizeOptions
     { soHeader
     , soExportOptions =
-      ExportOptions
-        { eoForce
-        , eoMealPath
-        , eoDateInterval
-        , eoThreads
-        , eoKey
-        , eoRoundDigits
+      MealplanOptions
+        { moForce
+        , moMealPath
+        , moDateInterval
+        , moThreads
+        , moKey
+        , moRoundDigits
         }
     } = do
-    setNumCapabilities eoThreads
-    ds <- combineErrorIO2 (dateIntervalToDaySpan eoDateInterval) (checkNormalize n) const
-    s <- readSummary eoForce eoKey ds eoMealPath n eoRoundDigits
+    setThreads moThreads
+    ds <- combineErrorIO2 (dateIntervalToDaySpan moDateInterval) (checkNormalize n) const
+    s <- readSummary moForce moKey ds moMealPath n moRoundDigits
     BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions soHeader) $ N.toList s
     where
-      n = dioNormalize eoDateInterval
+      n = dioNormalize moDateInterval
+
+runExportTree :: TreeExportOptions -> RIO SimpleApp ()
+runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
+  ts <- readTrees $ ceoMealplan treeCommonExport
+  liftIO $ go $ treeToJSON (allTreeDisplayOpts t) gos ts
+  where
+    gos = ceoGroup treeCommonExport
+    go = if treeJSON then BL.putStr . A.encode else B.putStr . Y.encode
+
+runListNutrients :: MonadUnliftIO m => m ()
+runListNutrients =
+  BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
+
+allTreeDisplayOpts :: TreeExportOptions -> AllTreeDisplayOptions
+allTreeDisplayOpts
+  TreeExportOptions
+    { treeDisplay
+    , treeCommonExport =
+      CommonExportOptions
+        { ceoShowUnknowns
+        , ceoUnityUnits
+        , ceoMealplan = MealplanOptions {moRoundDigits}
+        }
+    } =
+    AllTreeDisplayOptions treeDisplay ceoShowUnknowns ceoUnityUnits moRoundDigits
+
+allTabularDisplayOpts :: [SortKey] -> TabularExportOptions -> AllTabularDisplayOptions
+allTabularDisplayOpts
+  ks
+  TabularExportOptions
+    { tabCommonExport =
+      CommonExportOptions
+        { ceoShowUnknowns
+        , ceoUnityUnits
+        , ceoMealplan = MealplanOptions {moRoundDigits}
+        }
+    } =
+    AllTabularDisplayOptions ceoShowUnknowns ceoUnityUnits moRoundDigits ks
+
+readTrees
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => MealplanOptions
+  -> m (NonEmpty (DisplayTree GroupByAll))
+readTrees MealplanOptions {moForce, moMealPath, moDateInterval, moThreads, moKey} = do
+  setThreads moThreads
+  -- TODO not DRY
+  ds <- combineErrorIO2 (dateIntervalToDaySpan moDateInterval) (checkNormalize n) const
+  readDisplayTrees moForce moKey ds moMealPath n
+  where
+    n = dioNormalize moDateInterval
+
+-- TODO can be ultra-paranoid about this pattern by returning the input
+-- wrapped in a newtype that isn't exported, so the only way to get the type
+-- is by running the check function
+checkNormalize :: MonadUnliftIO m => Int -> m ()
+checkNormalize x = when (x < 1) $ throwAppErrorIO (NormalizeError x)
 
 dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
 dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
@@ -184,9 +178,6 @@ dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterva
       Nothing -> return ()
       Just i -> when (i < 1) $ throwAppErrorIO $ IntervalError i
     genSpans n s = take1 n . fmap (,s - 1) . N.iterate (addDays $ fromIntegral s)
-
-take1 :: Int -> NonEmpty a -> NonEmpty a
-take1 n (x :| xs) = x :| take (n - 1) xs
 
 currentDay :: MonadUnliftIO m => m Day
 currentDay = do

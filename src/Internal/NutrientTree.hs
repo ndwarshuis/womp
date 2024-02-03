@@ -16,6 +16,7 @@ import Data.Monoid
 import Data.Scientific
 import Data.Semigroup (sconcat)
 import Internal.Nutrients
+import Internal.Types.CLI
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
@@ -25,7 +26,6 @@ import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 import RIO.State
-import qualified RIO.Text as T
 
 findMass :: NutrientState m => NID -> m (Maybe Mass)
 findMass i =
@@ -39,300 +39,7 @@ findMeasured n = case n of
     go Nothing (i, s) = liftA2 (*) (Mass <$> s) <$> findMass i
     go m _ = pure m
 
-allPhytosterols :: NonEmpty MeasuredNutrient
-allPhytosterols =
-  stigmastadiene
-    :| [ stigmastadiene
-       , stigmasterol
-       , campesterol
-       , brassicasterol
-       , betaSitosterol
-       , campestanol
-       , betaSitostanol
-       , delta_5_avenasterol
-       , delta_7_stigmastenol
-       , otherPhytosterols
-       , ergosterol
-       , ergosta_7_enol
-       , ergosta_7_22_dienol
-       , ergosta_5_7_dienol
-       ]
-
-allAminoAcids :: NonEmpty MeasuredNutrient
-allAminoAcids =
-  tryptophan
-    :| [ threonine
-       , isoleucine
-       , leucine
-       , lysine
-       , methionine
-       , cystine
-       , phenylalanine
-       , tyrosine
-       , valine
-       , arginine
-       , histidine
-       , alanine
-       , asparticAcid
-       , glutamicAcid
-       , glycine
-       , proline
-       , serine
-       , hydroxyproline
-       , asparagine
-       , cysteine
-       , glutamine
-       ]
-
-allMinerals :: NonEmpty MeasuredNutrient
-allMinerals =
-  boron
-    :| [ sodium
-       , magnesium
-       , phosphorus
-       , sulfur
-       , potassium
-       , calcium
-       , chromium
-       , manganese
-       , iron
-       , cobalt
-       , nickel
-       , copper
-       , zinc
-       , selenium
-       , molybdenum
-       , iodine
-       ]
-
-allTFAs :: NonEmpty MeasuredNutrient
-allTFAs =
-  tfa_14_1
-    :| [tfa_16_1, tfa_17_1, tfa_18_1, tfa_18_2, tfa_18_3, tfa_20_1, tfa_22_1]
-
-allSugars :: NonEmpty MeasuredNutrient
-allSugars =
-  sucrose
-    :| [ glucose
-       , fructose
-       , lactose
-       , maltose
-       , galactose
-       , raffinose
-       , stachyose
-       , verbascose
-       ]
-
-allSFAs :: NonEmpty MeasuredNutrient
-allSFAs =
-  sfa_4_0
-    :| [ sfa_5_0
-       , sfa_6_0
-       , sfa_7_0
-       , sfa_8_0
-       , sfa_9_0
-       , sfa_10_0
-       , sfa_11_0
-       , sfa_12_0
-       , sfa_14_0
-       , sfa_15_0
-       , sfa_16_0
-       , sfa_17_0
-       , sfa_18_0
-       , sfa_20_0
-       , sfa_21_0
-       , sfa_22_0
-       , sfa_23_0
-       , sfa_24_0
-       ]
-
-allIsoflavones :: NonEmpty MeasuredNutrient
-allIsoflavones = daidzein :| [daidzin, genistein, genistin, glycitin]
-
-allVitaminE :: NonEmpty MeasuredNutrient
-allVitaminE =
-  tocopherolAlpha
-    :| [ tocopherolBeta
-       , tocopherolGamma
-       , tocopherolDelta
-       , tocotrienolAlpha
-       , tocotrienolBeta
-       , tocotrienolGamma
-       , tocotrienolDelta
-       ]
-
-allVitaminA :: NonEmpty MeasuredNutrient
-allVitaminA =
-  retinol
-    :| [ alphaCarotene
-       , betaCarotene
-       , cisBetaCarotene
-       , transBetaCarotene
-       , gammaCarotene
-       , alphaCryptoxanthin
-       , betaCryptoxanthin
-       ]
-
-allCholine :: NonEmpty MeasuredNutrient
-allCholine =
-  freeCholine
-    :| [phosphoCholine, phosphotidylCholine, glycerophosphoCholine, sphingomyelinCholine]
-
-nutHierarchy :: ProteinConversion -> NutTree
-nutHierarchy n2Factor =
-  NutTree
-    { ntFractions =
-        leaf water
-          :| [ measuredLeaves (protein n2Factor) otherProteinMass allAminoAcids
-             , measuredLeaves ash otherInorganics allMinerals
-             , measured lipid $
-                nutTree
-                  otherLipids
-                  ( leaf cholesterol
-                      :| [ measuredLeaves tfas otherTFAs allTFAs
-                         , measuredLeaves sfas otherSFAs allSFAs
-                         , measured pufas pufas_
-                         , measured mufas mufas_
-                         , unmeasuredLeaves phytosterols allPhytosterols
-                         ]
-                  )
-             ]
-    , ntUnmeasuredHeader = carbDiff
-    , ntUnmeasuredTree = Just carbs
-    }
-  where
-    leaf = AggIdentity . Leaf
-    group n p = AggIdentity . UnmeasuredHeader (SummedNutrient n p)
-    measured h = AggIdentity . MeasuredHeader h
-    unmeasured h = AggIdentity . UnmeasuredHeader h
-    nutTree u xs =
-      NutTree
-        { ntFractions = xs
-        , ntUnmeasuredHeader = u
-        , ntUnmeasuredTree = Nothing
-        }
-    measuredLeaves h u xs = measured h $ nutTree u (leaf <$> xs)
-    unmeasuredLeaves h xs = unmeasured h (leaf <$> xs)
-    groupLeaves h u xs = group h u (leaf <$> xs)
-    unclassified x u = SummedNutrient (T.append x " (unclassified)") u
-
-    carbs =
-      nutTree otherCarbs $
-        leaf starch
-          :| [ leaf betaGlucan
-             , unmeasured totalSugars $ leaf <$> allSugars
-             , fiber
-             , vitamins
-             , organics
-             ]
-
-    fiber =
-      Priority
-        ( MeasuredHeader
-            fiberBySolubility
-            ( nutTree otherFiberBySolubility $
-                fmap leaf (solubleFiber :| [insolubleFiber])
-            )
-            :| [ MeasuredHeader
-                  fiberByWeight
-                  ( nutTree otherFiberByWeight $
-                      fmap leaf (highMWFiber :| [lowMWFiber])
-                  )
-               ]
-        )
-
-    organics =
-      group "Organics" Milli $
-        lycopene_
-          :| [ luteins_
-             , unmeasuredLeaves isoflavones allIsoflavones
-             , measuredLeaves choline otherCholine allCholine
-             , leaf betaine
-             , leaf citricAcid
-             , leaf malicAcid
-             , leaf oxalicAcid
-             , leaf pyruvicAcid
-             , leaf quinicAcid
-             , leaf taurine
-             , leaf ergothioneine
-             , leaf phytoene
-             , leaf phytofluene
-             ]
-
-    lycopene_ =
-      measuredLeaves lycopene (unclassified "Lycopenes" Milli) $
-        transLycopene :| [cisLycopene]
-
-    luteins_ =
-      measuredLeaves luteins (unclassified "Luteins" Milli) $
-        transLutein :| [cisLutein, zeaxanthin]
-
-    vitamins =
-      group "Vitamins" Milli $
-        groupLeaves "Vitamin A" Micro allVitaminA
-          :| [ group "Vitamin B" Milli $
-                leaf vitaminB1
-                  :| [ leaf vitaminB2
-                     , leaf vitaminB3
-                     , leaf vitaminB5
-                     , leaf vitaminB6
-                     , leaf vitaminB7
-                     , measuredLeaves vitaminB9 otherFolate $ folinicAcid :| [levomefolicAcid]
-                     , leaf vitaminB12
-                     ]
-             , leaf vitaminC
-             , unmeasured vitaminD $
-                leaf calcifediol
-                  :| [ leaf vitaminD4
-                     , measuredLeaves vitaminD2andD3 otherVitaminD $
-                        vitaminD2 :| [vitaminD3]
-                     ]
-             , groupLeaves "Vitamin E" Milli allVitaminE
-             , group "Vitamin K" Micro $
-                fmap leaf $
-                  vitaminK1 :| [vitaminK2, dihydrophylloquinone]
-             ]
-
-    mufas_ =
-      nutTree otherMUFAs $
-        leaf mufa_12_1
-          :| [ leaf mufa_14_1
-             , leaf mufa_15_1
-             , leaf mufa_16_1
-             , leaf mufa_17_1
-             , leaf mufa_18_1
-             , leaf mufa_20_1
-             , measuredLeaves mufa_22_1 mufa_22_1_other $
-                mufa_22_1_n11 :| [mufa_22_1_n9]
-             , leaf mufa_24_1
-             ]
-
-    pufas_ =
-      nutTree otherPUFAs $
-        measuredLeaves
-          pufa_18_2
-          pufa_18_2_other
-          (pufa_18_2_CLA :| [pufa_18_2_n6_cc])
-          :| [ measuredLeaves
-                pufa_18_3
-                pufa_18_3_other
-                (pufa_18_3_n3_ccc :| [pufa_18_3_n6_ccc, pufa_18_3i])
-             , leaf pufa_18_4
-             , unmeasuredLeaves pufa_20_2 (pufa_20_2_n6_cc :| [])
-             , measuredLeaves
-                pufa_20_3
-                pufa_20_3_other
-                (pufa_20_3_n3 :| [pufa_20_3_n6, pufa_20_3_n9])
-             , leaf pufa_20_4
-             , unmeasuredLeaves pufa_20_5 (pufa_20_5_n3 :| [])
-             , leaf pufa_22_2
-             , leaf pufa_22_3
-             , leaf pufa_22_4
-             , unmeasuredLeaves pufa_22_5 (pufa_22_5_n3 :| [])
-             , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
-             ]
-
-type FullNodeData = ([FoodTreeNode Mass], Either [UnknownTree] (FullNode_ Mass))
+type FullNodeData = ([ParsedTreeNode Mass], Either [UnknownTree] (QuantifiedNode Mass))
 
 fromNutTreeWithMass_ :: NutrientState m => Mass -> NutTree -> m FullNodeData
 fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
@@ -359,7 +66,7 @@ fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasured
             -- NOTE by definition there cannot be unknowns in this tree;
             -- since we don't know the total mass this tree should represent
             -- all the unknowns must "propagate up a level"
-            (fmap (PartialNode . PartialNode_ umh) . N.nonEmpty)
+            (fmap (Unquantified . UnquantifiedNode umh) . N.nonEmpty)
             toList
             <$> fromNutTreeWithoutMass ut
       return (maybe ks (: ks) umk, Left $ UnknownTree umn umus : toList ms)
@@ -370,7 +77,7 @@ fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasured
       -- to put under the header
       um <-
         maybe
-          (return $ FullNode_ diffMass umh [] (Left []))
+          (return $ QuantifiedNode diffMass umh [] (Left []))
           (fromNutTreeWithMass diffMass umh)
           ntUnmeasuredTree
       return (toList ks, Right um)
@@ -383,15 +90,15 @@ fromNutTreeWithMass
   => Mass
   -> DisplayNutrient
   -> NutTree
-  -> m (FullNode_ Mass)
+  -> m (QuantifiedNode Mass)
 fromNutTreeWithMass mass dn nt = do
   (ks, us) <- fromNutTreeWithMass_ mass nt
-  return $ FullNode_ mass dn ks us
+  return $ QuantifiedNode mass dn ks us
 
 fromNutTreeWithoutMass
   :: NutrientState m
   => NutTree
-  -> m ([FoodTreeNode Mass], NonEmpty UnknownTree)
+  -> m ([ParsedTreeNode Mass], NonEmpty UnknownTree)
 fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
   (umk, umu) <- case ntUnmeasuredTree of
     Nothing -> return (Nothing, [])
@@ -403,17 +110,17 @@ fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTre
   where
     umh = summedToDisplay ntUnmeasuredHeader
     umn = snName ntUnmeasuredHeader
-    go = PartialNode . PartialNode_ umh
+    go = Unquantified . UnquantifiedNode umh
 
 readBranches
   :: NutrientState m
   => Branches
   -> m
       ( Either
-          ( [FoodTreeNode Mass]
+          ( [ParsedTreeNode Mass]
           , NonEmpty UnknownTree
           )
-          (NonEmpty (FoodTreeNode Mass))
+          (NonEmpty (ParsedTreeNode Mass))
       )
 readBranches bs = do
   (r :| rs) <- mapM fromAgg bs
@@ -426,8 +133,8 @@ readBranches bs = do
     combineRes (Left (ks0, us)) (Right ks1) = Left (ks0 ++ toList ks1, us)
     combineRes (Left (ks0, us0)) (Left (ks1, us1)) = Left (ks0 ++ ks1, us0 <> us1)
 
-    fromAgg (AggIdentity x) = fromHeader x
-    fromAgg (Priority (x :| xs)) = do
+    fromAgg (NutrientSingle x) = fromHeader x
+    fromAgg (NutrientMany (x :| xs)) = do
       init <- fromHeader x
       foldM go init xs
       where
@@ -446,7 +153,7 @@ readBranches bs = do
       let dh = measToDisplay h
       mass <- findMeasured h
       case mass of
-        Just m -> Right . pure . FullNode <$> fromNutTreeWithMass m dh nt
+        Just m -> Right . pure . Quantified <$> fromNutTreeWithMass m dh nt
         Nothing ->
           Left . bimap (fromKnowns dh) (fromUnknowns dh)
             <$> fromNutTreeWithoutMass nt
@@ -457,21 +164,21 @@ readBranches bs = do
       let dh = measToDisplay h
       mass <- findMeasured h
       return $ case mass of
-        Just m -> Right $ pure $ FullNode $ FullNode_ m dh [] (Left [])
+        Just m -> Right $ pure $ Quantified $ QuantifiedNode m dh [] (Left [])
         Nothing -> Left ([], pure $ UnknownTree (dnName dh) [])
 
     fromKnowns _ [] = []
-    fromKnowns dh (k : ks) = [PartialNode $ PartialNode_ dh (k :| ks)]
+    fromKnowns dh (k : ks) = [Unquantified $ UnquantifiedNode dh (k :| ks)]
 
     fromUnknowns dh = pure . UnknownTree (dnName dh) . toList
 
-    toKnownTree dh = pure . PartialNode . PartialNode_ dh
+    toKnownTree dh = pure . Unquantified . UnquantifiedNode dh
 
-sumTrees :: Num a => NonEmpty (FoodTreeNode a) -> a
+sumTrees :: Num a => NonEmpty (ParsedTreeNode a) -> a
 sumTrees (f :| fs) = foldr (\n -> (+ go n)) (go f) fs
   where
-    go (FullNode n) = fnValue n
-    go (PartialNode n) = sumTrees $ pnKnown n
+    go (Quantified n) = fnValue n
+    go (Unquantified n) = sumTrees $ pnKnown n
 
 summedToDisplay :: SummedNutrient -> DisplayNutrient
 summedToDisplay (SummedNutrient x y) = DisplayNutrient x y
@@ -483,7 +190,7 @@ measToDisplay (Alternate (AltNutrient n p _)) = DisplayNutrient n p
 entireTree
   :: NutrientState m
   => ProteinConversion
-  -> m ([FoodTreeNode Mass], Either [UnknownTree] (FullNode_ Mass))
+  -> m ([ParsedTreeNode Mass], Either [UnknownTree] (QuantifiedNode Mass))
 entireTree = fromNutTreeWithMass_ standardMass . nutHierarchy
 
 fullToDisplayTree :: FullNodeData -> DisplayNode Mass
@@ -492,24 +199,24 @@ fullToDisplayTree = uncurry (toNode standardMass)
     toNode v ks = uncurry (DisplayNode v) . unpackNodes v ks
 
     unpackNodes mass ks u = case u of
-      Right fn -> (toMap (FullNode fn : ks), mempty)
+      Right fn -> (toMap (Quantified fn : ks), mempty)
       Left uts -> case N.nonEmpty ks of
         Nothing -> (mempty, withNonEmpty (`M.singleton` mass) mempty uts)
         Just ks' ->
           (toMap $ toList ks', M.singleton uts (mass - sumTrees ks'))
 
-    partialToDisplayTree PartialNode_ {pnNut, pnKnown} =
+    partialToDisplayTree UnquantifiedNode {pnNut, pnKnown} =
       ( pnNut
       , DisplayNode (sumTrees pnKnown) (toMap $ toList pnKnown) mempty
       )
 
-    fullToDisplayTree_ FullNode_ {fnNut, fnValue, fnKnown, fnUnknown} =
+    fullToDisplayTree_ QuantifiedNode {fnNut, fnValue, fnKnown, fnUnknown} =
       (fnNut, toNode fnValue fnKnown fnUnknown)
 
     toMap = M.fromList . fmap go
 
-    go (FullNode n) = fullToDisplayTree_ n
-    go (PartialNode n) = partialToDisplayTree n
+    go (Quantified n) = fullToDisplayTree_ n
+    go (Unquantified n) = partialToDisplayTree n
 
 displayTree :: NutrientState m => ProteinConversion -> m (DisplayNode Mass)
 displayTree = fmap fullToDisplayTree . entireTree
@@ -729,8 +436,8 @@ dumpNutrientTree = goTree Nothing $ nutHierarchy 0
         ++ [goSummed parent umh]
         ++ maybe [] (goTree parent) umt
 
-    goBranch parent (AggIdentity n) = goNode parent n
-    goBranch parent (Priority ns) = concatMap (goNode parent) ns
+    goBranch parent (NutrientSingle n) = goNode parent n
+    goBranch parent (NutrientMany ns) = concatMap (goNode parent) ns
 
     goNode parent (MeasuredHeader h t) =
       goMeasured parent h ++ goTree (Just $ measuredName h) t
@@ -748,3 +455,5 @@ dumpNutrientTree = goTree Nothing $ nutHierarchy 0
         NutTreeRow anName parent . Just . fst <$> N.toList anChoices
 
     goSummed parent SummedNutrient {snName} = NutTreeRow snName parent Nothing
+
+type NutrientState = MonadState NutrientMap
