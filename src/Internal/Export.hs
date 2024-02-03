@@ -30,7 +30,7 @@ import RIO.Time
 readDisplayTrees
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => MealplanOptions
-  -> m (NonEmpty (DisplayTree GroupByAll))
+  -> m DisplayTrees
 readDisplayTrees mos = do
   is <- readMappedItems validToExport mos
   let (ts, unused) = expandIngredientTrees is
@@ -55,7 +55,7 @@ readSummary mos@MealplanOptions {moRoundDigits} = do
 
 readMappedItems
   :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
-  => (ValidSchedule -> DaySpan -> [(Either FID Text, a)])
+  => (ValidSchedule -> DaySpan -> [(Source, a)])
   -> MealplanOptions
   -> m (NonEmpty (MappedFoodItem, a))
 readMappedItems f MealplanOptions {moForce, moMealPath, moDateInterval, moThreads, moKey} = do
@@ -238,10 +238,10 @@ checkIngredient Ingredient {ingMass, ingSource} =
 
 expandSchedule
   :: MonadUnliftIO m
-  => (ValidSchedule -> DaySpan -> [(Either FID Text, a)])
+  => (ValidSchedule -> DaySpan -> [(Source, a)])
   -> NonEmpty ValidSchedule
   -> NonEmpty DaySpan
-  -> m (NonEmpty (Either FID Text, a))
+  -> m (NonEmpty (Source, a))
 expandSchedule f vs = maybe (throwAppErrorIO (EmptySchedule True)) return . N.nonEmpty . go
   where
     go = sconcat . nonEmptyProduct f vs
@@ -249,16 +249,19 @@ expandSchedule f vs = maybe (throwAppErrorIO (EmptySchedule True)) return . N.no
 validToSummary
   :: ValidSchedule
   -> DaySpan
-  -> [(Either FID Text, SummaryIngredientMetadata)]
+  -> [(Source, SummaryIngredientMetadata)]
 validToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
   [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
   where
     go Ingredient {ingMass, ingSource} d =
-      ( sourceToEither ingSource
+      ( source ingSource
       , IngredientMetadata vsMeal (Mass (vsScale * fromFloatDigits ingMass)) () d
       )
 
-validToExport :: ValidSchedule -> DaySpan -> [(Either FID Text, ExportIngredientMetadata)]
+validToExport
+  :: ValidSchedule
+  -> DaySpan
+  -> [(Source, ExportIngredientMetadata)]
 validToExport ValidSchedule {vsIngs, vsMeal, vsCron, vsScale} ds
   | d == 0 = []
   | otherwise = N.toList $ fmap (expandIngredient vsMeal (d * vsScale) ds) vsIngs
@@ -270,15 +273,15 @@ expandIngredient
   -> Scientific
   -> DaySpan
   -> Ingredient
-  -> (Either FID Text, ExportIngredientMetadata)
+  -> (Source, ExportIngredientMetadata)
 expandIngredient mg s ds Ingredient {ingMass, ingModifications, ingSource} =
-  (sourceToEither ingSource, IngredientMetadata mg mass ingModifications ds)
+  (source ingSource, IngredientMetadata mg mass ingModifications ds)
   where
     mass = Mass $ s * fromFloatDigits ingMass
 
-sourceToEither :: IngredientSource -> Either FID Text
-sourceToEither (FDC i) = Left $ FID i
-sourceToEither (Custom c) = Right c
+source :: IngredientSource -> Source
+source (FDC i) = Left $ FID i
+source (Custom c) = Right c
 
 --------------------------------------------------------------------------------
 -- food item -> tree
@@ -287,7 +290,7 @@ sourceToEither (Custom c) = Right c
 -- warnings for each group combination, which is super annoying
 expandIngredientTrees
   :: NonEmpty (MappedFoodItem, ExportIngredientMetadata)
-  -> (NonEmpty (DisplayTree GroupByAll), [UnusedNutrient])
+  -> (DisplayTrees, [UnusedNutrient])
 expandIngredientTrees =
   second sconcat . N.unzip . fmap (uncurry (flip ingredientToTree))
 
@@ -342,13 +345,10 @@ lookupTree :: DisplayNutrient -> DisplayNode a -> Maybe a
 lookupTree k (DisplayNode _ ks _) =
   msum ((dnValue <$> M.lookup k ks) : (lookupTree k <$> M.elems ks))
 
-entireTree
-  :: NutrientState m
-  => ProteinConversion
-  -> m ([ParsedTreeNode Mass], Either [UnknownTree] (QuantifiedNode Mass))
+entireTree :: NutrientState m => ProteinConversion -> m QuantifiedNodeData
 entireTree = fromNutTreeWithMass_ standardMass . nutHierarchy
 
-fullToDisplayTree :: FullNodeData -> DisplayNode Mass
+fullToDisplayTree :: QuantifiedNodeData -> DisplayNode Mass
 fullToDisplayTree = uncurry (toNode standardMass)
   where
     toNode v ks = uncurry (DisplayNode v) . unpackNodes v ks
@@ -388,9 +388,7 @@ findMeasured n = case n of
     go Nothing (i, s) = liftA2 (*) (Mass <$> s) <$> findMass i
     go m _ = pure m
 
-type FullNodeData = ([ParsedTreeNode Mass], Either [UnknownTree] (QuantifiedNode Mass))
-
-fromNutTreeWithMass_ :: NutrientState m => Mass -> NutTree -> m FullNodeData
+fromNutTreeWithMass_ :: NutrientState m => Mass -> NutTree -> m QuantifiedNodeData
 fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
   -- possible results from this operation:
   -- 1) all known -> we know the mass of the unmeasured tree
@@ -439,7 +437,7 @@ fromNutTreeWithMass
   => Mass
   -> DisplayNutrient
   -> NutTree
-  -> m (QuantifiedNode Mass)
+  -> m QuantifiedNode
 fromNutTreeWithMass mass dn nt = do
   (ks, us) <- fromNutTreeWithMass_ mass nt
   return $ QuantifiedNode mass dn ks us
@@ -447,7 +445,7 @@ fromNutTreeWithMass mass dn nt = do
 fromNutTreeWithoutMass
   :: NutrientState m
   => NutTree
-  -> m ([ParsedTreeNode Mass], NonEmpty UnknownTree)
+  -> m ([ParsedTreeNode], NonEmpty UnknownTree)
 fromNutTreeWithoutMass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
   (umk, umu) <- case ntUnmeasuredTree of
     Nothing -> return (Nothing, [])
@@ -466,10 +464,8 @@ readBranches
   => Branches
   -> m
       ( Either
-          ( [ParsedTreeNode Mass]
-          , NonEmpty UnknownTree
-          )
-          (NonEmpty (ParsedTreeNode Mass))
+          ([ParsedTreeNode], NonEmpty UnknownTree)
+          (NonEmpty ParsedTreeNode)
       )
 readBranches bs = do
   (r :| rs) <- mapM fromAgg bs
@@ -523,7 +519,7 @@ readBranches bs = do
 
     toKnownTree dh = pure . Unquantified . UnquantifiedNode dh
 
-sumTrees :: Num a => NonEmpty (ParsedTreeNode a) -> a
+sumTrees :: NonEmpty ParsedTreeNode -> Mass
 sumTrees (f :| fs) = foldr (\n -> (+ go n)) (go f) fs
   where
     go (Quantified n) = fnValue n
@@ -561,3 +557,14 @@ data ValidSchedule = ValidSchedule
 type ValidCustomMap = Map Text MappedFoodItem
 
 type NutrientState = MonadState NutrientMap
+
+data UnusedNutrient = UnusedNutrient MealGroup NID ValidNutrient
+  deriving (Eq)
+
+type DisplayTrees = NonEmpty (DisplayTree GroupByAll)
+
+type CustomID = Text
+
+type Source = Either FID CustomID
+
+type QuantifiedNodeData = ([ParsedTreeNode], Either [UnknownTree] QuantifiedNode)

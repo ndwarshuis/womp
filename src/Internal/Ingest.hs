@@ -167,3 +167,12 @@ apiKeyFile = "apikey"
 
 configDir :: MonadUnliftIO m => m FilePath
 configDir = getXdgDirectory XdgConfig "womp"
+
+--------------------------------------------------------------------------------
+-- misc types
+
+-- TODO add name to this so that the user is less confused
+data NutrientWarning
+  = NotGram !NID !Text
+  | UnknownUnit !NID !Text
+  | InvalidNutrient !FoodNutrient

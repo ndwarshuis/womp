@@ -125,35 +125,30 @@ data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
 -- | Node with a value associated with it.
 -- It may no children (in which case it is a nutrient leaf) or many children,
 -- which many be a mixture of known and unknown.
-data QuantifiedNode a = QuantifiedNode
-  { fnValue :: a
+data QuantifiedNode = QuantifiedNode
+  { fnValue :: Mass
   -- ^ Mass of this node
   , fnNut :: DisplayNutrient
   -- ^ Nutrient identifier associated with this node
-  , fnKnown :: [ParsedTreeNode a]
+  , fnKnown :: [ParsedTreeNode]
   -- ^ Subnutrients underneath this node with known mass
-  , fnUnknown :: Either [UnknownTree] (QuantifiedNode a)
+  , fnUnknown :: Either [UnknownTree] QuantifiedNode
   -- ^ Subnutrients underneath this node with no known individual masses but
   -- known collective masses. This mass and all those under the "known" field
   -- must sum to that of the "value" field
   }
-  deriving (Functor)
 
 -- | Node with no value associated with it, which means a) it must have at
 -- least one child, b) its value must be summed from its child(ren) and c)
 -- it cannot have unknown children.
-data UnquantifiedNode a = UnquantifiedNode
+data UnquantifiedNode = UnquantifiedNode
   { pnNut :: DisplayNutrient
   -- ^ Nutrient associated with this node
-  , pnKnown :: NonEmpty (ParsedTreeNode a)
+  , pnKnown :: NonEmpty ParsedTreeNode
   -- ^ Subnutrients underneath this node with known mass
   }
-  deriving (Functor)
 
-data ParsedTreeNode a
-  = Quantified (QuantifiedNode a)
-  | Unquantified (UnquantifiedNode a)
-  deriving (Functor)
+data ParsedTreeNode = Quantified QuantifiedNode | Unquantified UnquantifiedNode
 
 data UnknownTree = UnknownTree Text [UnknownTree]
   deriving (Eq, Ord, Show)
@@ -547,16 +542,3 @@ type DaySpan = (Day, Int)
 
 newtype Energy = Energy {unEnergy :: Scientific}
   deriving (Show, Eq, Ord, Num, ToJSON, Fractional, Real, RealFrac) via Scientific
-
-data UnusedNutrient = UnusedNutrient
-  { uMeal :: MealGroup
-  , uId :: NID
-  , uNut :: ValidNutrient
-  }
-  deriving (Eq)
-
--- TODO add name to this so that the user is less confused
-data NutrientWarning
-  = NotGram !NID !Text
-  | UnknownUnit !NID !Text
-  | InvalidNutrient !FoodNutrient
