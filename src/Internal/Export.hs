@@ -6,6 +6,7 @@ where
 
 import Data.Scientific
 import Data.Semigroup
+import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
 import qualified Dhall as D
 import Internal.Ingest
@@ -54,7 +55,7 @@ readSummary mos@MealplanOptions {moRoundDigits} = do
         (roundDigits moRoundDigits imMass)
 
 readMappedItems
-  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env, Show a)
   => (ValidSchedule -> DaySpan -> [(Source, a)])
   -> MealplanOptions
   -> m (NonEmpty (MappedFoodItem, a))
@@ -64,6 +65,7 @@ readMappedItems f MealplanOptions {moForce, moMealPath, moDateInterval, moThread
   (vs, customMap) <- readPlan moMealPath norm
   is <- expandSchedule f vs ds
   let (fs, cs) = N.unzip $ groupByTup is
+  liftIO $ TI.putStr $ tshow cs
   ms <- mapFIDs moKey (downloadFoodItem moForce) fs
   fs' <- mapM (either return (fromCustom customMap)) ms
   return $ flatten $ N.zip fs' cs
@@ -79,15 +81,19 @@ mapFIDs
   -> (APIKey -> FID -> m a)
   -> NonEmpty (Either FID b)
   -> m (NonEmpty (Either a b))
-mapFIDs k f (x :| xs) = case x of
-  Left y -> (`append` zs') <$> go (y :| ys)
-  Right y ->
-    let rs = Right y :| zs'
-     in maybe (pure rs) (fmap (append rs . N.toList) . go) $ N.nonEmpty ys
+mapFIDs k f (x :| xs) =
+  fmap snd . N.sortWith fst <$> case x of
+    Left y -> (`append` zs) <$> go ((0, y) :| ys)
+    Right y ->
+      let rs = (0, Right y) :| zs
+       in maybe (pure rs) (fmap (append rs . N.toList) . go) $ N.nonEmpty ys
   where
-    (ys, zs) = partitionEithers xs
-    zs' = Right <$> zs
-    go = fmap (fmap Left) . mapWithAPIKey k f
+    (ys, zs) =
+      partitionEithers $
+        L.zipWith (\i -> bimap (i,) ((i,) . Right)) [(1 :: Int) ..] xs
+    go as =
+      let (is, bs) = N.unzip as
+       in N.zip is . fmap Left <$> mapWithAPIKey k f bs
 
 -- | Transform a non-empty list of FIDs with an API key
 mapWithAPIKey
@@ -156,7 +162,7 @@ currentDay = do
 --------------------------------------------------------------------------------
 -- custom map
 
-fromCustom :: MonadUnliftIO m => ValidCustomMap -> Text -> m MappedFoodItem
+fromCustom :: MonadUnliftIO m => ValidCustomMap -> CustomID -> m MappedFoodItem
 fromCustom cm n = maybe (throwAppErrorIO $ MissingCustom n) return $ M.lookup n cm
 
 fromCustomMap :: MonadUnliftIO m => CustomMap -> m ValidCustomMap

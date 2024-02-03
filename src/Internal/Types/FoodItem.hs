@@ -49,7 +49,7 @@ data FoodItem n = FoodItem
   , fiCalorieConversion :: CalorieConversion
   , fiProteinConversion :: ProteinConversion
   }
-  deriving (Generic)
+  deriving (Generic, Show)
 
 instance FromJSON ParsedFoodItem where
   parseJSON (Object v) = do
