@@ -6,7 +6,6 @@ where
 
 import Data.Scientific
 import Data.Semigroup
-import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
 import qualified Dhall as D
 import Internal.Ingest
@@ -55,7 +54,7 @@ readSummary mos@MealplanOptions {moRoundDigits} = do
         (roundDigits moRoundDigits imMass)
 
 readMappedItems
-  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env, Show a)
+  :: (MonadReader env m, MonadUnliftIO m, HasLogFunc env)
   => (ValidSchedule -> DaySpan -> [(Source, a)])
   -> MealplanOptions
   -> m (NonEmpty (MappedFoodItem, a))
@@ -65,7 +64,6 @@ readMappedItems f MealplanOptions {moForce, moMealPath, moDateInterval, moThread
   (vs, customMap) <- readPlan moMealPath norm
   is <- expandSchedule f vs ds
   let (fs, cs) = N.unzip $ groupByTup is
-  liftIO $ TI.putStr $ tshow cs
   ms <- mapFIDs moKey (downloadFoodItem moForce) fs
   fs' <- mapM (either return (fromCustom customMap)) ms
   return $ flatten $ N.zip fs' cs
