@@ -62,7 +62,7 @@ subcommand =
               (progDesc "list nutrients available for parsing")
           )
         <> command
-          "summarize"
+          "summary"
           ( info
               (Summarize <$> summarize)
               (progDesc "print table of meals and their ingredients")
