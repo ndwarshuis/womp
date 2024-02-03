@@ -42,7 +42,7 @@ data TabularExportOptions = TabularExportOptions
   }
 
 data SummarizeOptions = SummarizeOptions
-  { soExportOptions :: !MealplanOptions
+  { soMealplanOptions :: !MealplanOptions
   , soHeader :: !Bool
   }
 

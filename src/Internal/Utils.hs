@@ -2,6 +2,7 @@ module Internal.Utils where
 
 import Control.Monad.Error.Class
 import Data.Scientific
+import Data.Semigroup
 import GHC.Conc (getNumProcessors)
 import Internal.Types.Dhall
 import Internal.Types.Main
@@ -270,6 +271,26 @@ dayToWeekday :: Day -> Int
 dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7
 
 --------------------------------------------------------------------------------
+-- nonempty
+
+append :: NonEmpty a -> [a] -> NonEmpty a
+append (x :| xs) ys = x :| xs ++ ys
+
+take1 :: Int -> NonEmpty a -> NonEmpty a
+take1 n (x :| xs) = x :| take (n - 1) xs
+
+groupByTup :: Eq a => NonEmpty (a, b) -> NonEmpty (a, NonEmpty b)
+groupByTup = fmap (\xs -> (fst $ N.head xs, snd <$> xs)) . N.groupWith1 fst
+
+flatten :: NonEmpty (a, NonEmpty b) -> NonEmpty (a, b)
+flatten = sconcat . fmap go
+  where
+    go (x, ys) = (x,) <$> ys
+
+nonEmptyProduct :: (a -> b -> c) -> NonEmpty a -> NonEmpty b -> NonEmpty c
+nonEmptyProduct f xs = sconcat . fmap (\y -> fmap (`f` y) xs)
+
+--------------------------------------------------------------------------------
 -- misc
 
 withNonEmpty :: (Eq a, Monoid a) => (a -> b) -> b -> a -> b
@@ -289,14 +310,8 @@ createWriteFile p t = do
 displayText :: Text -> Utf8Builder
 displayText = displayBytesUtf8 . encodeUtf8
 
-append :: NonEmpty a -> [a] -> NonEmpty a
-append (x :| xs) ys = x :| xs ++ ys
-
 uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 uncurry3 f (x, y, z) = f x y z
-
-take1 :: Int -> NonEmpty a -> NonEmpty a
-take1 n (x :| xs) = x :| take (n - 1) xs
 
 setThreads :: MonadUnliftIO m => Int -> m ()
 setThreads n

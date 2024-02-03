@@ -26,9 +26,10 @@ source-repository head
 library
   exposed-modules:
       Internal.CLI
-      Internal.Nutrient
+      Internal.Display
+      Internal.Export
+      Internal.Ingest
       Internal.Nutrients
-      Internal.NutrientTree
       Internal.Types.CLI
       Internal.Types.Dhall
       Internal.Types.FoodItem

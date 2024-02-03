@@ -6,17 +6,19 @@ import qualified Data.Csv as C
 import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
 import Internal.CLI
-import Internal.Nutrient
-import Internal.NutrientTree
+import Internal.Display
+import Internal.Export
+import Internal.Ingest
 import Internal.Types.CLI
 import Internal.Types.Main
 import Internal.Utils
 import Options.Applicative
-import RIO hiding (force)
+import RIO
 import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
+import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
-import RIO.Time
+import qualified RIO.Text as T
 
 main :: IO ()
 main = run =<< parseCLI
@@ -39,7 +41,7 @@ run (CLIOptions CommonOptions {coVerbosity} s) = do
       Summarize o -> runSummarize o
   where
     err (AppException es) = do
-      mapM_ (logError . displayBytesUtf8 . encodeUtf8) $ concatMap showError es
+      mapM_ (logError . displayText) $ concatMap showError es
       exitFailure
     level x
       | x == 0 = LevelError
@@ -47,21 +49,30 @@ run (CLIOptions CommonOptions {coVerbosity} s) = do
       | x == 2 = LevelInfo
       | otherwise = LevelDebug
 
-runFetch :: FetchDumpOptions -> RIO SimpleApp ()
+runFetch
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => FetchDumpOptions
+  -> m ()
 runFetch FetchDumpOptions {foID, foForce, foKey} =
   void . (\k -> fetchFID foForce k foID) =<< getStoreAPIKey foKey
 
-runDump :: FetchDumpOptions -> RIO SimpleApp ()
+runDump
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => FetchDumpOptions
+  -> m ()
 runDump FetchDumpOptions {foID, foForce, foKey} = do
   k <- getStoreAPIKey foKey
   j <- fetchFID foForce k foID
   liftIO $ TI.putStr j
 
-runExportTabular :: TabularExportOptions -> RIO SimpleApp ()
+runExportTabular
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => TabularExportOptions
+  -> m ()
 runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} = do
   case parseSortKeys tabSort of
     Nothing -> throwAppErrorIO (SortKeys tabSort)
-    Just ks -> go ks =<< readTrees (ceoMealplan tabCommonExport)
+    Just ks -> go ks =<< readDisplayTrees (ceoMealplan tabCommonExport)
   where
     go ks =
       liftIO
@@ -71,34 +82,20 @@ runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} 
           (tsvOptions tabHeader)
           (ceoGroup tabCommonExport)
 
--- TODO not DRY
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => SummarizeOptions
   -> m ()
-runSummarize
-  SummarizeOptions
-    { soHeader
-    , soExportOptions =
-      MealplanOptions
-        { moForce
-        , moMealPath
-        , moDateInterval
-        , moThreads
-        , moKey
-        , moRoundDigits
-        }
-    } = do
-    setThreads moThreads
-    ds <- combineErrorIO2 (dateIntervalToDaySpan moDateInterval) (checkNormalize n) const
-    s <- readSummary moForce moKey ds moMealPath n moRoundDigits
-    BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions soHeader) $ N.toList s
-    where
-      n = dioNormalize moDateInterval
+runSummarize SummarizeOptions {soHeader, soMealplanOptions} = do
+  s <- readSummary soMealplanOptions
+  BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions soHeader) $ N.toList s
 
-runExportTree :: TreeExportOptions -> RIO SimpleApp ()
+runExportTree
+  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
+  => TreeExportOptions
+  -> m ()
 runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
-  ts <- readTrees $ ceoMealplan treeCommonExport
+  ts <- readDisplayTrees $ ceoMealplan treeCommonExport
   liftIO $ go $ treeToJSON (allTreeDisplayOpts t) gos ts
   where
     gos = ceoGroup treeCommonExport
@@ -134,60 +131,31 @@ allTabularDisplayOpts
     } =
     AllTabularDisplayOptions ceoShowUnknowns ceoUnityUnits moRoundDigits ks
 
-readTrees
-  :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
-  => MealplanOptions
-  -> m (NonEmpty (DisplayTree GroupByAll))
-readTrees MealplanOptions {moForce, moMealPath, moDateInterval, moThreads, moKey} = do
-  setThreads moThreads
-  -- TODO not DRY
-  ds <- combineErrorIO2 (dateIntervalToDaySpan moDateInterval) (checkNormalize n) const
-  readDisplayTrees moForce moKey ds moMealPath n
-  where
-    n = dioNormalize moDateInterval
-
--- TODO can be ultra-paranoid about this pattern by returning the input
--- wrapped in a newtype that isn't exported, so the only way to get the type
--- is by running the check function
-checkNormalize :: MonadUnliftIO m => Int -> m ()
-checkNormalize x = when (x < 1) $ throwAppErrorIO (NormalizeError x)
-
-dateIntervalToDaySpan :: MonadUnliftIO m => DateIntervalOptions -> m (NonEmpty DaySpan)
-dateIntervalToDaySpan DateIntervalOptions {dioStart, dioEnd, dioDays, dioInterval} = do
-  start <- maybe currentDay return dioStart
-  totalLen <- combineErrorIO2 (getLen start) checkInterval const
-  let span1 = genSpans 1 totalLen start
-  return $ case dioInterval of
-    Just i
-      | i >= totalLen -> span1
-      | otherwise ->
-          let (n, r) = divMod totalLen i
-              lastStart = addDays (fromIntegral $ n * i) start
-              last = if r == 0 then [] else N.toList $ genSpans 1 r lastStart
-           in append (genSpans n i start) last
-    Nothing -> span1
-  where
-    getLenStartEnd start end = do
-      when (end <= start) $ throwAppErrorIO DaySpanError
-      return $ fromIntegral $ diffDays end start
-    getLenDays = do
-      when (dioDays < 1) $ throwAppErrorIO (DateDaysEndError dioDays)
-      return dioDays
-    getLen start = maybe getLenDays (getLenStartEnd start) dioEnd
-    checkInterval = case dioInterval of
-      Nothing -> return ()
-      Just i -> when (i < 1) $ throwAppErrorIO $ IntervalError i
-    genSpans n s = take1 n . fmap (,s - 1) . N.iterate (addDays $ fromIntegral s)
-
-currentDay :: MonadUnliftIO m => m Day
-currentDay = do
-  u <- getCurrentTime
-  z <- getCurrentTimeZone
-  return $ localDay $ utcToLocalTime z u
-
 tsvOptions :: Bool -> C.EncodeOptions
 tsvOptions h =
   C.defaultEncodeOptions
     { C.encDelimiter = fromIntegral (ord '\t')
     , C.encIncludeHeader = h
     }
+
+parseSortKeys :: Text -> Maybe [SortKey]
+parseSortKeys "" = Just []
+parseSortKeys s = fmap L.nub $ mapM parseSortKey $ T.split (== ',') s
+
+parseSortKey :: Text -> Maybe SortKey
+parseSortKey = go <=< T.uncons
+  where
+    go (p, rest) = do
+      a <- case p of
+        '+' -> pure True
+        '-' -> pure False
+        _ -> Nothing
+      f <- case rest of
+        "date" -> pure SortDate
+        "meal" -> pure SortMeal
+        "ingredient" -> pure SortIngredient
+        "nutrient" -> pure SortNutrient
+        "parent" -> pure SortParent
+        "value" -> pure SortValue
+        _ -> Nothing
+      pure $ SortKey f a
