@@ -180,9 +180,9 @@ tree =
   TreeExportOptions
     <$> displayOptions
     <*> switch
-      ( long "expandUnits"
-          <> short 'x'
-          <> help "show prefix and base unit as separate keys"
+      ( long "json"
+          <> short 'j'
+          <> help "output JSON instead of YAML"
       )
     <*> common
 
@@ -229,9 +229,9 @@ displayOptions :: Parser TreeDisplayOptions
 displayOptions =
   TreeDisplayOptions
     <$> switch
-      ( long "unityUnits"
-          <> short 'U'
-          <> help "show all masses in grams (no prefix)"
+      ( long "expandUnits"
+          <> short 'x'
+          <> help "show prefix and base unit as separate keys"
       )
 
 startDay :: Parser (Maybe Day)
