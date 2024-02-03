@@ -44,11 +44,10 @@ run (CLIOptions CommonOptions {coVerbosity} s) = do
     err (AppException es) = do
       mapM_ (logError . displayText) $ concatMap showError es
       exitFailure
-    level x
-      | x == 0 = LevelError
-      | x == 1 = LevelWarn
-      | x == 2 = LevelInfo
-      | otherwise = LevelDebug
+    level 0 = LevelError
+    level 1 = LevelWarn
+    level 2 = LevelInfo
+    level _ = LevelDebug
 
 runFetch
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
