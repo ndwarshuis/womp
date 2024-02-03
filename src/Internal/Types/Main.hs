@@ -24,13 +24,13 @@ import RIO.Time
 data AllTreeDisplayOptions = AllTreeDisplayOptions
   { atdoOpts :: !TreeDisplayOptions
   , atdoShowUnknowns :: !Bool
-  , atdoUnityUnits :: !Bool
+  , atdoUnits :: !(Maybe Prefix)
   , atdoRoundDigits :: !Int
   }
 
 data AllTabularDisplayOptions = AllTabularDisplayOptions
   { atabShowUnknowns :: !Bool
-  , atabUnityUnits :: !Bool
+  , atabUnits :: !(Maybe Prefix)
   , atabRoundDigits :: !Int
   , atabSort :: ![SortKey]
   }
@@ -489,6 +489,7 @@ data AppError
   | SortKeys !Text
   | EmptySchedule !Bool
   | NormalizeError !Int
+  | PrefixError !Text
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)
@@ -501,14 +502,14 @@ data CustomIngError
 --------------------------------------------------------------------------------
 -- units
 
-data UnitName
+data Measurement
   = Gram
   | Calorie
   deriving (Show, Eq, Ord, Generic, ToJSON)
 
 data Unit = Unit
-  { unitBase :: Prefix
-  , unitName :: UnitName
+  { unitPrefix :: Prefix
+  , unitMeasurement :: Measurement
   }
   deriving (Show, Eq, Generic, ToJSON)
 
@@ -525,12 +526,12 @@ prefixSymbol Kilo = "k"
 prefixSymbol Mega = "M"
 prefixSymbol Giga = "G"
 
-unitSymbol :: UnitName -> Text
-unitSymbol Calorie = "cal"
-unitSymbol Gram = "g"
+measurementSymbol :: Measurement -> Text
+measurementSymbol Calorie = "cal"
+measurementSymbol Gram = "g"
 
 tunit :: Unit -> Text
-tunit (Unit p n) = T.append (prefixSymbol p) (unitSymbol n)
+tunit (Unit p n) = T.append (prefixSymbol p) (measurementSymbol n)
 
 instance C.ToField Unit where
   toField = encodeUtf8 . tunit

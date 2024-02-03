@@ -103,8 +103,9 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
       throwIO $ AppException $ foldr (<>) e es
     err x = catch (Nothing <$ x) $ \(AppException es) -> pure $ Just es
 
-showError :: AppError -> [T.Text]
+showError :: AppError -> [Text]
 showError other = case other of
+  PrefixError p -> [T.append "Could not parse to prefix: " p]
   NormalizeError x -> [T.append "Normalization constant must be 1 or more, got " $ tshow x]
   EmptySchedule True -> ["Empty schedule after expanding date ranges"]
   EmptySchedule False -> ["Schedule in plan is empty"]
@@ -144,10 +145,10 @@ fmtCustomError (CustomDups n ns) =
     ]
 fmtCustomError (TooMuchMass n) = T.append "Mass for custom ingredient over 100g: " n
 
-keyVals :: [(T.Text, T.Text)] -> T.Text
+keyVals :: [(Text, Text)] -> Text
 keyVals = T.intercalate "; " . fmap (uncurry keyVal)
 
-keyVal :: T.Text -> T.Text -> T.Text
+keyVal :: Text -> Text -> Text
 keyVal a b = T.concat [a, "=", b]
 
 --------------------------------------------------------------------------------
@@ -166,7 +167,7 @@ prefixValue Kilo = 3
 prefixValue Mega = 6
 prefixValue Giga = 9
 
-parseUnit :: T.Text -> Maybe Unit
+parseUnit :: Text -> Maybe Unit
 parseUnit s = catchError nonUnity (const def)
   where
     def = parseName Unity s
@@ -187,6 +188,20 @@ parseUnit s = catchError nonUnity (const def)
       "cal" -> return $ Unit p Calorie
       "g" -> return $ Unit p Gram
       _ -> Nothing
+
+parseCLIPrefix :: Text -> Maybe Prefix
+parseCLIPrefix "G" = Just Giga
+parseCLIPrefix "M" = Just Mega
+parseCLIPrefix "K" = Just Kilo
+parseCLIPrefix "h" = Just Hecto
+parseCLIPrefix "da" = Just Deca
+parseCLIPrefix "-" = Just Unity
+parseCLIPrefix "d" = Just Deci
+parseCLIPrefix "c" = Just Centi
+parseCLIPrefix "m" = Just Milli
+parseCLIPrefix "u" = Just Micro
+parseCLIPrefix "n" = Just Nano
+parseCLIPrefix s = readMaybe $ T.unpack $ T.toTitle s
 
 raisePower :: Int -> Scientific -> Scientific
 raisePower x s = scientific (coefficient s) (base10Exponent s + x)

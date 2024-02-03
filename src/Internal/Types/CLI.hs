@@ -32,7 +32,7 @@ data CommonExportOptions = CommonExportOptions
   { ceoMealplan :: !MealplanOptions
   , ceoGroup :: !GroupOptions
   , ceoShowUnknowns :: !Bool
-  , ceoUnityUnits :: !Bool
+  , ceoPrefix :: !(Maybe Text)
   }
 
 data TabularExportOptions = TabularExportOptions

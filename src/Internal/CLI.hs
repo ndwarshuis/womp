@@ -32,28 +32,22 @@ subcommand :: Parser SubCommand
 subcommand =
   hsubparser
     ( command
-        "fetch"
+        "table"
         ( info
-            (Fetch <$> fetchDump)
-            (progDesc "fetch a food by ID")
+            (ExportTabular <$> tabular)
+            (progDesc "export meal plan in tabular format")
         )
-        <> command
-          "dump"
-          ( info
-              (Dump <$> fetchDump)
-              (progDesc "dump JSON for food by ID")
-          )
-        <> command
-          "table"
-          ( info
-              (ExportTabular <$> tabular)
-              (progDesc "export meal plan in tabular format")
-          )
         <> command
           "tree"
           ( info
               (ExportTree <$> tree)
               (progDesc "export meal plan in tree format")
+          )
+        <> command
+          "summary"
+          ( info
+              (Summarize <$> summarize)
+              (progDesc "print table of meals and their ingredients")
           )
         <> command
           "nutrients"
@@ -62,10 +56,16 @@ subcommand =
               (progDesc "list nutrients available for parsing")
           )
         <> command
-          "summary"
+          "fetch"
           ( info
-              (Summarize <$> summarize)
-              (progDesc "print table of meals and their ingredients")
+              (Fetch <$> fetchDump)
+              (progDesc "fetch a food by ID")
+          )
+        <> command
+          "dump"
+          ( info
+              (Dump <$> fetchDump)
+              (progDesc "dump JSON for food by ID")
           )
     )
 
@@ -132,10 +132,12 @@ common =
           <> short 'u'
           <> help "display unknown nutrients in output"
       )
-    <*> switch
-      ( long "unityUnits"
-          <> short 'U'
-          <> help "show all masses in grams (no prefix)"
+    <*> optional
+      ( strOption
+          ( long "prefix"
+              <> short 'p'
+              <> help "force all masses to this prefix (energy will remain in kcal)"
+          )
       )
 
 tabular :: Parser TabularExportOptions

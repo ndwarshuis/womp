@@ -10,6 +10,7 @@ import Internal.Display
 import Internal.Export
 import Internal.Ingest
 import Internal.Types.CLI
+import Internal.Types.Dhall
 import Internal.Types.Main
 import Internal.Utils
 import Options.Applicative
@@ -69,18 +70,16 @@ runExportTabular
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
   => TabularExportOptions
   -> m ()
-runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} = do
-  case parseSortKeys tabSort of
-    Nothing -> throwAppErrorIO (SortKeys tabSort)
-    Just ks -> go ks =<< readDisplayTrees (ceoMealplan tabCommonExport)
+runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} =
+  combineErrorIOM2 readTrees getOpts $ \ts opts ->
+    liftIO $
+      BL.putStr $
+        treeToCSV opts (tsvOptions tabHeader) (ceoGroup tabCommonExport) ts
   where
-    go ks =
-      liftIO
-        . BL.putStr
-        . treeToCSV
-          (allTabularDisplayOpts ks tos)
-          (tsvOptions tabHeader)
-          (ceoGroup tabCommonExport)
+    readTrees = readDisplayTrees (ceoMealplan tabCommonExport)
+    getOpts = do
+      ks <- parseSortKeysIO tabSort
+      allTabularDisplayOpts ks tos
 
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -95,9 +94,10 @@ runExportTree
   => TreeExportOptions
   -> m ()
 runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
-  ts <- readDisplayTrees $ ceoMealplan treeCommonExport
-  liftIO $ go $ treeToJSON (allTreeDisplayOpts t) gos ts
+  combineErrorIOM2 readTrees (allTreeDisplayOpts t) $ \ts atds ->
+    liftIO $ go $ treeToJSON atds gos ts
   where
+    readTrees = readDisplayTrees $ ceoMealplan treeCommonExport
     gos = ceoGroup treeCommonExport
     go = if treeJSON then BL.putStr . A.encode else B.putStr . Y.encode
 
@@ -105,31 +105,41 @@ runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients =
   BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
 
-allTreeDisplayOpts :: TreeExportOptions -> AllTreeDisplayOptions
+allTreeDisplayOpts :: MonadUnliftIO m => TreeExportOptions -> m AllTreeDisplayOptions
 allTreeDisplayOpts
   TreeExportOptions
     { treeDisplay
     , treeCommonExport =
       CommonExportOptions
         { ceoShowUnknowns
-        , ceoUnityUnits
+        , ceoPrefix
         , ceoMealplan = MealplanOptions {moRoundDigits}
         }
-    } =
-    AllTreeDisplayOptions treeDisplay ceoShowUnknowns ceoUnityUnits moRoundDigits
+    } = do
+    p <- mapM parseCLIPrefixIO ceoPrefix
+    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits
 
-allTabularDisplayOpts :: [SortKey] -> TabularExportOptions -> AllTabularDisplayOptions
+allTabularDisplayOpts
+  :: MonadUnliftIO m
+  => [SortKey]
+  -> TabularExportOptions
+  -> m AllTabularDisplayOptions
 allTabularDisplayOpts
   ks
   TabularExportOptions
     { tabCommonExport =
       CommonExportOptions
         { ceoShowUnknowns
-        , ceoUnityUnits
+        , ceoPrefix
         , ceoMealplan = MealplanOptions {moRoundDigits}
         }
-    } =
-    AllTabularDisplayOptions ceoShowUnknowns ceoUnityUnits moRoundDigits ks
+    } = do
+    p <- mapM parseCLIPrefixIO ceoPrefix
+    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ks
+
+parseCLIPrefixIO :: MonadUnliftIO m => Text -> m Prefix
+parseCLIPrefixIO s =
+  maybe (throwAppErrorIO $ PrefixError s) return $ parseCLIPrefix s
 
 tsvOptions :: Bool -> C.EncodeOptions
 tsvOptions h =
@@ -137,6 +147,10 @@ tsvOptions h =
     { C.encDelimiter = fromIntegral (ord '\t')
     , C.encIncludeHeader = h
     }
+
+parseSortKeysIO :: MonadUnliftIO m => Text -> m [SortKey]
+parseSortKeysIO s =
+  maybe (throwAppErrorIO (SortKeys s)) pure $ parseSortKeys s
 
 parseSortKeys :: Text -> Maybe [SortKey]
 parseSortKeys "" = Just []

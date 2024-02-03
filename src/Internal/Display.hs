@@ -105,7 +105,7 @@ treeToJSON_ o (DisplayTree_ ms e g) =
     , "energy"
         .= object
           [ "value" .= roundDigits (atdoRoundDigits o) e
-          , "unit" .= Unit Kilo Calorie
+          , "unit" .= kcal
           ]
     , "mass" .= nodeToJSON o "Total" Unity ms
     ]
@@ -125,7 +125,7 @@ nodeToJSON o@(AllTreeDisplayOptions u e uy r) n p (DisplayNode v ks us) =
       ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
       ++ ["unknown" .= mapU us | doExpandedUnits u]
   where
-    (p', v') = unityMaybe uy p $ unMass v
+    (p', v') = convertWithPrefix uy p r $ unMass v
 
     mapK = fmap (\(DisplayNutrient n' p'', v'') -> nodeToJSON o n' p'' v'') . M.toList
 
@@ -133,27 +133,24 @@ nodeToJSON o@(AllTreeDisplayOptions u e uy r) n p (DisplayNode v ks us) =
 
     goUnk uts v'' =
       let (p'', v''') =
-            unityMaybe uy (autoPrefix $ unMass v'') $ unMass v''
+            convertWithPrefix uy (autoPrefix $ unMass v'') r $ unMass v''
        in object
             [ encodeValue v'''
             , encodeUnit p''
             , "trees" .= uts
             ]
 
-    encodeValue = ("value" .=) . roundDigits r
+    encodeValue = ("value" .=)
     encodeUnit p'' =
       let u' = Unit p'' Gram
        in if e then "unit" .= u' else "unit" .= tunit u'
 
--- | Convert a value and its prefix depending on if we want all values to be
--- displayed in their native units or all in unity (ie "grams" with no prefix).
--- Assume the incoming value is in grams
-unityMaybe :: Bool -> Prefix -> Scientific -> (Prefix, Scientific)
-unityMaybe True _ v = (Unity, v)
-unityMaybe False p v = (p, raisePower (-prefixValue p) v)
-
-toUnity :: Prefix -> Scientific -> Scientific
-toUnity p = raisePower (prefixValue p)
+-- | Convert and round a number given its default prefix or a prefix we choose
+-- if supplied
+convertWithPrefix :: Maybe Prefix -> Prefix -> Int -> Scientific -> (Prefix, Scientific)
+convertWithPrefix p dp r v = (p', roundDigits r $ raisePower (-prefixValue p') v)
+  where
+    p' = fromMaybe dp p
 
 treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> NonEmpty (DisplayRow g)
 treeToRows (AllTabularDisplayOptions su uu r _) (DisplayTree_ (DisplayNode v ks us) e g) =
@@ -162,11 +159,11 @@ treeToRows (AllTabularDisplayOptions su uu r _) (DisplayTree_ (DisplayNode v ks 
     row = DisplayRow g
 
     dpyRow n pnt v' u =
-      let (p'', v'') = unityMaybe uu (unitBase u) v'
-       in row n pnt (roundDigits r v'') (u {unitBase = p''})
+      let (p'', v'') = convertWithPrefix uu (unitPrefix u) r v'
+       in row n pnt v'' (u {unitPrefix = p''})
 
     -- multiply by 1000 here since calories are actually given in kcal
-    energy = dpyRow "Energy" Nothing (unEnergy e * 1000) (Unit Kilo Calorie)
+    energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
 
     totalMass = dpyRow "Total Mass" Nothing (unMass v) (Unit Unity Gram)
 
@@ -218,10 +215,13 @@ compareRowKey a b SortKey {skField, skAsc} = case (f a b, skAsc) of
       -- compare units first so that calories and grams will sort separately,
       -- and sort the prefix last such that "small looking" things are below
       -- "large looking" things
-      go (unitName . drUnit) x y
+      go (unitMeasurement . drUnit) x y
         <> go getValue x y
-        <> go (unitBase . drUnit) x y
-    getValue x = toUnity (unitBase $ drUnit x) (drValue x)
+        <> go (unitPrefix . drUnit) x y
+    getValue x = toUnity (unitPrefix $ drUnit x) (drValue x)
+
+toUnity :: Prefix -> Scientific -> Scientific
+toUnity p = raisePower (prefixValue p)
 
 dumpNutrientTree :: [NutTreeRow]
 dumpNutrientTree = goTree Nothing $ nutHierarchy 0
@@ -250,3 +250,6 @@ dumpNutrientTree = goTree Nothing $ nutHierarchy 0
         NutTreeRow anName parent . Just . fst <$> N.toList anChoices
 
     goSummed parent SummedNutrient {snName} = NutTreeRow snName parent Nothing
+
+kcal :: Unit
+kcal = Unit Kilo Calorie

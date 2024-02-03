@@ -62,6 +62,8 @@ deriving instance ToJSON Prefix
 
 deriving instance Ord Prefix
 
+deriving instance Read Prefix
+
 deriving instance Bounded Prefix
 
 deriving instance Enum Weekday
