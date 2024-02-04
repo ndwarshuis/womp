@@ -1,7 +1,6 @@
 module Internal.CLI (parseCLI) where
 
-import Data.Char (toUpper)
-import Internal.Types.Main
+import Internal.Types.CLI
 import Options.Applicative
 import RIO hiding (force)
 import RIO.Time
@@ -22,46 +21,51 @@ options = CLIOptions <$> commonOptions <*> subcommand
 commonOptions :: Parser CommonOptions
 commonOptions =
   CommonOptions
-    <$> optional
-      ( strOption
-          ( long "apikey"
-              <> short 'k'
-              <> metavar "APIKEY"
-              <> help "API key for USDA FoodData Central"
-          )
-      )
-    <*> switch
-      ( long "verbose"
-          <> short 'v'
-          <> help "be obnoxious"
-      )
+    <$> (length <$> many (flag' () c))
+  where
+    c =
+      long "verbose"
+        <> short 'v'
+        <> help "be obnoxious (multiple times to escalate)"
 
 subcommand :: Parser SubCommand
 subcommand =
-  subparser
+  hsubparser
     ( command
-        "fetch"
+        "table"
         ( info
-            (Fetch <$> fetchDump)
-            (progDesc "fetch a food by ID")
+            (ExportTabular <$> tabular)
+            (progDesc "export meal plan in tabular format")
         )
+        <> command
+          "tree"
+          ( info
+              (ExportTree <$> tree)
+              (progDesc "export meal plan in tree format")
+          )
+        <> command
+          "summary"
+          ( info
+              (Summarize <$> summarize)
+              (progDesc "print table of meals and their ingredients")
+          )
+        <> command
+          "nutrients"
+          ( info
+              (pure ListNutrients)
+              (progDesc "list nutrients available for parsing")
+          )
+        <> command
+          "fetch"
+          ( info
+              (Fetch <$> fetchDump)
+              (progDesc "fetch a food by ID")
+          )
         <> command
           "dump"
           ( info
               (Dump <$> fetchDump)
               (progDesc "dump JSON for food by ID")
-          )
-        <> command
-          "export"
-          ( info
-              (Export <$> export)
-              (progDesc "export data for aggregated meal(s) in tabular form")
-          )
-        <> command
-          "summarize"
-          ( info
-              (Summarize <$> summarize)
-              (progDesc "summarize nutrients for a given time period")
           )
     )
 
@@ -76,14 +80,15 @@ fetchDump =
           <> help "ID for the food to pull from the database"
       )
     <*> force
+    <*> apikey
 
-export :: Parser ExportOptions
-export =
-  ExportOptions
+mealplan :: Parser MealplanOptions
+mealplan =
+  MealplanOptions
     <$> strOption
       ( long "config"
           <> short 'c'
-          <> metavar "CONFIG"
+          <> metavar "PATH"
           <> help "path to config with schedules and meals"
       )
     <*> dateInterval
@@ -92,24 +97,104 @@ export =
       auto
       ( long "threads"
           <> short 't'
-          <> metavar "THREADS"
-          <> help "number of threads for processing ingredients"
+          <> metavar "NUM"
+          <> help
+            ( unwords
+                [ "number of threads for processing ingredients;"
+                , "anything less than 1 will use all available cores"
+                ]
+            )
           <> value 2
+      )
+    <*> apikey
+    <*> option
+      auto
+      ( long "round"
+          <> short 'r'
+          <> metavar "DIGITS"
+          <> help "number of digits after decimal to keep"
+          <> value 3
       )
 
 summarize :: Parser SummarizeOptions
 summarize =
   SummarizeOptions
+    <$> mealplan
+    <*> headerTab
+
+common :: Parser CommonExportOptions
+common =
+  CommonExportOptions
+    <$> mealplan
+    <*> grouping
+    <*> switch
+      ( long "unknowns"
+          <> short 'u'
+          <> help "display unknown nutrients in output"
+      )
+    <*> optional
+      ( strOption
+          ( long "prefix"
+              <> short 'p'
+              <> help "force all masses to this prefix (energy will remain in kcal)"
+          )
+      )
+
+tabular :: Parser TabularExportOptions
+tabular =
+  TabularExportOptions
+    <$> common
+    <*> strOption
+      ( long "sort"
+          <> short 'S'
+          <> metavar "KEYLIST"
+          <> help sortHelp
+          <> value ""
+      )
+    <*> headerTab
+  where
+    sortHelp =
+      unwords
+        [ "comma separated list of sort keys; valid keys are"
+        , "'date', 'meal', 'ingredient', 'nutrient', 'parent'"
+        , "and 'value' which correspond to the headers to be sorted;"
+        , "each must be prefixed with '+' or '-' for ascending or"
+        , "descending respectively"
+        ]
+
+headerTab :: Parser Bool
+headerTab =
+  switch
+    ( long "header"
+        <> short 'H'
+        <> help "include header above the table"
+    )
+
+grouping :: Parser GroupOptions
+grouping =
+  GroupOptions
+    <$> switch (long "date" <> short 'D' <> help "group by date range")
+    <*> switch (long "meal" <> short 'M' <> help "group by meal")
+    <*> switch (long "ingredient" <> short 'G' <> help "group by ingredient")
+
+tree :: Parser TreeExportOptions
+tree =
+  TreeExportOptions
     <$> displayOptions
     <*> switch
       ( long "json"
           <> short 'j'
-          <> help "summarize output in JSON (display options are ignored)"
+          <> help "output JSON instead of YAML"
       )
-    <*> export
+    <*> common
 
 force :: Parser Bool
-force = switch (long "force" <> short 'f' <> help "force retrieve")
+force =
+  switch
+    ( long "force"
+        <> short 'f'
+        <> help "download ingredients even if they are already cached"
+    )
 
 dateInterval :: Parser DateIntervalOptions
 dateInterval =
@@ -129,8 +214,8 @@ dateInterval =
           auto
           ( long "interval"
               <> short 'I'
-              <> metavar "INTERVAL"
-              <> help "length of time (in days) to aggregate summary"
+              <> metavar "DAYS"
+              <> help "aggregate in intervals of this length throughout the time denoted by --start and --end/--days"
           )
       )
     <*> option
@@ -142,28 +227,13 @@ dateInterval =
           <> value 1
       )
 
-displayOptions :: Parser DisplayOptions
+displayOptions :: Parser TreeDisplayOptions
 displayOptions =
-  DisplayOptions
+  TreeDisplayOptions
     <$> switch
-      ( long "unknowns"
-          <> short 'u'
-          <> help "display unknown nutrients in output"
-      )
-    <*> switch
-      ( long "members"
-          <> short 'm'
-          <> help "display members that are included with each value"
-      )
-    <*> switch
       ( long "expandUnits"
           <> short 'x'
-          <> help "show prefix and base unit as separate keys (JSON only)"
-      )
-    <*> switch
-      ( long "unityUnits"
-          <> short 'U'
-          <> help "show all masses in grams (no prefix)"
+          <> help "show prefix and base unit as separate keys"
       )
 
 startDay :: Parser (Maybe Day)
@@ -187,10 +257,21 @@ parseDay l s d =
       ( strOption
           ( long l
               <> short s
-              <> metavar (fmap toUpper l)
+              <> metavar "YYYY-MM-DD"
               <> help d
           )
       )
 
 readDay :: String -> Day
 readDay = parseTimeOrError False defaultTimeLocale "%Y-%m-%d"
+
+apikey :: Parser (Maybe APIKey)
+apikey =
+  optional
+    ( strOption
+        ( long "apikey"
+            <> short 'k'
+            <> metavar "APIKEY"
+            <> help "API key for USDA FoodData Central"
+        )
+    )

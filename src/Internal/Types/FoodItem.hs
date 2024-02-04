@@ -1,27 +1,63 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 
-module Internal.Types.FoodItem where
+module Internal.Types.FoodItem
+  ( ParsedFoodItem
+  , MappedFoodItem
+  , NutrientMap
+  , FoodItem (..)
+  , FoodNutrient (..)
+  , Nutrient (..)
+  , ValidNutrient (..)
+  , FID (..)
+  , NID (..)
+  , Mass (..)
+  , ProteinConversion (..)
+  , Unit (..)
+  , Measurement (..)
+  , Prefix (..)
+  , prefixSymbol
+  , measurementSymbol
+  , tunit
+  )
+where
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Csv (ToField, toField)
 import Data.Scientific
 import GHC.Generics
 import Internal.Types.Dhall
 import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
+import qualified RIO.Text as T
 
-type ParsedFoodItem = FoodItem FID [FoodNutrient]
+-- | Food item with its nutrients validated and put into a convenient map
+type MappedFoodItem = FoodItem NutrientMap
+
+-- | Food item freshly parsed from JSON
+type ParsedFoodItem = FoodItem [FoodNutrient]
+
+type NutrientMap = Map NID ValidNutrient
+
+-- | Nutrient that has been validated (which means it has an ID, non-negative
+-- mass, unit, etc)
+data ValidNutrient = ValidNutrient
+  { vnAmount :: Mass
+  , vnPrefix :: Prefix
+  , vnName :: Maybe Text
+  }
+  deriving (Show, Eq)
 
 -- TODO need a way to filter out/warn user on bad nutrient data
-data FoodItem i n = FoodItem
-  { fiId :: i
-  , fiDescription :: Text
+data FoodItem n = FoodItem
+  { fiDescription :: Text
   , fiFoodNutrients :: n
   , fiCalorieConversion :: CalorieConversion
   , fiProteinConversion :: ProteinConversion
   }
-  deriving (Generic)
+  deriving (Generic, Show)
 
 instance FromJSON ParsedFoodItem where
   parseJSON (Object v) = do
@@ -37,8 +73,7 @@ parseFoodItem v = do
   c <- firstM parseCalorieConversion ncf
   p <- firstM parseProteinConversion ncf
   FoodItem
-    <$> v .: "fdcId"
-    <*> v .: "description"
+    <$> v .: "description"
     <*> (v .:? "foodNutrients" .!= [])
     <*> pure (fromMaybe defCalorie c)
     <*> pure (fromMaybe defProtein p)
@@ -68,26 +103,6 @@ firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM _ [] = return Nothing
 firstM f (x : xs) = maybe (firstM f xs) (return . Just) =<< f x
 
-data LabelNutrient = LabelNutrient
-  { lnFat :: Maybe Scientific
-  , lnSaturatedFat :: Maybe Scientific
-  , lnTransFat :: Maybe Scientific
-  , lnCholesterol :: Maybe Scientific
-  , lnSodium :: Maybe Scientific
-  , lnCarbohydrates :: Maybe Scientific
-  , lnFiber :: Maybe Scientific
-  , lnSugars :: Maybe Scientific
-  , lnProtein :: Maybe Scientific
-  , lnCalcium :: Maybe Scientific
-  , lnIron :: Maybe Scientific
-  , lnPotassium :: Maybe Scientific
-  , lnCalories :: Maybe Scientific
-  }
-  deriving (Show, Generic)
-
-instance FromJSON LabelNutrient where
-  parseJSON = recordParseJSON "ln"
-
 data FoodNutrient = FoodNutrient
   { fnNutrient :: Maybe Nutrient
   , fnAmount :: Maybe Mass
@@ -111,13 +126,7 @@ newtype FID = FID {unFID :: Natural}
   deriving (Eq, Read, Show, FromJSON, ToJSON) via Natural
 
 newtype NID = NID {unNID :: Natural}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Natural
-
-newtype Mass = Mass {unMass :: Scientific}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, Fractional) via Scientific
-
-newtype ProteinConversion = ProteinConversion {unPC :: Scientific}
-  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Scientific
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, ToField) via Natural
 
 recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
 recordParseJSON s = genericParseJSON (recordOptions s)
@@ -134,3 +143,73 @@ recordOptions x =
     { fieldLabelModifier = stripRecordPrefix x
     , rejectUnknownFields = False
     }
+
+--------------------------------------------------------------------------------
+-- units
+
+data Measurement
+  = Gram
+  | Calorie
+  deriving (Show, Eq, Ord, Generic, ToJSON)
+
+data Unit = Unit
+  { unitPrefix :: Prefix
+  , unitMeasurement :: Measurement
+  }
+  deriving (Show, Eq, Generic, ToJSON)
+
+prefixSymbol :: Prefix -> Text
+prefixSymbol Nano = "n"
+prefixSymbol Micro = "μ"
+prefixSymbol Milli = "m"
+prefixSymbol Centi = "c"
+prefixSymbol Deci = "d"
+prefixSymbol Unity = ""
+prefixSymbol Deca = "da"
+prefixSymbol Hecto = "h"
+prefixSymbol Kilo = "k"
+prefixSymbol Mega = "M"
+prefixSymbol Giga = "G"
+
+measurementSymbol :: Measurement -> Text
+measurementSymbol Calorie = "cal"
+measurementSymbol Gram = "g"
+
+tunit :: Unit -> Text
+tunit (Unit p n) = T.append (prefixSymbol p) (measurementSymbol n)
+
+instance ToField Unit where
+  toField = encodeUtf8 . tunit
+
+data Prefix
+  = Nano
+  | Micro
+  | Milli
+  | Centi
+  | Deci
+  | Unity
+  | Deca
+  | Hecto
+  | Kilo
+  | Mega
+  | Giga
+  deriving (Show, Eq, Ord, Generic, ToJSON, Read, Bounded)
+
+newtype Mass = Mass {unMass :: Scientific}
+  deriving
+    ( Read
+    , Show
+    , FromJSON
+    , ToJSON
+    , Eq
+    , Ord
+    , Num
+    , Fractional
+    , Real
+    , ToField
+    , RealFrac
+    )
+    via Scientific
+
+newtype ProteinConversion = ProteinConversion {unPC :: Scientific}
+  deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Scientific

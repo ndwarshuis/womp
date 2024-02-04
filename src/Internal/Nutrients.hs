@@ -1,10 +1,19 @@
-module Internal.Nutrients where
+module Internal.Nutrients
+  ( nutHierarchy
+  , standardMass
+  , ignoredNutrients
+  -- used for computing calories
+  , lipid
+  , dispProtein
+  , carbDiff
+  )
+where
 
-import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
 import qualified RIO.Set as S
+import qualified RIO.Text as T
 
 standardMass :: Mass
 standardMass = 100
@@ -187,10 +196,10 @@ mufa_22_1 :: MeasuredNutrient
 mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Unity $ (1317, Nothing) :| [(2012, Nothing)]
 
 mufa_22_1_n9 :: MeasuredNutrient
-mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 ω-9 (Erucic Acid)" Unity
+mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 omega-9 (Erucic Acid)" Unity
 
 mufa_22_1_n11 :: MeasuredNutrient
-mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 ω-11" Unity
+mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 omega-11" Unity
 
 mufa_24_1 :: MeasuredNutrient
 mufa_24_1 = Direct $ DirectNutrient 1312 "MUFA 24:1" Unity
@@ -226,7 +235,7 @@ pufa_18_2_CLA :: MeasuredNutrient
 pufa_18_2_CLA = Direct $ DirectNutrient 1311 "PUFA 18:2 (conjugated linoleic acids)" Unity
 
 pufa_18_2_n6_cc :: MeasuredNutrient
-pufa_18_2_n6_cc = Direct $ DirectNutrient 1316 "PUFA 18:2 ω-6 c,c (Linoleic Acid)" Unity
+pufa_18_2_n6_cc = Direct $ DirectNutrient 1316 "PUFA 18:2 omega-6 c,c (Linoleic Acid)" Unity
 
 pufa_18_3 :: MeasuredNutrient
 pufa_18_3 = Direct $ DirectNutrient 1270 "PUFA 18:3" Unity
@@ -236,10 +245,10 @@ pufa_18_3i :: MeasuredNutrient
 pufa_18_3i = Direct $ DirectNutrient 1409 "PUFA 18:2 isomers" Unity
 
 pufa_18_3_n6_ccc :: MeasuredNutrient
-pufa_18_3_n6_ccc = Direct $ DirectNutrient 1321 "PUFA 18:3 ω-6 c,c,c (Gamma-linolenic Acid)" Unity
+pufa_18_3_n6_ccc = Direct $ DirectNutrient 1321 "PUFA 18:3 omega-6 c,c,c (Gamma-linolenic Acid)" Unity
 
 pufa_18_3_n3_ccc :: MeasuredNutrient
-pufa_18_3_n3_ccc = Direct $ DirectNutrient 1404 "PUFA 18:3 ω-3 c,c,c (Alpha-linolenic Acid)" Unity
+pufa_18_3_n3_ccc = Direct $ DirectNutrient 1404 "PUFA 18:3 omega-3 c,c,c (Alpha-linolenic Acid)" Unity
 
 pufa_18_4 :: MeasuredNutrient
 pufa_18_4 = Direct $ DirectNutrient 1276 "PUFA 18:4" Unity
@@ -254,13 +263,13 @@ pufa_20_3 :: MeasuredNutrient
 pufa_20_3 = Direct $ DirectNutrient 1325 "PUFA 20:3" Unity
 
 pufa_20_3_n3 :: MeasuredNutrient
-pufa_20_3_n3 = Direct $ DirectNutrient 1405 "PUFA 20:3 ω-3 c,c,c (Eicosatetraenoic Acid)" Unity
+pufa_20_3_n3 = Direct $ DirectNutrient 1405 "PUFA 20:3 omega-3 c,c,c (Eicosatetraenoic Acid)" Unity
 
 pufa_20_3_n6 :: MeasuredNutrient
-pufa_20_3_n6 = Direct $ DirectNutrient 1406 "PUFA 20:3 ω-6 c,c,c (Dihomo-gamma-linolenic Acid)" Unity
+pufa_20_3_n6 = Direct $ DirectNutrient 1406 "PUFA 20:3 omega-6 c,c,c (Dihomo-gamma-linolenic Acid)" Unity
 
 pufa_20_3_n9 :: MeasuredNutrient
-pufa_20_3_n9 = Direct $ DirectNutrient 1414 "PUFA 20:3 ω-9 c,c,c (Mead Acid)" Unity
+pufa_20_3_n9 = Direct $ DirectNutrient 1414 "PUFA 20:3 omega-9 c,c,c (Mead Acid)" Unity
 
 pufa_20_4 :: MeasuredNutrient
 pufa_20_4 = Direct $ DirectNutrient 1271 "PUFA 20:4" Unity
@@ -284,13 +293,13 @@ pufa_22_5 :: SummedNutrient
 pufa_22_5 = SummedNutrient "PUFA 22:5" Unity
 
 pufa_22_5_n3 :: MeasuredNutrient
-pufa_22_5_n3 = Direct $ DirectNutrient 1280 "PUFA 22:5 ω-3 c,c,c,c,c (Docosapentaenoic Acid)" Unity
+pufa_22_5_n3 = Direct $ DirectNutrient 1280 "PUFA 22:5 omega-3 c,c,c,c,c (Docosapentaenoic Acid)" Unity
 
 pufa_22_6 :: SummedNutrient
 pufa_22_6 = SummedNutrient "PUFA 22:5" Unity
 
 pufa_22_6_n3 :: MeasuredNutrient
-pufa_22_6_n3 = Direct $ DirectNutrient 1272 "PUFA 22:6 ω-3 c,c,c,c,c,c (Docosahexaenoic Acid)" Unity
+pufa_22_6_n3 = Direct $ DirectNutrient 1272 "PUFA 22:6 omega-3 c,c,c,c,c,c (Docosahexaenoic Acid)" Unity
 
 -- | Carbohydrate level
 betaGlucan :: MeasuredNutrient
@@ -466,25 +475,25 @@ retinol :: MeasuredNutrient
 retinol = Direct $ DirectNutrient 1105 "Retinol" Micro
 
 alphaCarotene :: MeasuredNutrient
-alphaCarotene = Direct $ DirectNutrient 1108 "α-carotene" Micro
+alphaCarotene = Direct $ DirectNutrient 1108 "alpha-carotene" Micro
 
 betaCarotene :: MeasuredNutrient
-betaCarotene = Direct $ DirectNutrient 1107 "β-carotene" Micro
+betaCarotene = Direct $ DirectNutrient 1107 "beta-carotene" Micro
 
 cisBetaCarotene :: MeasuredNutrient
-cisBetaCarotene = Direct $ DirectNutrient 1159 "cis-β-carotene" Micro
+cisBetaCarotene = Direct $ DirectNutrient 1159 "cis-beta-carotene" Micro
 
 transBetaCarotene :: MeasuredNutrient
-transBetaCarotene = Direct $ DirectNutrient 2028 "trans-β-carotene" Micro
+transBetaCarotene = Direct $ DirectNutrient 2028 "trans-beta-carotene" Micro
 
 gammaCarotene :: MeasuredNutrient
-gammaCarotene = Direct $ DirectNutrient 1118 "γ-carotene" Micro
+gammaCarotene = Direct $ DirectNutrient 1118 "gamma-carotene" Micro
 
 alphaCryptoxanthin :: MeasuredNutrient
-alphaCryptoxanthin = Direct $ DirectNutrient 2032 "α-carotene" Micro
+alphaCryptoxanthin = Direct $ DirectNutrient 2032 "alpha-carotene" Micro
 
 betaCryptoxanthin :: MeasuredNutrient
-betaCryptoxanthin = Direct $ DirectNutrient 1120 "β-carotene" Micro
+betaCryptoxanthin = Direct $ DirectNutrient 1120 "beta-carotene" Micro
 
 vitaminB1 :: MeasuredNutrient
 vitaminB1 = Direct $ DirectNutrient 1165 "Vitamin B1 (thiamine)" Milli
@@ -551,28 +560,28 @@ vitaminD4 = Direct $ DirectNutrient 2059 "Vitamin D4 (22-dihydroergocalciferol)"
 -- TODO if one really wants to get nerdy we could weight these by affinity for
 -- the vitamin E transport receptor (see wikipedia article)
 tocopherolAlpha :: MeasuredNutrient
-tocopherolAlpha = Direct $ DirectNutrient 1109 "Vitamin E (α-Tocopherol)" Micro
+tocopherolAlpha = Direct $ DirectNutrient 1109 "Vitamin E (alpha-Tocopherol)" Micro
 
 tocopherolBeta :: MeasuredNutrient
-tocopherolBeta = Direct $ DirectNutrient 1125 "Vitamin E (β-Tocopherol)" Micro
+tocopherolBeta = Direct $ DirectNutrient 1125 "Vitamin E (beta-Tocopherol)" Micro
 
 tocopherolGamma :: MeasuredNutrient
-tocopherolGamma = Direct $ DirectNutrient 1126 "Vitamin E (γ-Tocopherol)" Micro
+tocopherolGamma = Direct $ DirectNutrient 1126 "Vitamin E (gamma-Tocopherol)" Micro
 
 tocopherolDelta :: MeasuredNutrient
-tocopherolDelta = Direct $ DirectNutrient 1127 "Vitamin E (δ-Tocopherol)" Micro
+tocopherolDelta = Direct $ DirectNutrient 1127 "Vitamin E (delta-Tocopherol)" Micro
 
 tocotrienolAlpha :: MeasuredNutrient
-tocotrienolAlpha = Direct $ DirectNutrient 1128 "Vitamin E (α-Tocotrienol)" Micro
+tocotrienolAlpha = Direct $ DirectNutrient 1128 "Vitamin E (alpha-Tocotrienol)" Micro
 
 tocotrienolBeta :: MeasuredNutrient
-tocotrienolBeta = Direct $ DirectNutrient 1129 "Vitamin E (β-Tocotrienol)" Micro
+tocotrienolBeta = Direct $ DirectNutrient 1129 "Vitamin E (beta-Tocotrienol)" Micro
 
 tocotrienolGamma :: MeasuredNutrient
-tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (γ-Tocotrienol)" Micro
+tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (gamma-Tocotrienol)" Micro
 
 tocotrienolDelta :: MeasuredNutrient
-tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (δ-Tocotrienol)" Micro
+tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (delta-Tocotrienol)" Micro
 
 vitaminK1 :: MeasuredNutrient
 vitaminK1 = Direct $ DirectNutrient 1185 "Vitamin K1 (Phylloquinone)" Micro
@@ -778,3 +787,296 @@ ignoredNutrients =
     , 1329 -- lipids trans-mono
     , 1330 -- lipids trans-di
     ]
+
+allPhytosterols :: NonEmpty MeasuredNutrient
+allPhytosterols =
+  stigmastadiene
+    :| [ stigmastadiene
+       , stigmasterol
+       , campesterol
+       , brassicasterol
+       , betaSitosterol
+       , campestanol
+       , betaSitostanol
+       , delta_5_avenasterol
+       , delta_7_stigmastenol
+       , otherPhytosterols
+       , ergosterol
+       , ergosta_7_enol
+       , ergosta_7_22_dienol
+       , ergosta_5_7_dienol
+       ]
+
+allAminoAcids :: NonEmpty MeasuredNutrient
+allAminoAcids =
+  tryptophan
+    :| [ threonine
+       , isoleucine
+       , leucine
+       , lysine
+       , methionine
+       , cystine
+       , phenylalanine
+       , tyrosine
+       , valine
+       , arginine
+       , histidine
+       , alanine
+       , asparticAcid
+       , glutamicAcid
+       , glycine
+       , proline
+       , serine
+       , hydroxyproline
+       , asparagine
+       , cysteine
+       , glutamine
+       ]
+
+allMinerals :: NonEmpty MeasuredNutrient
+allMinerals =
+  boron
+    :| [ sodium
+       , magnesium
+       , phosphorus
+       , sulfur
+       , potassium
+       , calcium
+       , chromium
+       , manganese
+       , iron
+       , cobalt
+       , nickel
+       , copper
+       , zinc
+       , selenium
+       , molybdenum
+       , iodine
+       ]
+
+allTFAs :: NonEmpty MeasuredNutrient
+allTFAs =
+  tfa_14_1
+    :| [tfa_16_1, tfa_17_1, tfa_18_1, tfa_18_2, tfa_18_3, tfa_20_1, tfa_22_1]
+
+allSugars :: NonEmpty MeasuredNutrient
+allSugars =
+  sucrose
+    :| [ glucose
+       , fructose
+       , lactose
+       , maltose
+       , galactose
+       , raffinose
+       , stachyose
+       , verbascose
+       ]
+
+allSFAs :: NonEmpty MeasuredNutrient
+allSFAs =
+  sfa_4_0
+    :| [ sfa_5_0
+       , sfa_6_0
+       , sfa_7_0
+       , sfa_8_0
+       , sfa_9_0
+       , sfa_10_0
+       , sfa_11_0
+       , sfa_12_0
+       , sfa_14_0
+       , sfa_15_0
+       , sfa_16_0
+       , sfa_17_0
+       , sfa_18_0
+       , sfa_20_0
+       , sfa_21_0
+       , sfa_22_0
+       , sfa_23_0
+       , sfa_24_0
+       ]
+
+allIsoflavones :: NonEmpty MeasuredNutrient
+allIsoflavones = daidzein :| [daidzin, genistein, genistin, glycitin]
+
+allVitaminE :: NonEmpty MeasuredNutrient
+allVitaminE =
+  tocopherolAlpha
+    :| [ tocopherolBeta
+       , tocopherolGamma
+       , tocopherolDelta
+       , tocotrienolAlpha
+       , tocotrienolBeta
+       , tocotrienolGamma
+       , tocotrienolDelta
+       ]
+
+allVitaminA :: NonEmpty MeasuredNutrient
+allVitaminA =
+  retinol
+    :| [ alphaCarotene
+       , betaCarotene
+       , cisBetaCarotene
+       , transBetaCarotene
+       , gammaCarotene
+       , alphaCryptoxanthin
+       , betaCryptoxanthin
+       ]
+
+allCholine :: NonEmpty MeasuredNutrient
+allCholine =
+  freeCholine
+    :| [phosphoCholine, phosphotidylCholine, glycerophosphoCholine, sphingomyelinCholine]
+
+nutHierarchy :: ProteinConversion -> NutTree
+nutHierarchy n2Factor =
+  NutTree
+    { ntFractions =
+        leaf water
+          :| [ measuredLeaves (protein n2Factor) otherProteinMass allAminoAcids
+             , measuredLeaves ash otherInorganics allMinerals
+             , measured lipid $
+                nutTree
+                  otherLipids
+                  ( leaf cholesterol
+                      :| [ measuredLeaves tfas otherTFAs allTFAs
+                         , measuredLeaves sfas otherSFAs allSFAs
+                         , measured pufas pufas_
+                         , measured mufas mufas_
+                         , unmeasuredLeaves phytosterols allPhytosterols
+                         ]
+                  )
+             ]
+    , ntUnmeasuredHeader = carbDiff
+    , ntUnmeasuredTree = Just carbs
+    }
+  where
+    leaf = NutrientSingle . Leaf
+    group n p = NutrientSingle . UnmeasuredHeader (SummedNutrient n p)
+    measured h = NutrientSingle . MeasuredHeader h
+    unmeasured h = NutrientSingle . UnmeasuredHeader h
+    nutTree u xs =
+      NutTree
+        { ntFractions = xs
+        , ntUnmeasuredHeader = u
+        , ntUnmeasuredTree = Nothing
+        }
+    measuredLeaves h u xs = measured h $ nutTree u (leaf <$> xs)
+    unmeasuredLeaves h xs = unmeasured h (leaf <$> xs)
+    groupLeaves h u xs = group h u (leaf <$> xs)
+    unclassified x u = SummedNutrient (T.append x " (unclassified)") u
+
+    carbs =
+      nutTree otherCarbs $
+        leaf starch
+          :| [ leaf betaGlucan
+             , unmeasured totalSugars $ leaf <$> allSugars
+             , fiber
+             , vitamins
+             , organics
+             ]
+
+    fiber =
+      NutrientMany
+        ( MeasuredHeader
+            fiberBySolubility
+            ( nutTree otherFiberBySolubility $
+                fmap leaf (solubleFiber :| [insolubleFiber])
+            )
+            :| [ MeasuredHeader
+                  fiberByWeight
+                  ( nutTree otherFiberByWeight $
+                      fmap leaf (highMWFiber :| [lowMWFiber])
+                  )
+               ]
+        )
+
+    organics =
+      group "Organics" Milli $
+        lycopene_
+          :| [ luteins_
+             , unmeasuredLeaves isoflavones allIsoflavones
+             , measuredLeaves choline otherCholine allCholine
+             , leaf betaine
+             , leaf citricAcid
+             , leaf malicAcid
+             , leaf oxalicAcid
+             , leaf pyruvicAcid
+             , leaf quinicAcid
+             , leaf taurine
+             , leaf ergothioneine
+             , leaf phytoene
+             , leaf phytofluene
+             ]
+
+    lycopene_ =
+      measuredLeaves lycopene (unclassified "Lycopenes" Milli) $
+        transLycopene :| [cisLycopene]
+
+    luteins_ =
+      measuredLeaves luteins (unclassified "Luteins" Milli) $
+        transLutein :| [cisLutein, zeaxanthin]
+
+    vitamins =
+      group "Vitamins" Milli $
+        groupLeaves "Vitamin A" Micro allVitaminA
+          :| [ group "Vitamin B" Milli $
+                leaf vitaminB1
+                  :| [ leaf vitaminB2
+                     , leaf vitaminB3
+                     , leaf vitaminB5
+                     , leaf vitaminB6
+                     , leaf vitaminB7
+                     , measuredLeaves vitaminB9 otherFolate $ folinicAcid :| [levomefolicAcid]
+                     , leaf vitaminB12
+                     ]
+             , leaf vitaminC
+             , unmeasured vitaminD $
+                leaf calcifediol
+                  :| [ leaf vitaminD4
+                     , measuredLeaves vitaminD2andD3 otherVitaminD $
+                        vitaminD2 :| [vitaminD3]
+                     ]
+             , groupLeaves "Vitamin E" Milli allVitaminE
+             , group "Vitamin K" Micro $
+                fmap leaf $
+                  vitaminK1 :| [vitaminK2, dihydrophylloquinone]
+             ]
+
+    mufas_ =
+      nutTree otherMUFAs $
+        leaf mufa_12_1
+          :| [ leaf mufa_14_1
+             , leaf mufa_15_1
+             , leaf mufa_16_1
+             , leaf mufa_17_1
+             , leaf mufa_18_1
+             , leaf mufa_20_1
+             , measuredLeaves mufa_22_1 mufa_22_1_other $
+                mufa_22_1_n11 :| [mufa_22_1_n9]
+             , leaf mufa_24_1
+             ]
+
+    pufas_ =
+      nutTree otherPUFAs $
+        measuredLeaves
+          pufa_18_2
+          pufa_18_2_other
+          (pufa_18_2_CLA :| [pufa_18_2_n6_cc])
+          :| [ measuredLeaves
+                pufa_18_3
+                pufa_18_3_other
+                (pufa_18_3_n3_ccc :| [pufa_18_3_n6_ccc, pufa_18_3i])
+             , leaf pufa_18_4
+             , unmeasuredLeaves pufa_20_2 (pufa_20_2_n6_cc :| [])
+             , measuredLeaves
+                pufa_20_3
+                pufa_20_3_other
+                (pufa_20_3_n3 :| [pufa_20_3_n6, pufa_20_3_n9])
+             , leaf pufa_20_4
+             , unmeasuredLeaves pufa_20_5 (pufa_20_5_n3 :| [])
+             , leaf pufa_22_2
+             , leaf pufa_22_3
+             , leaf pufa_22_4
+             , unmeasuredLeaves pufa_22_5 (pufa_22_5_n3 :| [])
+             , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
+             ]
