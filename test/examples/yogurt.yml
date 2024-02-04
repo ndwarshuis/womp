@@ -3,31 +3,37 @@ schedule:
       mlName: "fruit yogurt"
       mlIngs:
         - ingSource:
+            # banana
             tag: FDC
             contents: 1105073
           ingMass: 120.0
           ingModifications: []
         - ingSource:
+            # greek yogurt
             tag: FDC
             contents: 330137
           ingMass: 200.0
           ingModifications: []
         - ingSource:
+            # almonds
             tag: FDC
             contents: 2346393
           ingMass: 60.0
           ingModifications: []
         - ingSource:
+            # strawberries
             tag: FDC
             contents: 2346409
           ingMass: 40.0
           ingModifications: []
         - ingSource:
+            # blueberries
             tag: FDC
             contents: 2346411
           ingMass: 50.0
           ingModifications: []
         - ingSource:
+            # vitamin D
             tag: Custom
             contents: vitaminD
           ingMass: 0.000075
