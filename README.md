@@ -46,6 +46,8 @@ See `test/exmples` for a starting point to create a meal plan. The `.dhall`
 and `.yml` files are equivalent and should produce the same output. Note that
 yml does not currently support default values so will be slightly more verbose.
 
+### Examples
+
 Print a table of ingredients, including the header (`-H`) and their masses for
 the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
 
