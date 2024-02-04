@@ -196,10 +196,10 @@ mufa_22_1 :: MeasuredNutrient
 mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Unity $ (1317, Nothing) :| [(2012, Nothing)]
 
 mufa_22_1_n9 :: MeasuredNutrient
-mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 ω-9 (Erucic Acid)" Unity
+mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 omega-9 (Erucic Acid)" Unity
 
 mufa_22_1_n11 :: MeasuredNutrient
-mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 ω-11" Unity
+mufa_22_1_n11 = Direct $ DirectNutrient 2015 "MUFA 22:1 omega-11" Unity
 
 mufa_24_1 :: MeasuredNutrient
 mufa_24_1 = Direct $ DirectNutrient 1312 "MUFA 24:1" Unity
@@ -235,7 +235,7 @@ pufa_18_2_CLA :: MeasuredNutrient
 pufa_18_2_CLA = Direct $ DirectNutrient 1311 "PUFA 18:2 (conjugated linoleic acids)" Unity
 
 pufa_18_2_n6_cc :: MeasuredNutrient
-pufa_18_2_n6_cc = Direct $ DirectNutrient 1316 "PUFA 18:2 ω-6 c,c (Linoleic Acid)" Unity
+pufa_18_2_n6_cc = Direct $ DirectNutrient 1316 "PUFA 18:2 omega-6 c,c (Linoleic Acid)" Unity
 
 pufa_18_3 :: MeasuredNutrient
 pufa_18_3 = Direct $ DirectNutrient 1270 "PUFA 18:3" Unity
@@ -245,10 +245,10 @@ pufa_18_3i :: MeasuredNutrient
 pufa_18_3i = Direct $ DirectNutrient 1409 "PUFA 18:2 isomers" Unity
 
 pufa_18_3_n6_ccc :: MeasuredNutrient
-pufa_18_3_n6_ccc = Direct $ DirectNutrient 1321 "PUFA 18:3 ω-6 c,c,c (Gamma-linolenic Acid)" Unity
+pufa_18_3_n6_ccc = Direct $ DirectNutrient 1321 "PUFA 18:3 omega-6 c,c,c (Gamma-linolenic Acid)" Unity
 
 pufa_18_3_n3_ccc :: MeasuredNutrient
-pufa_18_3_n3_ccc = Direct $ DirectNutrient 1404 "PUFA 18:3 ω-3 c,c,c (Alpha-linolenic Acid)" Unity
+pufa_18_3_n3_ccc = Direct $ DirectNutrient 1404 "PUFA 18:3 omega-3 c,c,c (Alpha-linolenic Acid)" Unity
 
 pufa_18_4 :: MeasuredNutrient
 pufa_18_4 = Direct $ DirectNutrient 1276 "PUFA 18:4" Unity
@@ -263,13 +263,13 @@ pufa_20_3 :: MeasuredNutrient
 pufa_20_3 = Direct $ DirectNutrient 1325 "PUFA 20:3" Unity
 
 pufa_20_3_n3 :: MeasuredNutrient
-pufa_20_3_n3 = Direct $ DirectNutrient 1405 "PUFA 20:3 ω-3 c,c,c (Eicosatetraenoic Acid)" Unity
+pufa_20_3_n3 = Direct $ DirectNutrient 1405 "PUFA 20:3 omega-3 c,c,c (Eicosatetraenoic Acid)" Unity
 
 pufa_20_3_n6 :: MeasuredNutrient
-pufa_20_3_n6 = Direct $ DirectNutrient 1406 "PUFA 20:3 ω-6 c,c,c (Dihomo-gamma-linolenic Acid)" Unity
+pufa_20_3_n6 = Direct $ DirectNutrient 1406 "PUFA 20:3 omega-6 c,c,c (Dihomo-gamma-linolenic Acid)" Unity
 
 pufa_20_3_n9 :: MeasuredNutrient
-pufa_20_3_n9 = Direct $ DirectNutrient 1414 "PUFA 20:3 ω-9 c,c,c (Mead Acid)" Unity
+pufa_20_3_n9 = Direct $ DirectNutrient 1414 "PUFA 20:3 omega-9 c,c,c (Mead Acid)" Unity
 
 pufa_20_4 :: MeasuredNutrient
 pufa_20_4 = Direct $ DirectNutrient 1271 "PUFA 20:4" Unity
@@ -293,13 +293,13 @@ pufa_22_5 :: SummedNutrient
 pufa_22_5 = SummedNutrient "PUFA 22:5" Unity
 
 pufa_22_5_n3 :: MeasuredNutrient
-pufa_22_5_n3 = Direct $ DirectNutrient 1280 "PUFA 22:5 ω-3 c,c,c,c,c (Docosapentaenoic Acid)" Unity
+pufa_22_5_n3 = Direct $ DirectNutrient 1280 "PUFA 22:5 omega-3 c,c,c,c,c (Docosapentaenoic Acid)" Unity
 
 pufa_22_6 :: SummedNutrient
 pufa_22_6 = SummedNutrient "PUFA 22:5" Unity
 
 pufa_22_6_n3 :: MeasuredNutrient
-pufa_22_6_n3 = Direct $ DirectNutrient 1272 "PUFA 22:6 ω-3 c,c,c,c,c,c (Docosahexaenoic Acid)" Unity
+pufa_22_6_n3 = Direct $ DirectNutrient 1272 "PUFA 22:6 omega-3 c,c,c,c,c,c (Docosahexaenoic Acid)" Unity
 
 -- | Carbohydrate level
 betaGlucan :: MeasuredNutrient
@@ -475,25 +475,25 @@ retinol :: MeasuredNutrient
 retinol = Direct $ DirectNutrient 1105 "Retinol" Micro
 
 alphaCarotene :: MeasuredNutrient
-alphaCarotene = Direct $ DirectNutrient 1108 "α-carotene" Micro
+alphaCarotene = Direct $ DirectNutrient 1108 "alpha-carotene" Micro
 
 betaCarotene :: MeasuredNutrient
-betaCarotene = Direct $ DirectNutrient 1107 "β-carotene" Micro
+betaCarotene = Direct $ DirectNutrient 1107 "beta-carotene" Micro
 
 cisBetaCarotene :: MeasuredNutrient
-cisBetaCarotene = Direct $ DirectNutrient 1159 "cis-β-carotene" Micro
+cisBetaCarotene = Direct $ DirectNutrient 1159 "cis-beta-carotene" Micro
 
 transBetaCarotene :: MeasuredNutrient
-transBetaCarotene = Direct $ DirectNutrient 2028 "trans-β-carotene" Micro
+transBetaCarotene = Direct $ DirectNutrient 2028 "trans-beta-carotene" Micro
 
 gammaCarotene :: MeasuredNutrient
-gammaCarotene = Direct $ DirectNutrient 1118 "γ-carotene" Micro
+gammaCarotene = Direct $ DirectNutrient 1118 "gamma-carotene" Micro
 
 alphaCryptoxanthin :: MeasuredNutrient
-alphaCryptoxanthin = Direct $ DirectNutrient 2032 "α-carotene" Micro
+alphaCryptoxanthin = Direct $ DirectNutrient 2032 "alpha-carotene" Micro
 
 betaCryptoxanthin :: MeasuredNutrient
-betaCryptoxanthin = Direct $ DirectNutrient 1120 "β-carotene" Micro
+betaCryptoxanthin = Direct $ DirectNutrient 1120 "beta-carotene" Micro
 
 vitaminB1 :: MeasuredNutrient
 vitaminB1 = Direct $ DirectNutrient 1165 "Vitamin B1 (thiamine)" Milli
@@ -560,28 +560,28 @@ vitaminD4 = Direct $ DirectNutrient 2059 "Vitamin D4 (22-dihydroergocalciferol)"
 -- TODO if one really wants to get nerdy we could weight these by affinity for
 -- the vitamin E transport receptor (see wikipedia article)
 tocopherolAlpha :: MeasuredNutrient
-tocopherolAlpha = Direct $ DirectNutrient 1109 "Vitamin E (α-Tocopherol)" Micro
+tocopherolAlpha = Direct $ DirectNutrient 1109 "Vitamin E (alpha-Tocopherol)" Micro
 
 tocopherolBeta :: MeasuredNutrient
-tocopherolBeta = Direct $ DirectNutrient 1125 "Vitamin E (β-Tocopherol)" Micro
+tocopherolBeta = Direct $ DirectNutrient 1125 "Vitamin E (beta-Tocopherol)" Micro
 
 tocopherolGamma :: MeasuredNutrient
-tocopherolGamma = Direct $ DirectNutrient 1126 "Vitamin E (γ-Tocopherol)" Micro
+tocopherolGamma = Direct $ DirectNutrient 1126 "Vitamin E (gamma-Tocopherol)" Micro
 
 tocopherolDelta :: MeasuredNutrient
-tocopherolDelta = Direct $ DirectNutrient 1127 "Vitamin E (δ-Tocopherol)" Micro
+tocopherolDelta = Direct $ DirectNutrient 1127 "Vitamin E (delta-Tocopherol)" Micro
 
 tocotrienolAlpha :: MeasuredNutrient
-tocotrienolAlpha = Direct $ DirectNutrient 1128 "Vitamin E (α-Tocotrienol)" Micro
+tocotrienolAlpha = Direct $ DirectNutrient 1128 "Vitamin E (alpha-Tocotrienol)" Micro
 
 tocotrienolBeta :: MeasuredNutrient
-tocotrienolBeta = Direct $ DirectNutrient 1129 "Vitamin E (β-Tocotrienol)" Micro
+tocotrienolBeta = Direct $ DirectNutrient 1129 "Vitamin E (beta-Tocotrienol)" Micro
 
 tocotrienolGamma :: MeasuredNutrient
-tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (γ-Tocotrienol)" Micro
+tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (gamma-Tocotrienol)" Micro
 
 tocotrienolDelta :: MeasuredNutrient
-tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (δ-Tocotrienol)" Micro
+tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (delta-Tocotrienol)" Micro
 
 vitaminK1 :: MeasuredNutrient
 vitaminK1 = Direct $ DirectNutrient 1185 "Vitamin K1 (Phylloquinone)" Micro
