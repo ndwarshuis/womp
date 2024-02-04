@@ -5,6 +5,7 @@ import Data.Scientific
 import Data.Semigroup
 import GHC.Conc (getNumProcessors)
 import Internal.Types.Dhall
+import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO
 import RIO.FilePath
@@ -283,7 +284,7 @@ expandMDYPat lower upper (Repeat RepeatPat {rpStart = s, rpBy = b, rpRepeats = r
    in dropWhile (<= lower) $ takeWhile (<= k) [s + i * b | i <- [0 ..]]
 
 dayToWeekday :: Day -> Int
-dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 2) 7
+dayToWeekday (ModifiedJulianDay d) = mod (fromIntegral d + 3) 7
 
 --------------------------------------------------------------------------------
 -- nonempty

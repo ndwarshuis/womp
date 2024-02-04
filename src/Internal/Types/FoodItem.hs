@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 
 module Internal.Types.FoodItem
@@ -12,18 +13,25 @@ module Internal.Types.FoodItem
   , NID (..)
   , Mass (..)
   , ProteinConversion (..)
+  , Unit (..)
+  , Measurement (..)
+  , Prefix (..)
+  , prefixSymbol
+  , measurementSymbol
+  , tunit
   )
 where
 
 import Data.Aeson
 import Data.Aeson.Types
-import Data.Csv (ToField)
+import Data.Csv (ToField, toField)
 import Data.Scientific
 import GHC.Generics
 import Internal.Types.Dhall
 import RIO
 import qualified RIO.Char as C
 import qualified RIO.List as L
+import qualified RIO.Text as T
 
 -- | Food item with its nutrients validated and put into a convenient map
 type MappedFoodItem = FoodItem NutrientMap
@@ -120,6 +128,73 @@ newtype FID = FID {unFID :: Natural}
 newtype NID = NID {unNID :: Natural}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, ToField) via Natural
 
+recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
+recordParseJSON s = genericParseJSON (recordOptions s)
+
+stripRecordPrefix :: String -> String -> String
+stripRecordPrefix prefix = maybe [] go . L.stripPrefix prefix
+  where
+    go [] = []
+    go (x : xs) = C.toLower x : xs
+
+recordOptions :: String -> Options
+recordOptions x =
+  defaultOptions
+    { fieldLabelModifier = stripRecordPrefix x
+    , rejectUnknownFields = False
+    }
+
+--------------------------------------------------------------------------------
+-- units
+
+data Measurement
+  = Gram
+  | Calorie
+  deriving (Show, Eq, Ord, Generic, ToJSON)
+
+data Unit = Unit
+  { unitPrefix :: Prefix
+  , unitMeasurement :: Measurement
+  }
+  deriving (Show, Eq, Generic, ToJSON)
+
+prefixSymbol :: Prefix -> Text
+prefixSymbol Nano = "n"
+prefixSymbol Micro = "μ"
+prefixSymbol Milli = "m"
+prefixSymbol Centi = "c"
+prefixSymbol Deci = "d"
+prefixSymbol Unity = ""
+prefixSymbol Deca = "da"
+prefixSymbol Hecto = "h"
+prefixSymbol Kilo = "k"
+prefixSymbol Mega = "M"
+prefixSymbol Giga = "G"
+
+measurementSymbol :: Measurement -> Text
+measurementSymbol Calorie = "cal"
+measurementSymbol Gram = "g"
+
+tunit :: Unit -> Text
+tunit (Unit p n) = T.append (prefixSymbol p) (measurementSymbol n)
+
+instance ToField Unit where
+  toField = encodeUtf8 . tunit
+
+data Prefix
+  = Nano
+  | Micro
+  | Milli
+  | Centi
+  | Deci
+  | Unity
+  | Deca
+  | Hecto
+  | Kilo
+  | Mega
+  | Giga
+  deriving (Show, Eq, Ord, Generic, ToJSON, Read, Bounded)
+
 newtype Mass = Mass {unMass :: Scientific}
   deriving
     ( Read
@@ -138,19 +213,3 @@ newtype Mass = Mass {unMass :: Scientific}
 
 newtype ProteinConversion = ProteinConversion {unPC :: Scientific}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num) via Scientific
-
-recordParseJSON :: (Generic a, GFromJSON Zero (Rep a)) => String -> Value -> Parser a
-recordParseJSON s = genericParseJSON (recordOptions s)
-
-stripRecordPrefix :: String -> String -> String
-stripRecordPrefix prefix = maybe [] go . L.stripPrefix prefix
-  where
-    go [] = []
-    go (x : xs) = C.toLower x : xs
-
-recordOptions :: String -> Options
-recordOptions x =
-  defaultOptions
-    { fieldLabelModifier = stripRecordPrefix x
-    , rejectUnknownFields = False
-    }

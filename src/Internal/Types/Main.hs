@@ -500,43 +500,6 @@ data CustomIngError
   deriving (Show)
 
 --------------------------------------------------------------------------------
--- units
-
-data Measurement
-  = Gram
-  | Calorie
-  deriving (Show, Eq, Ord, Generic, ToJSON)
-
-data Unit = Unit
-  { unitPrefix :: Prefix
-  , unitMeasurement :: Measurement
-  }
-  deriving (Show, Eq, Generic, ToJSON)
-
-prefixSymbol :: Prefix -> Text
-prefixSymbol Nano = "n"
-prefixSymbol Micro = "μ"
-prefixSymbol Milli = "m"
-prefixSymbol Centi = "c"
-prefixSymbol Deci = "d"
-prefixSymbol Unity = ""
-prefixSymbol Deca = "da"
-prefixSymbol Hecto = "h"
-prefixSymbol Kilo = "k"
-prefixSymbol Mega = "M"
-prefixSymbol Giga = "G"
-
-measurementSymbol :: Measurement -> Text
-measurementSymbol Calorie = "cal"
-measurementSymbol Gram = "g"
-
-tunit :: Unit -> Text
-tunit (Unit p n) = T.append (prefixSymbol p) (measurementSymbol n)
-
-instance C.ToField Unit where
-  toField = encodeUtf8 . tunit
-
---------------------------------------------------------------------------------
 -- Misc
 
 type DaySpan = (Day, Int)

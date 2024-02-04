@@ -12,7 +12,6 @@ import Data.Scientific
 import Data.Semigroup (sconcat)
 import Internal.Nutrients
 import Internal.Types.CLI
-import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils

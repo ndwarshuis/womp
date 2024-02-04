@@ -6,6 +6,7 @@ where
 
 import Data.Scientific
 import Data.Semigroup
+-- import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
 import qualified Dhall as D
 import Internal.Ingest
@@ -63,6 +64,7 @@ readMappedItems f MealplanOptions {moForce, moMealPath, moDateInterval, moThread
   (ds, norm) <- dateIntervalToDaySpan moDateInterval
   (vs, customMap) <- readPlan moMealPath norm
   is <- expandSchedule f vs ds
+  -- liftIO $ TI.putStr $ tshow is
   let (fs, cs) = N.unzip $ groupByTup is
   ms <- mapFIDs moKey (downloadFoodItem moForce) fs
   fs' <- mapM (either return (fromCustom customMap)) ms
@@ -172,7 +174,6 @@ customToItem
   CustomIngredient
     { scDesc
     , scRemainder
-    , scRemainderPrefix
     , scNutrients
     , scCalorie
     , scProtein
@@ -186,13 +187,13 @@ customToItem
       pc = ProteinConversion $ fromFloatDigits scProtein
       nuts = go <$> scNutrients
       nutMass = sum $ vnAmount . snd <$> nuts
-      remNut = ValidNutrient (standardMass - nutMass) scRemainderPrefix Nothing
+      remNut = ValidNutrient (standardMass - nutMass) Unity Nothing
       remId = NID scRemainder
       dups = findDups $ remId : fmap fst nuts
       nutMap = M.fromList $ (remId, remNut) : nuts
-      go CustomNutrient {cnID, cnMass, cnPrefix} =
+      go CustomNutrient {cnID, cnMass} =
         ( NID cnID
-        , ValidNutrient (Mass $ fromFloatDigits cnMass) cnPrefix Nothing
+        , ValidNutrient (Mass $ fromFloatDigits cnMass) Unity Nothing
         )
 
 --------------------------------------------------------------------------------

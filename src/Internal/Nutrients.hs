@@ -9,7 +9,6 @@ module Internal.Nutrients
   )
 where
 
-import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import RIO

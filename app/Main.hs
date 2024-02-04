@@ -10,7 +10,7 @@ import Internal.Display
 import Internal.Export
 import Internal.Ingest
 import Internal.Types.CLI
-import Internal.Types.Dhall
+import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils
 import Options.Applicative

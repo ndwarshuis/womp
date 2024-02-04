@@ -14,23 +14,6 @@ let Map =
       https://prelude.dhall-lang.org/v23.0.0/Map/Type
         sha256:210c7a9eba71efbb0f7a66b3dcf8b9d3976ffc2bc0e907aadfb6aa29c333e8ed
 
-let Prefix =
-    {-
-    SI base prefix
-    -}
-      < Nano
-      | Micro
-      | Milli
-      | Centi
-      | Deci
-      | Unity
-      | Deca
-      | Hecto
-      | Kilo
-      | Mega
-      | Giga
-      >
-
 let Modification =
     {-
     Modification for an ingredient
@@ -68,18 +51,9 @@ let CustomNutrient =
         : Natural
       , cnMass
         {-
-        Mass for this nutrient. Must be a positive number.
-
-        Absolute mass in grams depends on the value of 'chPrefix' below.
-        For example, if this were 10.0 and cnPrefix were 'Micro', the actual
-        mass would be 0.0001 g or 10 ug.
+        Mass for this nutrient in grams. Must be a positive number.
         -}
         : Double
-      , cnPrefix
-        {-
-        Units for this nutrient
-        -}
-        : Prefix
       }
 
 let CalorieConversion =
@@ -118,11 +92,6 @@ let CustomIngredient =
             See valid nutrient IDs with 'womp nutrients'
             -}
             : Natural
-          , scRemainderPrefix
-            {-
-            Prefix for the one required nutrient.
-            -}
-            : Prefix
           , scNutrients
             {-
             All other nutrients
@@ -149,7 +118,6 @@ let CustomIngredient =
         { scCalorie = CalorieConversion::{=}
         , scProtein = 6.25
         , scNutrients = [] : List CustomNutrient
-        , scRemainderPrefix = Prefix.Unity
         }
       }
 
@@ -335,7 +303,6 @@ let Plan =
 
 in  { Modification
     , Btw
-    , Prefix
     , CustomNutrient
     , CustomIngredient
     , IngredientSource
