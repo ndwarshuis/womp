@@ -22,7 +22,7 @@ from the FDC, but generally includes:
 * fiber
 * other organics such as phytosterols, organic acids, cholines, etc
 
-Summary data can be output as YAML, JSON, or tsv format. The first is meant to
+Summary data can be output as YAML, JSON, or TSV format. The first is meant to
 be "human readable" and all are suitable for downstream processing by other
 tools if one wants to calculate additional metrics (ie in R or python).
 
@@ -38,7 +38,7 @@ to other desktops is planned, as well as the addition of a web-based GUI.
 
 # Quick start
 
-First get an API key for USDA's Food Data Central database
+First get an API key for USDA's FoodData Central database
 [here](https://fdc.nal.usda.gov/api-key-signup.html). Replace `<APIKEY>` in
 all examples below with the key they give you.
 
@@ -48,8 +48,8 @@ yml does not currently support default values so will be slightly more verbose.
 
 ### Examples
 
-Print a table of ingredients, including the header (`-H`) and their masses for
-the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
+Print a TSV list of ingredients, including the header (`-H`) and their masses
+for the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
 
 ```
 womp summary -k <APIKEY> -s 2024-02-03 -d 7 -H -c ./test/examples/yogurt.yml
