@@ -96,7 +96,7 @@ FDC:
 womp dump -k <APIKEY> -i 1105073
 ```
 
-Simply pre-download a json blob (which will be stored in `XDG_CACHE_HOME/womp`:
+Simply pre-download a json blob (which will be stored in `XDG_CACHE_HOME/womp`):
 
 ```
 womp fetch -k <APIKEY> -i 1105073
