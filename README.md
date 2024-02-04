@@ -123,7 +123,8 @@ stack install
 
 # Planned Roadmap
 
+* [ ] add other databases (ie NCCDB)
 * [ ] port to windows and mac
-* [ ] add a web-based GUI
 * [ ] add in-app search function for FDC
 * [ ] add uncertainty brackets to output
+* [ ] add a web-based GUI
