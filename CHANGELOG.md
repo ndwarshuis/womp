@@ -1,1 +1,3 @@
-# Changelog for `womp`
+# 1.0.0
+
+let there be light
