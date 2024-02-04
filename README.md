@@ -30,7 +30,7 @@ tools if one wants to calculate additional metrics (ie in R or python).
 
 Anyone who wants to understand what they are consuming in their diet would
 benefit from `womp`. In general, this will be easiest for those who have
-predictable zmeal plans. While `womp` may be used as a "meal tracker," it is
+predictable meal plans. While `womp` may be used as a "meal tracker," it is
 designed to be and likely best leveraged as a "meal planner and calculator".
 
 Currently this is a command-line only application that works on Linux. Porting
