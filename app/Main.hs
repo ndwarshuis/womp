@@ -1,7 +1,7 @@
 module Main (main) where
 
 import qualified Data.Aeson as A
-import Data.Char (ord)
+import Data.Char (isDigit, ord)
 import qualified Data.Csv as C
 import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
@@ -20,6 +20,7 @@ import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
+import qualified RIO.Text.Partial as TP
 
 main :: IO ()
 main = run =<< parseCLI
@@ -152,8 +153,7 @@ parseSortKeysIO s =
   maybe (throwAppErrorIO (SortKeys s)) pure $ parseSortKeys s
 
 parseSortKeys :: Text -> Maybe [SortKey]
-parseSortKeys "" = Just []
-parseSortKeys s = fmap L.nub $ mapM parseSortKey $ T.split (== ',') s
+parseSortKeys = parseArgList parseSortKey
 
 parseSortKey :: Text -> Maybe SortKey
 parseSortKey = go <=< T.uncons
@@ -172,3 +172,57 @@ parseSortKey = go <=< T.uncons
         "value" -> pure SortValue
         _ -> Nothing
       pure $ SortKey f a
+
+parseFilterKeys :: Text -> Maybe [FilterKey]
+parseFilterKeys = parseArgList parseFilterKey
+
+parseFilterKey :: Text -> Maybe FilterKey
+parseFilterKey s = do
+  (p, rest) <- T.uncons s
+  case p of
+    '!' -> go False rest
+    _ -> go True s
+  where
+    go keep kv = do
+      v <-
+        foldr (<|>) (parseRegexpFilters kv) $
+          fmap (uncurry (parseValueFilter kv)) opPairs
+      return $ FilterKey keep v
+
+    parseRegexpFilters kv = do
+      (k, v) <- splitMaybe "~" kv
+      case k of
+        "meal" -> Just $ FilterMeal v
+        "ingredient" -> Just $ FilterIngredient v
+        "nutrient" -> Just $ FilterNutrient NutrientDirect v
+        "lineage" -> Just $ FilterNutrient NutrientLineage v
+        "children" -> Just $ FilterNutrient NutrientChildren v
+        _ -> Nothing
+
+    parseValueFilter kv opChar op = do
+      (k, v) <- splitMaybe opChar kv
+      v' <- case k of
+        "value" -> do
+          let (d, p) = T.span (\x -> isDigit x || x == '.') v
+          d' <- readMaybe $ T.unpack d
+          p' <- parseCLIPrefix p
+          return $ toUnity p' d'
+        _ -> Nothing
+      return $ FilterValue $ ValueNutrientData v' op
+
+    opPairs =
+      [ ("=", EQ_)
+      , ("<", LT_)
+      , (">", GT_)
+      , ("<=", LTE_)
+      , (">=", GTE_)
+      ]
+
+splitMaybe :: Text -> Text -> Maybe (Text, Text)
+splitMaybe c s = case TP.splitOn c s of
+  [x, y] -> Just (x, y)
+  _ -> Nothing
+
+parseArgList :: Eq a => (Text -> Maybe a) -> Text -> Maybe [a]
+parseArgList _ "" = Just []
+parseArgList f s = fmap L.nub $ mapM f $ T.split (== ',') s

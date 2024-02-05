@@ -213,9 +213,6 @@ compareRowKey a b SortKey {skField, skAsc} = case (f a b, skAsc) of
         <> go (unitPrefix . drUnit) x y
     getValue x = toUnity (unitPrefix $ drUnit x) (drValue x)
 
-toUnity :: Prefix -> Scientific -> Scientific
-toUnity p = raisePower (prefixValue p)
-
 dumpNutrientTree :: [NutTreeRow]
 dumpNutrientTree = goTree Nothing $ nutHierarchy 0
   where

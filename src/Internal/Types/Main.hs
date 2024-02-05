@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 
 module Internal.Types.Main where
@@ -48,6 +47,31 @@ data SortField
   | SortNutrient
   | SortParent
   | SortValue
+  deriving (Eq)
+
+data FilterKey = FilterKey Bool FilterData
+  deriving (Eq)
+
+data FilterData
+  = FilterMeal !Text
+  | FilterIngredient !Text
+  | FilterNutrient !FilterNutrientType !Text
+  | FilterValue !ValueNutrientData
+  deriving (Eq)
+
+data FilterNutrientType
+  = NutrientDirect
+  | NutrientLineage
+  | NutrientChildren
+  deriving (Eq)
+
+data ValueNutrientData = ValueNutrientData
+  { vndValue :: !Scientific
+  , vndOperator :: !Operator
+  }
+  deriving (Eq)
+
+data Operator = EQ_ | LT_ | GT_ | LTE_ | GTE_
   deriving (Eq)
 
 --------------------------------------------------------------------------------

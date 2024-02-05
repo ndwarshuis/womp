@@ -214,6 +214,9 @@ roundDigits p = (/ d) . go . round . (* d)
     go :: Int -> a
     go = fromIntegral
 
+toUnity :: Prefix -> Scientific -> Scientific
+toUnity p = raisePower (prefixValue p)
+
 autoPrefix :: (Ord a, Fractional a) => a -> Prefix
 autoPrefix s =
   maybe maxBound fst $
