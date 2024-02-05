@@ -121,9 +121,8 @@ cd womp
 stack install
 ```
 
-# Planned Roadmap
+# Potential future additions
 
-* [ ] add other databases (ie NCCDB)
 * [ ] port to windows and mac
 * [ ] add in-app search function for FDC
 * [ ] add uncertainty brackets to output
