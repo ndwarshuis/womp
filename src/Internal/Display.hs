@@ -58,6 +58,7 @@ treeToCSV
   -> BL.ByteString
 treeToCSV tos eos gos =
   chooseGrouping gos go
+    . mapMaybe (filterTreeKeys (atabFilter tos))
   where
     go
       :: ( Ord d

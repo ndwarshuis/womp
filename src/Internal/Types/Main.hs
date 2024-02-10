@@ -14,6 +14,7 @@ import Internal.Types.CLI
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import RIO
+import qualified RIO.Map as M
 import qualified RIO.Text as T
 import RIO.Time
 
@@ -298,7 +299,7 @@ type DisplayTreeSum = DisplayTree_ () (Sum Mass) (Sum Energy)
 
 -- only allow "adding" together if there is no grouping data to clobber
 instance Semigroup (DisplayTree_ () (Sum Mass) (Sum Energy)) where
-  (<>) a b = DisplayTree_ (dtMap a <> dtMap b) (dtEnergy a + dtEnergy b) ()
+  (<>) a b = DisplayTree_ (M.unionWith (<>) (dtMap a) (dtMap b)) (dtEnergy a + dtEnergy b) ()
 
 type DisplayTree g = DisplayTree_ g Mass Energy
 
