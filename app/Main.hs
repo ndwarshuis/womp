@@ -74,7 +74,8 @@ runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} 
   combineErrorIOM2 readTrees getOpts $ \ts opts ->
     liftIO $
       BL.putStr $
-        treeToCSV opts (tsvOptions tabHeader) (ceoGroup tabCommonExport) ts
+        treeToCSV opts (tsvOptions tabHeader) (ceoGroup tabCommonExport) $
+          N.toList ts
   where
     readTrees = readDisplayTrees (ceoMealplan tabCommonExport)
     filt = ceoFilter tabCommonExport
@@ -94,7 +95,7 @@ runExportTree
   -> m ()
 runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
   combineErrorIOM2 readTrees (allTreeDisplayOpts filt t) $ \ts atds ->
-    liftIO $ go $ treeToJSON atds gos ts
+    liftIO $ go $ treeToJSON atds gos $ N.toList ts
   where
     readTrees = readDisplayTrees $ ceoMealplan treeCommonExport
     gos = ceoGroup treeCommonExport
@@ -223,10 +224,12 @@ parseFilterKey s = do
         "value" -> do
           let (d, p) = T.span (\x -> isDigit x || x == '.') v
           d' <- readMaybe $ T.unpack d
-          p' <- parseCLIPrefix p
+          p' <- case p of
+            "" -> pure Unity
+            p' -> parseCLIPrefix p'
           return $ toUnity p' d'
         _ -> Nothing
-      return $ FilterValue v' op
+      return $ FilterValue (Mass v') op
 
     opPairs =
       [ ("=", EQ_)

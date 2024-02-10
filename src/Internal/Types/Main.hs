@@ -52,17 +52,17 @@ data SortField
   deriving (Eq)
 
 data FilterKey = FilterKey Bool FilterData
-  deriving (Eq)
+  deriving (Eq, Show)
 
 data FilterData
   = FilterMeal !Text
   | FilterIngredient !Text
   | FilterNutrient !Text
-  | FilterValue !Scientific !Operator
-  deriving (Eq)
+  | FilterValue !Mass !Operator
+  deriving (Eq, Show)
 
 data Operator = EQ_ | LT_ | GT_ | LTE_ | GTE_
-  deriving (Eq)
+  deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 -- Nutrient tree
@@ -281,9 +281,9 @@ instance Semigroup a => Semigroup (DisplayNode a) where
           (MMS.zipWithMatched (\_ x y -> x <> y))
 
 data DisplayTree_ g a b = DisplayTree_
-  { ffMap :: DisplayMap a
-  , ffEnergy :: b
-  , ffGroup :: g
+  { dtMap :: DisplayMap a
+  , dtEnergy :: b
+  , dtGroup :: g
   }
   deriving (Generic, Show)
 
@@ -292,13 +292,13 @@ type DisplayMap a = Map DisplayNutrient (DisplayNode a)
 -- fmap cheat code: make mass and energy polymorphic so I don't need to use
 -- a lens to "map" over this structure
 instance Bifunctor (DisplayTree_ g) where
-  bimap f g r@(DisplayTree_ as b _) = r {ffMap = fmap f <$> as, ffEnergy = g b}
+  bimap f g r@(DisplayTree_ as b _) = r {dtMap = fmap f <$> as, dtEnergy = g b}
 
 type DisplayTreeSum = DisplayTree_ () (Sum Mass) (Sum Energy)
 
 -- only allow "adding" together if there is no grouping data to clobber
 instance Semigroup (DisplayTree_ () (Sum Mass) (Sum Energy)) where
-  (<>) a b = DisplayTree_ (ffMap a <> ffMap b) (ffEnergy a + ffEnergy b) ()
+  (<>) a b = DisplayTree_ (dtMap a <> dtMap b) (dtEnergy a + dtEnergy b) ()
 
 type DisplayTree g = DisplayTree_ g Mass Energy
 

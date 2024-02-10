@@ -17,10 +17,10 @@ import Internal.Types.Main
 import Internal.Utils
 import RIO
 import qualified RIO.ByteString.Lazy as BL
+import qualified RIO.List as L
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
-
--- import Text.Regex.TDFA
+import Text.Regex.TDFA
 
 toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
 toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
@@ -32,11 +32,11 @@ fromSumTree g (DisplayTree_ ms e _) =
 groupTrees
   :: Eq g1
   => (g0 -> g1)
-  -> NonEmpty (DisplayTree g0)
-  -> NonEmpty (DisplayTree g1)
+  -> [DisplayTree g0]
+  -> [DisplayTree g1]
 groupTrees f =
   fmap go
-    . N.groupWith1 fst
+    . N.groupWith fst
     . fmap (first f . toSumTree)
   where
     go xs@((g, _) :| _) = fromSumTree g $ sconcat $ fmap snd xs
@@ -44,17 +44,20 @@ groupTrees f =
 treeToJSON
   :: AllTreeDisplayOptions
   -> GroupOptions
-  -> NonEmpty (DisplayTree GroupByAll)
-  -> NonEmpty Value
-treeToJSON dos gos = chooseGrouping gos (fmap (treeToJSON_ dos))
+  -> [DisplayTree GroupByAll]
+  -> [Value]
+treeToJSON dos gos =
+  chooseGrouping gos (fmap (treeToJSON_ dos))
+    . mapMaybe (filterTreeKeys (atdoFilter dos))
 
 treeToCSV
   :: AllTabularDisplayOptions
   -> C.EncodeOptions
   -> GroupOptions
-  -> NonEmpty (DisplayTree GroupByAll)
+  -> [DisplayTree GroupByAll]
   -> BL.ByteString
-treeToCSV tos eos gos = chooseGrouping gos go
+treeToCSV tos eos gos =
+  chooseGrouping gos go
   where
     go
       :: ( Ord d
@@ -63,13 +66,12 @@ treeToCSV tos eos gos = chooseGrouping gos go
          , C.ToNamedRecord (DisplayRow (GroupVars d m i))
          , C.DefaultOrdered (DisplayRow (GroupVars d m i))
          )
-      => NonEmpty (DisplayTree (GroupVars d m i))
+      => [DisplayTree (GroupVars d m i)]
       -> BL.ByteString
     go =
       C.encodeDefaultOrderedByNameWith eos
-        . N.toList
-        . N.sortBy (compareRow (atabSort tos))
-        . sconcat
+        . L.sortBy (compareRow (atabSort tos))
+        . mconcat
         . fmap (treeToRows tos)
 
 -- TODO not sure how to get the instance constraints out of the rankN function
@@ -84,10 +86,10 @@ chooseGrouping
           , C.DefaultOrdered (DisplayRow (GroupVars d m i))
           , C.ToNamedRecord (DisplayRow (GroupVars d m i))
           )
-       => NonEmpty (DisplayTree (GroupVars d m i))
+       => [DisplayTree (GroupVars d m i)]
        -> a
      )
-  -> NonEmpty (DisplayTree GroupByAll)
+  -> [DisplayTree GroupByAll]
   -> a
 chooseGrouping (GroupOptions d m i) f ts = case (d, m, i) of
   (True, True, True) -> f $ groupTrees id ts
@@ -111,37 +113,45 @@ treeToJSON_ o (DisplayTree_ ms e g) =
     , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
     ]
 
--- filterTree :: FilterKey -> DisplayTree g -> DisplayTree g
--- filterTree (FilterKey invert k) (DisplayTree_ ms e g) = case k of
---   FilterMeal m -> undefined
---   FilterIngredient i -> undefined
---   FilterNutrient n -> undefined
---   FilterValue v op -> undefined
+filterTreeKeys :: [FilterKey] -> DisplayTree GroupByAll -> Maybe (DisplayTree GroupByAll)
+filterTreeKeys = flip $ foldM (flip filterTree)
 
--- matchesMeal :: Text -> DisplayTree GroupByAll -> Bool
--- matchesMeal f (DisplayTree_ _ _ GroupVars {gvMeal}) = unMealGroup gvMeal =~ f
+filterTree :: FilterKey -> DisplayTree GroupByAll -> Maybe (DisplayTree GroupByAll)
+filterTree (FilterKey keep k) t@(DisplayTree_ ms _ _) = case k of
+  FilterMeal re -> if keep == matchesMeal re t then Just t else Nothing
+  FilterIngredient re -> if keep == matchesIngredient re t then Just t else Nothing
+  FilterNutrient re -> Just $ t {dtMap = treeFun (\n _ -> n =~ re) ms}
+  FilterValue x op -> Just $ t {dtMap = treeFun (\_ v -> opFun op v x) ms}
+  where
+    treeFun = if keep then selectTreesWith else removeTreesWith
 
--- matchesIngredient :: Text -> DisplayTree GroupByAll -> Bool
--- matchesIngredient f (DisplayTree_ _ _ GroupVars {gvIngredient}) =
---   unIngredientGroup gvIngredient =~ f
+opFun :: Ord a => Operator -> a -> a -> Bool
+opFun EQ_ = (==)
+opFun LT_ = (<)
+opFun GT_ = (>)
+opFun LTE_ = (<=)
+opFun GTE_ = (>=)
 
--- filterTreeFromTop :: (Text -> a -> Bool) -> DisplayNode a -> DisplayNode a
--- filterTreeFromTop f (DisplayNode v ks us) = DisplayNode v' newMap us
---   where
---     newMap = M.fromList $ mapMaybe (uncurry go) $ M.toList ks
---     go dn@(DisplayNutrient n _) d@(DisplayNode v ks _)
---       | f n d == True = Just (dn, d)
---       | otherwise = undefined
+matchesMeal :: Text -> DisplayTree GroupByAll -> Bool
+matchesMeal f (DisplayTree_ _ _ GroupVars {gvMeal}) = unMealGroup gvMeal =~ f
 
--- selectTreesWith
---   :: (Text -> a -> Bool)
---   -> Map DisplayNutrient (DisplayNode a)
---   -> Map DisplayNutrient (DisplayNode a)
--- selectTreesWith f = M.fromList . concatMap (uncurry go) . M.toList
---   where
---     go dn@(DisplayNutrient n _) d@(DisplayNode v ks _)
---       | f n v == True = [(dn, d)]
---       | otherwise = M.toList $ selectTreesWith f ks
+matchesIngredient :: Text -> DisplayTree GroupByAll -> Bool
+matchesIngredient f (DisplayTree_ _ _ GroupVars {gvIngredient}) =
+  unIngredientGroup gvIngredient =~ f
+
+selectTreesWith :: (Text -> a -> Bool) -> DisplayMap a -> DisplayMap a
+selectTreesWith f = M.fromList . concatMap (uncurry go) . M.toList
+  where
+    go dn@(DisplayNutrient n _) d@(DisplayNode v ks _)
+      | f n v = [(dn, d)]
+      | otherwise = M.toList $ selectTreesWith f ks
+
+removeTreesWith :: (Text -> a -> Bool) -> DisplayMap a -> DisplayMap a
+removeTreesWith f = M.mapMaybeWithKey go
+  where
+    go (DisplayNutrient n _) d@(DisplayNode v ks _)
+      | f n v = Just $ d {dnKnown = removeTreesWith f ks}
+      | otherwise = Nothing
 
 nodeToJSON
   :: AllTreeDisplayOptions
@@ -184,25 +194,25 @@ convertWithPrefix p dp r v = (p', roundDigits r $ raisePower (-prefixValue p') v
   where
     p' = fromMaybe dp p
 
-treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> NonEmpty (DisplayRow g)
+treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> [DisplayRow g]
 treeToRows (AllTabularDisplayOptions su uu r _ _) (DisplayTree_ ms e g) =
   -- TODO this "Nothing" won't be valid in general after filtering (unless we
   -- don't want parental information to be retained for the top of any selected
   -- tree)
-  energy :| goK Nothing ms
+  energy : goK Nothing ms
   where
     row = DisplayRow g
 
     energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
 
-    massRow n pnt v' p =
-      let (p', v'') = convertWithPrefix uu p r $ unMass v'
-       in row n pnt v'' (Unit p' Gram)
+    massRow n pnt v p =
+      let (p', v') = convertWithPrefix uu p r $ unMass v
+       in row n pnt v' (Unit p' Gram)
 
     goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
 
-    goK_ pnt (DisplayNutrient n p) (DisplayNode v' ks' us') =
-      massRow n pnt v' p : (goK (Just n) ks' ++ [goU n us' | su])
+    goK_ pnt (DisplayNutrient n p) (DisplayNode v ks us) =
+      massRow n pnt v p : (goK (Just n) ks ++ [goU n us | su])
 
     goU pnt us' =
       let s = sum $ M.elems us'

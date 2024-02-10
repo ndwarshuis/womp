@@ -218,6 +218,9 @@ roundDigits p = (/ d) . go . round . (* d)
 toUnity :: Prefix -> Scientific -> Scientific
 toUnity p = raisePower (prefixValue p)
 
+compareMeasurement :: (Prefix, Scientific) -> (Prefix, Scientific) -> Ordering
+compareMeasurement a b = compare (uncurry toUnity a) (uncurry toUnity b)
+
 autoPrefix :: (Ord a, Fractional a) => a -> Prefix
 autoPrefix s =
   maybe maxBound fst $
