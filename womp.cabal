@@ -91,6 +91,7 @@ library
     , lens
     , mtl
     , optparse-applicative
+    , regex-tdfa
     , req
     , rio >=0.1.21.0
     , scientific
@@ -158,6 +159,7 @@ executable womp
     , lens
     , mtl
     , optparse-applicative
+    , regex-tdfa
     , req
     , rio >=0.1.21.0
     , scientific

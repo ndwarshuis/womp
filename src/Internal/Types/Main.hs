@@ -25,6 +25,7 @@ data AllTreeDisplayOptions = AllTreeDisplayOptions
   , atdoShowUnknowns :: !Bool
   , atdoUnits :: !(Maybe Prefix)
   , atdoRoundDigits :: !Int
+  , atdoFilter :: ![FilterKey]
   }
 
 data AllTabularDisplayOptions = AllTabularDisplayOptions
@@ -32,6 +33,7 @@ data AllTabularDisplayOptions = AllTabularDisplayOptions
   , atabUnits :: !(Maybe Prefix)
   , atabRoundDigits :: !Int
   , atabSort :: ![SortKey]
+  , atabFilter :: ![FilterKey]
   }
 
 data SortKey = SortKey
@@ -55,20 +57,8 @@ data FilterKey = FilterKey Bool FilterData
 data FilterData
   = FilterMeal !Text
   | FilterIngredient !Text
-  | FilterNutrient !FilterNutrientType !Text
-  | FilterValue !ValueNutrientData
-  deriving (Eq)
-
-data FilterNutrientType
-  = NutrientDirect
-  | NutrientLineage
-  | NutrientChildren
-  deriving (Eq)
-
-data ValueNutrientData = ValueNutrientData
-  { vndValue :: !Scientific
-  , vndOperator :: !Operator
-  }
+  | FilterNutrient !Text
+  | FilterValue !Scientific !Operator
   deriving (Eq)
 
 data Operator = EQ_ | LT_ | GT_ | LTE_ | GTE_
@@ -270,7 +260,7 @@ ingredientJSON = (.=) "ingredient"
 
 data DisplayNode a = DisplayNode
   { dnValue :: a
-  , dnKnown :: Map DisplayNutrient (DisplayNode a)
+  , dnKnown :: DisplayMap a
   , dnUnknown :: Map [UnknownTree] a
   }
   deriving (Functor, Show)
@@ -291,16 +281,18 @@ instance Semigroup a => Semigroup (DisplayNode a) where
           (MMS.zipWithMatched (\_ x y -> x <> y))
 
 data DisplayTree_ g a b = DisplayTree_
-  { ffMap :: DisplayNode a
+  { ffMap :: DisplayMap a
   , ffEnergy :: b
   , ffGroup :: g
   }
   deriving (Generic, Show)
 
+type DisplayMap a = Map DisplayNutrient (DisplayNode a)
+
 -- fmap cheat code: make mass and energy polymorphic so I don't need to use
 -- a lens to "map" over this structure
 instance Bifunctor (DisplayTree_ g) where
-  bimap f g r@(DisplayTree_ as b _) = r {ffMap = f <$> as, ffEnergy = g b}
+  bimap f g r@(DisplayTree_ as b _) = r {ffMap = fmap f <$> as, ffEnergy = g b}
 
 type DisplayTreeSum = DisplayTree_ () (Sum Mass) (Sum Energy)
 
@@ -511,6 +503,7 @@ data AppError
   | MissingCustom !Text
   | MassError !IngredientSource !Double
   | SortKeys !Text
+  | FilterKeys !Text
   | EmptySchedule !Bool
   | NormalizeError !Int
   | PrefixError !Text

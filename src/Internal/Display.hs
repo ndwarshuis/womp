@@ -20,6 +20,8 @@ import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 
+-- import Text.Regex.TDFA
+
 toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
 toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
 
@@ -106,16 +108,47 @@ treeToJSON_ o (DisplayTree_ ms e g) =
           [ "value" .= roundDigits (atdoRoundDigits o) e
           , "unit" .= kcal
           ]
-    , "mass" .= nodeToJSON o "Total" Unity ms
+    , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
     ]
+
+-- filterTree :: FilterKey -> DisplayTree g -> DisplayTree g
+-- filterTree (FilterKey invert k) (DisplayTree_ ms e g) = case k of
+--   FilterMeal m -> undefined
+--   FilterIngredient i -> undefined
+--   FilterNutrient n -> undefined
+--   FilterValue v op -> undefined
+
+-- matchesMeal :: Text -> DisplayTree GroupByAll -> Bool
+-- matchesMeal f (DisplayTree_ _ _ GroupVars {gvMeal}) = unMealGroup gvMeal =~ f
+
+-- matchesIngredient :: Text -> DisplayTree GroupByAll -> Bool
+-- matchesIngredient f (DisplayTree_ _ _ GroupVars {gvIngredient}) =
+--   unIngredientGroup gvIngredient =~ f
+
+-- filterTreeFromTop :: (Text -> a -> Bool) -> DisplayNode a -> DisplayNode a
+-- filterTreeFromTop f (DisplayNode v ks us) = DisplayNode v' newMap us
+--   where
+--     newMap = M.fromList $ mapMaybe (uncurry go) $ M.toList ks
+--     go dn@(DisplayNutrient n _) d@(DisplayNode v ks _)
+--       | f n d == True = Just (dn, d)
+--       | otherwise = undefined
+
+-- selectTreesWith
+--   :: (Text -> a -> Bool)
+--   -> Map DisplayNutrient (DisplayNode a)
+--   -> Map DisplayNutrient (DisplayNode a)
+-- selectTreesWith f = M.fromList . concatMap (uncurry go) . M.toList
+--   where
+--     go dn@(DisplayNutrient n _) d@(DisplayNode v ks _)
+--       | f n v == True = [(dn, d)]
+--       | otherwise = M.toList $ selectTreesWith f ks
 
 nodeToJSON
   :: AllTreeDisplayOptions
-  -> Text
-  -> Prefix
+  -> DisplayNutrient
   -> DisplayNode Mass
   -> Value
-nodeToJSON o@(AllTreeDisplayOptions u e uy r) n p (DisplayNode v ks us) =
+nodeToJSON o@(AllTreeDisplayOptions u e uy r _) (DisplayNutrient n p) (DisplayNode v ks us) =
   object $
     [ encodeValue v'
     , "name" .= n
@@ -126,7 +159,7 @@ nodeToJSON o@(AllTreeDisplayOptions u e uy r) n p (DisplayNode v ks us) =
   where
     (p', v') = convertWithPrefix uy p r $ unMass v
 
-    mapK = fmap (\(DisplayNutrient n' p'', v'') -> nodeToJSON o n' p'' v'') . M.toList
+    mapK = fmap (uncurry (nodeToJSON o)) . M.toList
 
     mapU = fmap (uncurry goUnk) . M.toList
 
@@ -152,14 +185,15 @@ convertWithPrefix p dp r v = (p', roundDigits r $ raisePower (-prefixValue p') v
     p' = fromMaybe dp p
 
 treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> NonEmpty (DisplayRow g)
-treeToRows (AllTabularDisplayOptions su uu r _) (DisplayTree_ (DisplayNode v ks us) e g) =
-  energy :| (totalMass : (goK massName ks ++ [goU massName us | su]))
+treeToRows (AllTabularDisplayOptions su uu r _ _) (DisplayTree_ ms e g) =
+  -- TODO this "Nothing" won't be valid in general after filtering (unless we
+  -- don't want parental information to be retained for the top of any selected
+  -- tree)
+  energy :| goK Nothing ms
   where
     row = DisplayRow g
 
     energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
-
-    totalMass = massRow massName Nothing v Unity
 
     massRow n pnt v' p =
       let (p', v'') = convertWithPrefix uu p r $ unMass v'
@@ -168,13 +202,11 @@ treeToRows (AllTabularDisplayOptions su uu r _) (DisplayTree_ (DisplayNode v ks 
     goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
 
     goK_ pnt (DisplayNutrient n p) (DisplayNode v' ks' us') =
-      massRow n (Just pnt) v' p : (goK n ks' ++ [goU n us' | su])
+      massRow n pnt v' p : (goK (Just n) ks' ++ [goU n us' | su])
 
     goU pnt us' =
       let s = sum $ M.elems us'
        in massRow "Unknown" (Just pnt) s (autoPrefix s)
-
-    massName = "Total Mass"
 
 compareRow
   :: (Ord d, Ord m, Ord i)

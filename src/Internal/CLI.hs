@@ -139,6 +139,19 @@ common =
               <> help "force all masses to this prefix (energy will remain in kcal)"
           )
       )
+    <*> strOption
+      ( long "filter"
+          <> short 'F'
+          <> metavar "FILTER"
+          <> help filterHelp
+          <> value ""
+      )
+  where
+    -- TODO fix this once I figure out what I'm really doing
+    filterHelp =
+      unwords
+        [ "comma separated list of filter keys;"
+        ]
 
 tabular :: Parser TabularExportOptions
 tabular =

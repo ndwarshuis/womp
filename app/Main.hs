@@ -77,9 +77,8 @@ runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} 
         treeToCSV opts (tsvOptions tabHeader) (ceoGroup tabCommonExport) ts
   where
     readTrees = readDisplayTrees (ceoMealplan tabCommonExport)
-    getOpts = do
-      ks <- parseSortKeysIO tabSort
-      allTabularDisplayOpts ks tos
+    filt = ceoFilter tabCommonExport
+    getOpts = allTabularDisplayOpts tabSort filt tos
 
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -94,19 +93,25 @@ runExportTree
   => TreeExportOptions
   -> m ()
 runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
-  combineErrorIOM2 readTrees (allTreeDisplayOpts t) $ \ts atds ->
+  combineErrorIOM2 readTrees (allTreeDisplayOpts filt t) $ \ts atds ->
     liftIO $ go $ treeToJSON atds gos ts
   where
     readTrees = readDisplayTrees $ ceoMealplan treeCommonExport
     gos = ceoGroup treeCommonExport
+    filt = ceoFilter treeCommonExport
     go = if treeJSON then BL.putStr . A.encode else B.putStr . Y.encode
 
 runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients =
   BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
 
-allTreeDisplayOpts :: MonadUnliftIO m => TreeExportOptions -> m AllTreeDisplayOptions
 allTreeDisplayOpts
+  :: MonadUnliftIO m
+  => Text
+  -> TreeExportOptions
+  -> m AllTreeDisplayOptions
+allTreeDisplayOpts
+  filt
   TreeExportOptions
     { treeDisplay
     , treeCommonExport =
@@ -116,16 +121,22 @@ allTreeDisplayOpts
         , ceoMealplan = MealplanOptions {moRoundDigits}
         }
     } = do
-    p <- mapM parseCLIPrefixIO ceoPrefix
-    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits
+    (p, fs) <-
+      combineErrorIO2
+        (mapM parseCLIPrefixIO ceoPrefix)
+        (parseFilterKeysIO filt)
+        (,)
+    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits fs
 
 allTabularDisplayOpts
   :: MonadUnliftIO m
-  => [SortKey]
+  => Text
+  -> Text
   -> TabularExportOptions
   -> m AllTabularDisplayOptions
 allTabularDisplayOpts
-  ks
+  srt
+  filt
   TabularExportOptions
     { tabCommonExport =
       CommonExportOptions
@@ -134,8 +145,13 @@ allTabularDisplayOpts
         , ceoMealplan = MealplanOptions {moRoundDigits}
         }
     } = do
-    p <- mapM parseCLIPrefixIO ceoPrefix
-    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ks
+    (p, ss, fs) <-
+      combineErrorIO3
+        (mapM parseCLIPrefixIO ceoPrefix)
+        (parseSortKeysIO srt)
+        (parseFilterKeysIO filt)
+        (,,)
+    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ss fs
 
 parseCLIPrefixIO :: MonadUnliftIO m => Text -> m Prefix
 parseCLIPrefixIO s =
@@ -151,6 +167,10 @@ tsvOptions h =
 parseSortKeysIO :: MonadUnliftIO m => Text -> m [SortKey]
 parseSortKeysIO s =
   maybe (throwAppErrorIO (SortKeys s)) pure $ parseSortKeys s
+
+parseFilterKeysIO :: MonadUnliftIO m => Text -> m [FilterKey]
+parseFilterKeysIO s =
+  maybe (throwAppErrorIO (FilterKeys s)) pure $ parseFilterKeys s
 
 parseSortKeys :: Text -> Maybe [SortKey]
 parseSortKeys = parseArgList parseSortKey
@@ -194,9 +214,7 @@ parseFilterKey s = do
       case k of
         "meal" -> Just $ FilterMeal v
         "ingredient" -> Just $ FilterIngredient v
-        "nutrient" -> Just $ FilterNutrient NutrientDirect v
-        "lineage" -> Just $ FilterNutrient NutrientLineage v
-        "children" -> Just $ FilterNutrient NutrientChildren v
+        "nutrient" -> Just $ FilterNutrient v
         _ -> Nothing
 
     parseValueFilter kv opChar op = do
@@ -208,7 +226,7 @@ parseFilterKey s = do
           p' <- parseCLIPrefix p
           return $ toUnity p' d'
         _ -> Nothing
-      return $ FilterValue $ ValueNutrientData v' op
+      return $ FilterValue v' op
 
     opPairs =
       [ ("=", EQ_)

@@ -114,6 +114,7 @@ showError other = case other of
   DateDaysEndError x -> [T.append "--end must be 1 or more, got " $ tshow x]
   IntervalError x -> [T.append "--interval must be 1 or more, got " $ tshow x]
   SortKeys s -> [T.append "unable to parse sort order: " s]
+  FilterKeys f -> [T.append "unable to parse filter keys: " f]
   MissingCustom c -> [T.append "Custom ingredient not found: " c]
   CustomIngError c -> [fmtCustomError c]
   FileTypeError f -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
