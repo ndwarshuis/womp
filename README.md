@@ -65,8 +65,14 @@ Print a list of all nutrients to be consumed for the next week:
 womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -c ./test/examples/yogurt.dhall
 ```
 
-Same as above but print a tree in JSON format (which can be easily viewed with
-the `jq` command):
+Same as above but calculate a daily average for the entire week (`-N 7`):
+
+```
+womp table -k <APIKEY> -s 2024-02-03 -d 7 -N 7 -H -c ./test/examples/yogurt.dhall
+```
+
+Same as above but print a tree in JSON format (`-j`) (which can be easily viewed
+with the `jq` command):
 
 ```
 womp tree -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -j -c ./test/examples/yogurt.dhall
@@ -83,14 +89,23 @@ womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -c ./test/examples/yogurt.d
 
 Print a list of all nutrients for the next week, group by ingredient (`-G`)
 and sort by nutrient and value within each ingredient in ascending order (`-S
-+nutrient,+value`), then filter for the nutrient you want.
++nutrient,+value`), don't show calories (`-E`), then filter out everything but
+potassium (`-F 'nutrient~Potassium'`).
 
 This will rank all nutrients by absolute potassium content:
 
 ```
-womp table -k <APIKEY> -s 2024-02-03 -d 7 -G -S +nutrient,+value -H \
-  -c ./test/examples/yogurt.dhall | \
-  grep Potassium
+womp table -k <APIKEY> -s 2024-02-03 -d 7 -G -E -H \
+  -S +nutrient,+value \
+  -F 'nutrient~Potassium'  \
+  -c ./test/examples/yogurt.dhall
+```
+
+Display all nutrients above 1 ug:
+
+```
+womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -F '!value<1u' \
+  -c ./test/examples/yogurt.dhall
 ```
 
 Dump the json blob of a given nutrient (in this case a banana) as reported by
