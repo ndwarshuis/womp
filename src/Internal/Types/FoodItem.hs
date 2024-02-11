@@ -50,6 +50,7 @@ data ValidNutrient = ValidNutrient
   }
   deriving (Show, Eq)
 
+-- TODO filter out nutrients that aren't analytical (or similar)
 -- TODO need a way to filter out/warn user on bad nutrient data
 data FoodItem n = FoodItem
   { fiDescription :: Text

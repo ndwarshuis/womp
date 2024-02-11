@@ -6,7 +6,6 @@ import Control.Monad.Error.Class
 import Data.Aeson
 import Data.Aeson.Types (Pair)
 import qualified Data.Csv as C
-import qualified Data.Map.Merge.Strict as MMS
 import Data.Monoid
 import Data.Scientific
 import GHC.Generics
@@ -281,16 +280,9 @@ instance Semigroup a => Semigroup (DisplayNode a) where
   (<>) a b =
     DisplayNode
       { dnValue = dnValue a <> dnValue b
-      , dnKnown = merge_ (dnKnown a) (dnKnown b)
-      , dnUnknown = merge_ (dnUnknown a) (dnUnknown b)
+      , dnKnown = M.unionWith (<>) (dnKnown a) (dnKnown b)
+      , dnUnknown = M.unionWith (<>) (dnUnknown a) (dnUnknown b)
       }
-    where
-      merge_ :: (Ord k, Semigroup v) => Map k v -> Map k v -> Map k v
-      merge_ =
-        MMS.merge
-          MMS.preserveMissing
-          MMS.preserveMissing
-          (MMS.zipWithMatched (\_ x y -> x <> y))
 
 data DisplayTree_ g a b = DisplayTree_
   { dtMap :: DisplayMap a
