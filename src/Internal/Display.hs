@@ -22,24 +22,8 @@ import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
 import Text.Regex.TDFA
 
-toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
-toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
-
-fromSumTree :: g -> DisplayTreeSum -> DisplayTree g
-fromSumTree g (DisplayTree_ ms e _) =
-  bimap getSum getSum $ DisplayTree_ ms e g
-
-groupTrees
-  :: Eq g1
-  => (g0 -> g1)
-  -> [DisplayTree g0]
-  -> [DisplayTree g1]
-groupTrees f =
-  fmap go
-    . N.groupWith fst
-    . fmap (first f . toSumTree)
-  where
-    go xs@((g, _) :| _) = fromSumTree g $ sconcat $ fmap snd xs
+--------------------------------------------------------------------------------
+-- tree (json/yaml)
 
 treeToJSON
   :: AllTreeDisplayOptions
@@ -47,6 +31,55 @@ treeToJSON
   -> [DisplayTree GroupByAll]
   -> [Value]
 treeToJSON dos gos = groupAndFilter gos (fmap (treeToJSON_ dos)) (atdoFilter dos)
+
+treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
+treeToJSON_ o (DisplayTree_ ms e g) =
+  object
+    [ "group" .= toJSON g
+    , "energy"
+        .= object
+          [ "value" .= roundDigits (atdoRoundDigits o) e
+          , "unit" .= kcal
+          ]
+    , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
+    ]
+
+nodeToJSON
+  :: AllTreeDisplayOptions
+  -> DisplayNutrient
+  -> DisplayNode Mass
+  -> Value
+nodeToJSON o@(AllTreeDisplayOptions u e uy r _) (DisplayNutrient n p) (DisplayNode v ks us) =
+  object $
+    [ encodeValue v'
+    , "name" .= n
+    , encodeUnit p'
+    ]
+      ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
+      ++ ["unknown" .= mapU us | doExpandedUnits u]
+  where
+    (p', v') = convertWithPrefix uy p r $ unMass v
+
+    mapK = fmap (uncurry (nodeToJSON o)) . M.toList
+
+    mapU = fmap (uncurry goUnk) . M.toList
+
+    goUnk uts v'' =
+      let (p'', v''') =
+            convertWithPrefix uy (autoPrefix $ unMass v'') r $ unMass v''
+       in object
+            [ encodeValue v'''
+            , encodeUnit p''
+            , "trees" .= uts
+            ]
+
+    encodeValue = ("value" .=)
+    encodeUnit p'' =
+      let u' = Unit p'' Gram
+       in if e then "unit" .= u' else "unit" .= tunit u'
+
+--------------------------------------------------------------------------------
+-- table (tsv/csv/psv/whatever-sv)
 
 treeToCSV
   :: AllTabularDisplayOptions
@@ -62,6 +95,33 @@ treeToCSV tos eos gos = groupAndFilter gos go (atabFilter tos)
         . L.sortBy (compareRow (atabSort tos))
         . mconcat
         . fmap (treeToRows tos)
+
+treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> [DisplayRow g]
+treeToRows (AllTabularDisplayOptions su uu r _ _) (DisplayTree_ ms e g) =
+  -- TODO this "Nothing" won't be valid in general after filtering (unless we
+  -- don't want parental information to be retained for the top of any selected
+  -- tree)
+  energy : goK Nothing ms
+  where
+    row = DisplayRow g
+
+    energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
+
+    massRow n pnt v p =
+      let (p', v') = convertWithPrefix uu p r $ unMass v
+       in row n pnt v' (Unit p' Gram)
+
+    goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
+
+    goK_ pnt (DisplayNutrient n p) (DisplayNode v ks us) =
+      massRow n pnt v p : (goK (Just n) ks ++ [goU n us | su])
+
+    goU pnt us' =
+      let s = sum $ M.elems us'
+       in massRow "Unknown" (Just pnt) s (autoPrefix s)
+
+--------------------------------------------------------------------------------
+-- grouping (which includes filtering)
 
 -- TODO not sure how to get the instance constraints out of the rankN function
 -- (they don't seem necessary)
@@ -87,17 +147,67 @@ groupAndFilter (GroupOptions d m i) f fks ts = case (d, m, i) of
     f' = f . fmap (filterTreeKeys tfs)
     ts' = mapMaybe (filterGroupKeys gfs) ts
 
-treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
-treeToJSON_ o (DisplayTree_ ms e g) =
-  object
-    [ "group" .= toJSON g
-    , "energy"
-        .= object
-          [ "value" .= roundDigits (atdoRoundDigits o) e
-          , "unit" .= kcal
-          ]
-    , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
-    ]
+toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
+toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
+
+fromSumTree :: g -> DisplayTreeSum -> DisplayTree g
+fromSumTree g (DisplayTree_ ms e _) =
+  bimap getSum getSum $ DisplayTree_ ms e g
+
+groupTrees
+  :: Eq g1
+  => (g0 -> g1)
+  -> [DisplayTree g0]
+  -> [DisplayTree g1]
+groupTrees f =
+  fmap go
+    . N.groupWith fst
+    . fmap (first f . toSumTree)
+  where
+    go xs@((g, _) :| _) = fromSumTree g $ sconcat $ fmap snd xs
+
+--------------------------------------------------------------------------------
+-- sorting
+
+compareRow
+  :: (Ord d, Ord m, Ord i)
+  => [SortKey]
+  -> DisplayRow (GroupVars d m i)
+  -> DisplayRow (GroupVars d m i)
+  -> Ordering
+compareRow ks a b = maybe EQ (sconcat . fmap (compareRowKey a b)) $ N.nonEmpty ks
+
+compareRowKey
+  :: (Ord d, Ord m, Ord i)
+  => DisplayRow (GroupVars d m i)
+  -> DisplayRow (GroupVars d m i)
+  -> SortKey
+  -> Ordering
+compareRowKey a b SortKey {skField, skAsc} = case (f a b, skAsc) of
+  (LT, True) -> GT
+  (GT, True) -> LT
+  (EQ, _) -> EQ
+  (x, False) -> x
+  where
+    f = case skField of
+      SortDate -> go (gvDaySpan . drGroup)
+      SortMeal -> go (gvMeal . drGroup)
+      SortIngredient -> go (gvIngredient . drGroup)
+      SortNutrient -> go drNutrient
+      SortParent -> go drParentNutrient
+      SortValue -> compareValue
+    go g x y = compare (g x) (g y)
+    compareValue x y =
+      -- compare units first so that calories and grams will sort separately,
+      -- and sort the prefix last such that "small looking" things are below
+      -- "large looking" things
+      go (unitMeasurement . drUnit) x y
+        <> go getValue x y
+        <> go (unitPrefix . drUnit) x y
+    getValue x = toUnity (unitPrefix $ drUnit x) (drValue x)
+
+--------------------------------------------------------------------------------
+-- filtering
 
 partitionFilterKeys :: [FilterKey] -> ([GroupFilterKey], [TreeFilterKey])
 partitionFilterKeys = partitionEithers . fmap go
@@ -160,39 +270,11 @@ removeTreesWith f = M.mapMaybeWithKey go
       | f n v = Just $ d {dnKnown = removeTreesWith f ks}
       | otherwise = Nothing
 
-nodeToJSON
-  :: AllTreeDisplayOptions
-  -> DisplayNutrient
-  -> DisplayNode Mass
-  -> Value
-nodeToJSON o@(AllTreeDisplayOptions u e uy r _) (DisplayNutrient n p) (DisplayNode v ks us) =
-  object $
-    [ encodeValue v'
-    , "name" .= n
-    , encodeUnit p'
-    ]
-      ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
-      ++ ["unknown" .= mapU us | doExpandedUnits u]
-  where
-    (p', v') = convertWithPrefix uy p r $ unMass v
+--------------------------------------------------------------------------------
+-- misc
 
-    mapK = fmap (uncurry (nodeToJSON o)) . M.toList
-
-    mapU = fmap (uncurry goUnk) . M.toList
-
-    goUnk uts v'' =
-      let (p'', v''') =
-            convertWithPrefix uy (autoPrefix $ unMass v'') r $ unMass v''
-       in object
-            [ encodeValue v'''
-            , encodeUnit p''
-            , "trees" .= uts
-            ]
-
-    encodeValue = ("value" .=)
-    encodeUnit p'' =
-      let u' = Unit p'' Gram
-       in if e then "unit" .= u' else "unit" .= tunit u'
+kcal :: Unit
+kcal = Unit Kilo Calorie
 
 -- | Convert and round a number given its default prefix or a prefix we choose
 -- if supplied
@@ -200,67 +282,6 @@ convertWithPrefix :: Maybe Prefix -> Prefix -> Int -> Scientific -> (Prefix, Sci
 convertWithPrefix p dp r v = (p', roundDigits r $ raisePower (-prefixValue p') v)
   where
     p' = fromMaybe dp p
-
-treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> [DisplayRow g]
-treeToRows (AllTabularDisplayOptions su uu r _ _) (DisplayTree_ ms e g) =
-  -- TODO this "Nothing" won't be valid in general after filtering (unless we
-  -- don't want parental information to be retained for the top of any selected
-  -- tree)
-  energy : goK Nothing ms
-  where
-    row = DisplayRow g
-
-    energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
-
-    massRow n pnt v p =
-      let (p', v') = convertWithPrefix uu p r $ unMass v
-       in row n pnt v' (Unit p' Gram)
-
-    goK pnt = concatMap (uncurry (goK_ pnt)) . M.assocs
-
-    goK_ pnt (DisplayNutrient n p) (DisplayNode v ks us) =
-      massRow n pnt v p : (goK (Just n) ks ++ [goU n us | su])
-
-    goU pnt us' =
-      let s = sum $ M.elems us'
-       in massRow "Unknown" (Just pnt) s (autoPrefix s)
-
-compareRow
-  :: (Ord d, Ord m, Ord i)
-  => [SortKey]
-  -> DisplayRow (GroupVars d m i)
-  -> DisplayRow (GroupVars d m i)
-  -> Ordering
-compareRow ks a b = maybe EQ (sconcat . fmap (compareRowKey a b)) $ N.nonEmpty ks
-
-compareRowKey
-  :: (Ord d, Ord m, Ord i)
-  => DisplayRow (GroupVars d m i)
-  -> DisplayRow (GroupVars d m i)
-  -> SortKey
-  -> Ordering
-compareRowKey a b SortKey {skField, skAsc} = case (f a b, skAsc) of
-  (LT, True) -> GT
-  (GT, True) -> LT
-  (EQ, _) -> EQ
-  (x, False) -> x
-  where
-    f = case skField of
-      SortDate -> go (gvDaySpan . drGroup)
-      SortMeal -> go (gvMeal . drGroup)
-      SortIngredient -> go (gvIngredient . drGroup)
-      SortNutrient -> go drNutrient
-      SortParent -> go drParentNutrient
-      SortValue -> compareValue
-    go g x y = compare (g x) (g y)
-    compareValue x y =
-      -- compare units first so that calories and grams will sort separately,
-      -- and sort the prefix last such that "small looking" things are below
-      -- "large looking" things
-      go (unitMeasurement . drUnit) x y
-        <> go getValue x y
-        <> go (unitPrefix . drUnit) x y
-    getValue x = toUnity (unitPrefix $ drUnit x) (drValue x)
 
 dumpNutrientTree :: [NutTreeRow]
 dumpNutrientTree = goTree Nothing $ nutHierarchy 0
@@ -289,9 +310,6 @@ dumpNutrientTree = goTree Nothing $ nutHierarchy 0
         NutTreeRow anName parent . Just . fst <$> N.toList anChoices
 
     goSummed parent SummedNutrient {snName} = NutTreeRow snName parent Nothing
-
-kcal :: Unit
-kcal = Unit Kilo Calorie
 
 type ThisGroup d m i =
   ( Ord d
