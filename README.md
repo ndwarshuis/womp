@@ -46,7 +46,11 @@ See `test/exmples` for a starting point to create a meal plan. The `.dhall`
 and `.yml` files are equivalent and should produce the same output. Note that
 yml does not currently support default values so will be slightly more verbose.
 
+
 ### Examples
+
+The `test/examples/yogurt.dhall` file provides a simple exmample for a yogurt
+fruit dish thing to be consumed on Monday, Wednesday, and Friday.
 
 Print a TSV list of ingredients, including the header (`-H`) and their masses
 for the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
@@ -55,14 +59,14 @@ for the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
 womp summary -k <APIKEY> -s 2024-02-03 -d 7 -H -c ./test/examples/yogurt.yml
 ```
 
-
 Print a list of all nutrients to be consumed for the next week:
 
 ```
 womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -c ./test/examples/yogurt.dhall
 ```
 
-Same as above but print a tree in JSON format:
+Same as above but print a tree in JSON format (which can be easily viewed with
+the `jq` command):
 
 ```
 womp tree -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -j -c ./test/examples/yogurt.dhall

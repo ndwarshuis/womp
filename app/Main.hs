@@ -120,6 +120,7 @@ allTreeDisplayOpts
         { ceoShowUnknowns
         , ceoPrefix
         , ceoMealplan = MealplanOptions {moRoundDigits}
+        , ceoEnergy
         }
     } = do
     (p, fs) <-
@@ -127,7 +128,7 @@ allTreeDisplayOpts
         (mapM parseCLIPrefixIO ceoPrefix)
         (parseFilterKeysIO filt)
         (,)
-    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits fs
+    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits fs (not ceoEnergy)
 
 allTabularDisplayOpts
   :: MonadUnliftIO m
@@ -144,6 +145,7 @@ allTabularDisplayOpts
         { ceoShowUnknowns
         , ceoPrefix
         , ceoMealplan = MealplanOptions {moRoundDigits}
+        , ceoEnergy
         }
     } = do
     (p, ss, fs) <-
@@ -152,7 +154,7 @@ allTabularDisplayOpts
         (parseSortKeysIO srt)
         (parseFilterKeysIO filt)
         (,,)
-    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ss fs
+    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ss fs (not ceoEnergy)
 
 parseCLIPrefixIO :: MonadUnliftIO m => Text -> m Prefix
 parseCLIPrefixIO s =

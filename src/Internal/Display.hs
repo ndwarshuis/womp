@@ -34,49 +34,54 @@ treeToJSON dos gos = groupAndFilter gos (fmap (treeToJSON_ dos)) (atdoFilter dos
 
 treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
 treeToJSON_ o (DisplayTree_ ms e g) =
-  object
+  object $
     [ "group" .= toJSON g
-    , "energy"
-        .= object
-          [ "value" .= roundDigits (atdoRoundDigits o) e
-          , "unit" .= kcal
-          ]
     , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
     ]
+      ++ [ "energy"
+          .= object
+            [ "value" .= roundDigits (atdoRoundDigits o) e
+            , "unit" .= kcal
+            ]
+         | atdoEnergy o
+         ]
 
 nodeToJSON
   :: AllTreeDisplayOptions
   -> DisplayNutrient
   -> DisplayNode Mass
   -> Value
-nodeToJSON o@(AllTreeDisplayOptions u e uy r _) (DisplayNutrient n p) (DisplayNode v ks us) =
-  object $
-    [ encodeValue v'
-    , "name" .= n
-    , encodeUnit p'
-    ]
-      ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
-      ++ ["unknown" .= mapU us | doExpandedUnits u]
-  where
-    (p', v') = convertWithPrefix uy p r $ unMass v
+nodeToJSON
+  o@(AllTreeDisplayOptions u e uy r _ _)
+  (DisplayNutrient n p)
+  (DisplayNode v ks us) =
+    object $
+      [ encodeValue v'
+      , "name" .= n
+      , encodeUnit p'
+      ]
+        ++ maybe [] ((: []) . ("known" .=)) (N.nonEmpty $ mapK ks)
+        ++ ["unknown" .= mapU us | doExpandedUnits u]
+    where
+      (p', v') = convertWithPrefix uy p r $ unMass v
 
-    mapK = fmap (uncurry (nodeToJSON o)) . M.toList
+      mapK = fmap (uncurry (nodeToJSON o)) . M.toList
 
-    mapU = fmap (uncurry goUnk) . M.toList
+      mapU = fmap (uncurry goUnk) . M.toList
 
-    goUnk uts v'' =
-      let (p'', v''') =
-            convertWithPrefix uy (autoPrefix $ unMass v'') r $ unMass v''
-       in object
-            [ encodeValue v'''
-            , encodeUnit p''
-            , "trees" .= uts
-            ]
+      goUnk uts v'' =
+        let (p'', v''') =
+              convertWithPrefix uy (autoPrefix $ unMass v'') r $ unMass v''
+         in object
+              [ encodeValue v'''
+              , encodeUnit p''
+              , "trees" .= uts
+              ]
 
-    encodeValue = ("value" .=)
-    encodeUnit p'' =
-      let u' = Unit p'' Gram
-       in if e then "unit" .= u' else "unit" .= tunit u'
+      encodeValue = ("value" .=)
+      encodeUnit p'' =
+        let u' = Unit p'' Gram
+         in if e then "unit" .= u' else "unit" .= tunit u'
 
 --------------------------------------------------------------------------------
 -- table (tsv/csv/psv/whatever-sv)
@@ -97,11 +102,11 @@ treeToCSV tos eos gos = groupAndFilter gos go (atabFilter tos)
         . fmap (treeToRows tos)
 
 treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> [DisplayRow g]
-treeToRows (AllTabularDisplayOptions su uu r _ _) (DisplayTree_ ms e g) =
+treeToRows (AllTabularDisplayOptions su uu r _ _ ne) (DisplayTree_ ms e g) =
   -- TODO this "Nothing" won't be valid in general after filtering (unless we
   -- don't want parental information to be retained for the top of any selected
   -- tree)
-  energy : goK Nothing ms
+  [energy | ne] ++ goK Nothing ms
   where
     row = DisplayRow g
 

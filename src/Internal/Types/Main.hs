@@ -27,6 +27,7 @@ data AllTreeDisplayOptions = AllTreeDisplayOptions
   , atdoUnits :: !(Maybe Prefix)
   , atdoRoundDigits :: !Int
   , atdoFilter :: ![FilterKey]
+  , atdoEnergy :: !Bool
   }
 
 data AllTabularDisplayOptions = AllTabularDisplayOptions
@@ -35,6 +36,7 @@ data AllTabularDisplayOptions = AllTabularDisplayOptions
   , atabRoundDigits :: !Int
   , atabSort :: ![SortKey]
   , atabFilter :: ![FilterKey]
+  , atabEnergy :: !Bool
   }
 
 data SortKey = SortKey

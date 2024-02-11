@@ -12,7 +12,7 @@ parseCLI =
       (options <**> helper)
       ( fullDesc
           <> header "womp: what's on my plate"
-          <> progDesc "plan and track your macro/micronutrients"
+          <> progDesc "Plan and track your macro/micronutrients"
       )
 
 options :: Parser CLIOptions
@@ -26,7 +26,7 @@ commonOptions =
     c =
       long "verbose"
         <> short 'v'
-        <> help "be obnoxious (multiple times to escalate)"
+        <> help "Be obnoxious (multiple times to escalate)"
 
 subcommand :: Parser SubCommand
 subcommand =
@@ -35,37 +35,37 @@ subcommand =
         "table"
         ( info
             (ExportTabular <$> tabular)
-            (progDesc "export meal plan in tabular format")
+            (progDesc "Export meal plan in tabular format")
         )
         <> command
           "tree"
           ( info
               (ExportTree <$> tree)
-              (progDesc "export meal plan in tree format")
+              (progDesc "Export meal plan in tree format")
           )
         <> command
           "summary"
           ( info
               (Summarize <$> summarize)
-              (progDesc "print table of meals and their ingredients")
+              (progDesc "Print table of meals and their ingredients")
           )
         <> command
           "nutrients"
           ( info
               (pure ListNutrients)
-              (progDesc "list nutrients available for parsing")
+              (progDesc "List nutrients available for parsing")
           )
         <> command
           "fetch"
           ( info
               (Fetch <$> fetchDump)
-              (progDesc "fetch a food by ID")
+              (progDesc "Fetch a food by ID")
           )
         <> command
           "dump"
           ( info
               (Dump <$> fetchDump)
-              (progDesc "dump JSON for food by ID")
+              (progDesc "Dump JSON for food by ID")
           )
     )
 
@@ -89,7 +89,7 @@ mealplan =
       ( long "config"
           <> short 'c'
           <> metavar "PATH"
-          <> help "path to config with schedules and meals"
+          <> help "Path to config with schedules and meals"
       )
     <*> dateInterval
     <*> force
@@ -100,8 +100,8 @@ mealplan =
           <> metavar "NUM"
           <> help
             ( unwords
-                [ "number of threads for processing ingredients;"
-                , "anything less than 1 will use all available cores"
+                [ "Number of threads for processing ingredients."
+                , "Anything less than 1 will use all available cores"
                 ]
             )
           <> value 2
@@ -112,7 +112,7 @@ mealplan =
       ( long "round"
           <> short 'r'
           <> metavar "DIGITS"
-          <> help "number of digits after decimal to keep"
+          <> help "Number of digits after decimal to keep"
           <> value 3
       )
 
@@ -130,13 +130,13 @@ common =
     <*> switch
       ( long "unknowns"
           <> short 'u'
-          <> help "display unknown nutrients in output"
+          <> help "Display unknown nutrients in output"
       )
     <*> optional
       ( strOption
           ( long "prefix"
               <> short 'p'
-              <> help "force all masses to this prefix (energy will remain in kcal)"
+              <> help "Force all masses to this prefix (energy will remain in kcal)"
           )
       )
     <*> strOption
@@ -146,11 +146,25 @@ common =
           <> help filterHelp
           <> value ""
       )
+    <*> switch
+      ( long "noenergy"
+          <> short 'E'
+          <> help "Don't show energy in output"
+      )
   where
     -- TODO fix this once I figure out what I'm really doing
     filterHelp =
       unwords
-        [ "comma separated list of filter keys;"
+        [ "Comma separated list of filter keys. Valid options are"
+        , "'meal~<regexp>', 'ingredient~<regexp>', 'nutrient~<regexp>',"
+        , "or 'value<op><value>[<prefix>]'. In the case of the first three,"
+        , "<regexp> is a regular expression against which the specified string"
+        , "will be matched. For value, <op> is one of '<', '>', '>=', '<=',"
+        , "or '=', <value> is a whole or decimal number, and <prefix> is an"
+        , "optional SI prefix such as 'G' or 'M' to which <value> will be"
+        , "scaled. If 'nutrient' or 'value' queries match a given node in the"
+        , "nutrient tree, everthing except that node and its children are"
+        , "discarded. Invert a filter by prefixing with '!'."
         ]
 
 tabular :: Parser TabularExportOptions
@@ -168,7 +182,7 @@ tabular =
   where
     sortHelp =
       unwords
-        [ "comma separated list of sort keys; valid keys are"
+        [ "Comma separated list of sort keys. Valid keys are"
         , "'date', 'meal', 'ingredient', 'nutrient', 'parent'"
         , "and 'value' which correspond to the headers to be sorted;"
         , "each must be prefixed with '+' or '-' for ascending or"
@@ -180,15 +194,15 @@ headerTab =
   switch
     ( long "header"
         <> short 'H'
-        <> help "include header above the table"
+        <> help "Include header above the table"
     )
 
 grouping :: Parser GroupOptions
 grouping =
   GroupOptions
-    <$> switch (long "date" <> short 'D' <> help "group by date range")
-    <*> switch (long "meal" <> short 'M' <> help "group by meal")
-    <*> switch (long "ingredient" <> short 'G' <> help "group by ingredient")
+    <$> switch (long "date" <> short 'D' <> help "Group by date range")
+    <*> switch (long "meal" <> short 'M' <> help "Group by meal")
+    <*> switch (long "ingredient" <> short 'G' <> help "Group by ingredient")
 
 tree :: Parser TreeExportOptions
 tree =
@@ -197,7 +211,7 @@ tree =
     <*> switch
       ( long "json"
           <> short 'j'
-          <> help "output JSON instead of YAML"
+          <> help "Output JSON instead of YAML"
       )
     <*> common
 
@@ -206,7 +220,7 @@ force =
   switch
     ( long "force"
         <> short 'f'
-        <> help "download ingredients even if they are already cached"
+        <> help "Download ingredients even if they are already cached"
     )
 
 dateInterval :: Parser DateIntervalOptions
@@ -219,7 +233,7 @@ dateInterval =
       ( long "days"
           <> short 'd'
           <> metavar "DAYS"
-          <> help "length of interval in days within which summary will be calculated (ignored if END is present)"
+          <> help daysHelp
           <> value 7
       )
     <*> optional
@@ -228,7 +242,7 @@ dateInterval =
           ( long "interval"
               <> short 'I'
               <> metavar "DAYS"
-              <> help "aggregate in intervals of this length throughout the time denoted by --start and --end/--days"
+              <> help intervalHelp
           )
       )
     <*> option
@@ -236,9 +250,25 @@ dateInterval =
       ( long "normalize"
           <> short 'N'
           <> metavar "NORMALIZE"
-          <> help "normalize all values to this (for instance to put week-long schedule on per/day basis)"
+          <> help normalizeHelp
           <> value 1
       )
+  where
+    daysHelp =
+      unwords
+        [ "Length of interval in days within which summary will"
+        , "be calculated (ignored if END is present)"
+        ]
+    intervalHelp =
+      unwords
+        [ "Aggregate in intervals of this length throughout the time denoted"
+        , "by --start and --end/--days"
+        ]
+    normalizeHelp =
+      unwords
+        [ "Normalize all values to this (for instance to put week-long"
+        , "schedule on per/day basis)"
+        ]
 
 displayOptions :: Parser TreeDisplayOptions
 displayOptions =
@@ -246,7 +276,7 @@ displayOptions =
     <$> switch
       ( long "expandUnits"
           <> short 'x'
-          <> help "show prefix and base unit as separate keys"
+          <> help "Show prefix and base unit as separate keys"
       )
 
 startDay :: Parser (Maybe Day)
@@ -254,14 +284,14 @@ startDay =
   parseDay
     "start"
     's'
-    "start date on which to begin summary calculations"
+    "Start date on which to begin summary calculations"
 
 endDay :: Parser (Maybe Day)
 endDay =
   parseDay
     "end"
     'e'
-    "end date on which to stop summary calculations (exclusive)"
+    "End date on which to stop summary calculations (exclusive)"
 
 parseDay :: String -> Char -> String -> Parser (Maybe Day)
 parseDay l s d =
@@ -285,6 +315,12 @@ apikey =
         ( long "apikey"
             <> short 'k'
             <> metavar "APIKEY"
-            <> help "API key for USDA FoodData Central"
+            <> help h
         )
     )
+  where
+    h =
+      unwords
+        [ "API key for USDA FoodData Central."
+        , "This will be cached so it only needs to be provided once unless changed"
+        ]
