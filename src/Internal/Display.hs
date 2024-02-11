@@ -46,9 +46,7 @@ treeToJSON
   -> GroupOptions
   -> [DisplayTree GroupByAll]
   -> [Value]
-treeToJSON dos gos =
-  chooseGrouping gos (fmap (treeToJSON_ dos))
-    . mapMaybe (filterTreeKeys (atdoFilter dos))
+treeToJSON dos gos = groupAndFilter gos (fmap (treeToJSON_ dos)) (atdoFilter dos)
 
 treeToCSV
   :: AllTabularDisplayOptions
@@ -56,19 +54,9 @@ treeToCSV
   -> GroupOptions
   -> [DisplayTree GroupByAll]
   -> BL.ByteString
-treeToCSV tos eos gos =
-  chooseGrouping gos go
-    . mapMaybe (filterTreeKeys (atabFilter tos))
+treeToCSV tos eos gos = groupAndFilter gos go (atabFilter tos)
   where
-    go
-      :: ( Ord d
-         , Ord m
-         , Ord i
-         , C.ToNamedRecord (DisplayRow (GroupVars d m i))
-         , C.DefaultOrdered (DisplayRow (GroupVars d m i))
-         )
-      => [DisplayTree (GroupVars d m i)]
-      -> BL.ByteString
+    go :: ThisGroup d m i => [DisplayTree (GroupVars d m i)] -> BL.ByteString
     go =
       C.encodeDefaultOrderedByNameWith eos
         . L.sortBy (compareRow (atabSort tos))
@@ -77,30 +65,27 @@ treeToCSV tos eos gos =
 
 -- TODO not sure how to get the instance constraints out of the rankN function
 -- (they don't seem necessary)
-chooseGrouping
-  :: GroupOptions
-  -> ( forall d m i
-        . ( Ord d
-          , Ord m
-          , Ord i
-          , ToJSON (GroupVars d m i)
-          , C.DefaultOrdered (DisplayRow (GroupVars d m i))
-          , C.ToNamedRecord (DisplayRow (GroupVars d m i))
-          )
-       => [DisplayTree (GroupVars d m i)]
-       -> a
-     )
+groupAndFilter
+  :: forall a
+   . GroupOptions
+  -> (forall d m i. ThisGroup d m i => [DisplayTree (GroupVars d m i)] -> a)
+  -> [FilterKey]
   -> [DisplayTree GroupByAll]
   -> a
-chooseGrouping (GroupOptions d m i) f ts = case (d, m, i) of
-  (True, True, True) -> f $ groupTrees id ts
-  (True, True, False) -> f $ groupTrees (\g -> g {gvIngredient = ()}) ts
-  (True, False, True) -> f $ groupTrees (\g -> g {gvMeal = ()}) ts
-  (True, False, False) -> f $ groupTrees (\g -> g {gvMeal = (), gvIngredient = ()}) ts
-  (False, True, True) -> f $ groupTrees (\g -> g {gvDaySpan = ()}) ts
-  (False, True, False) -> f $ groupTrees (\g -> g {gvDaySpan = (), gvIngredient = ()}) ts
-  (False, False, True) -> f $ groupTrees (\g -> g {gvDaySpan = (), gvMeal = ()}) ts
-  (False, False, False) -> f $ groupTrees (const (GroupVars () () ())) ts
+groupAndFilter (GroupOptions d m i) f fks ts = case (d, m, i) of
+  (True, True, True) -> f' $ groupTrees id ts'
+  (True, True, False) -> f' $ groupTrees (\g -> g {gvIngredient = ()}) ts'
+  (True, False, True) -> f' $ groupTrees (\g -> g {gvMeal = ()}) ts'
+  (True, False, False) -> f' $ groupTrees (\g -> g {gvMeal = (), gvIngredient = ()}) ts'
+  (False, True, True) -> f' $ groupTrees (\g -> g {gvDaySpan = ()}) ts'
+  (False, True, False) -> f' $ groupTrees (\g -> g {gvDaySpan = (), gvIngredient = ()}) ts'
+  (False, False, True) -> f' $ groupTrees (\g -> g {gvDaySpan = (), gvMeal = ()}) ts'
+  (False, False, False) -> f' $ groupTrees (const (GroupVars () () ())) ts'
+  where
+    (gfs, tfs) = partitionFilterKeys fks
+    f' :: forall d m i. ThisGroup d m i => [DisplayTree (GroupVars d m i)] -> a
+    f' = f . fmap (filterTreeKeys tfs)
+    ts' = mapMaybe (filterGroupKeys gfs) ts
 
 treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
 treeToJSON_ o (DisplayTree_ ms e g) =
@@ -114,17 +99,38 @@ treeToJSON_ o (DisplayTree_ ms e g) =
     , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
     ]
 
-filterTreeKeys :: [FilterKey] -> DisplayTree GroupByAll -> Maybe (DisplayTree GroupByAll)
-filterTreeKeys = flip $ foldM (flip filterTree)
-
-filterTree :: FilterKey -> DisplayTree GroupByAll -> Maybe (DisplayTree GroupByAll)
-filterTree (FilterKey keep k) t@(DisplayTree_ ms _ _) = case k of
-  FilterMeal re -> if keep == matchesMeal re t then Just t else Nothing
-  FilterIngredient re -> if keep == matchesIngredient re t then Just t else Nothing
-  FilterNutrient re -> Just $ t {dtMap = treeFun (\n _ -> n =~ re) ms}
-  FilterValue x op -> Just $ t {dtMap = treeFun (\_ v -> opFun op v x) ms}
+partitionFilterKeys :: [FilterKey] -> ([GroupFilterKey], [TreeFilterKey])
+partitionFilterKeys = partitionEithers . fmap go
   where
-    treeFun = if keep then selectTreesWith else removeTreesWith
+    go (GroupFilter f) = Left f
+    go (TreeFilter f) = Right f
+
+filterGroupKeys :: [GroupFilterKey] -> DisplayTree GroupByAll -> Maybe (DisplayTree GroupByAll)
+filterGroupKeys = flip $ foldM (flip filterGroup)
+
+filterTreeKeys :: [TreeFilterKey] -> DisplayTree g -> DisplayTree g
+filterTreeKeys = flip $ foldr filterTree
+
+filterGroup :: GroupFilterKey -> DisplayTree GroupByAll -> Maybe (DisplayTree GroupByAll)
+filterGroup (GroupFilterKey keep re kt) t
+  | keep == f re t = Just t
+  | otherwise = Nothing
+  where
+    f = case kt of
+      FilterMeal -> matchesMeal
+      FilterIngredient -> matchesIngredient
+
+filterTree :: TreeFilterKey -> DisplayTree g -> DisplayTree g
+filterTree (TreeFilterKey keep k) t@(DisplayTree_ ms _ _) =
+  t {dtMap = f ms}
+  where
+    f =
+      if keep
+        then selectTreesWith matchFun
+        else removeTreesWith (fmap not . matchFun)
+    matchFun = case k of
+      FilterNutrient re -> (\n _ -> n =~ re)
+      FilterValue x op -> (\_ v -> opFun op v x)
 
 opFun :: Ord a => Operator -> a -> a -> Bool
 opFun EQ_ = (==)
@@ -286,3 +292,12 @@ dumpNutrientTree = goTree Nothing $ nutHierarchy 0
 
 kcal :: Unit
 kcal = Unit Kilo Calorie
+
+type ThisGroup d m i =
+  ( Ord d
+  , Ord m
+  , Ord i
+  , ToJSON (GroupVars d m i)
+  , C.DefaultOrdered (DisplayRow (GroupVars d m i))
+  , C.ToNamedRecord (DisplayRow (GroupVars d m i))
+  )

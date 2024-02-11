@@ -52,13 +52,22 @@ data SortField
   | SortValue
   deriving (Eq)
 
-data FilterKey = FilterKey Bool FilterData
+data FilterKey
+  = GroupFilter !GroupFilterKey
+  | TreeFilter !TreeFilterKey
   deriving (Eq, Show)
 
-data FilterData
-  = FilterMeal !Text
-  | FilterIngredient !Text
-  | FilterNutrient !Text
+data GroupFilterKey = GroupFilterKey !Bool !Text !GroupFilterType
+  deriving (Eq, Show)
+
+data GroupFilterType = FilterMeal | FilterIngredient
+  deriving (Eq, Show)
+
+data TreeFilterKey = TreeFilterKey !Bool !TreeFilterData
+  deriving (Eq, Show)
+
+data TreeFilterData
+  = FilterNutrient !Text
   | FilterValue !Mass !Operator
   deriving (Eq, Show)
 

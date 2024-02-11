@@ -204,21 +204,20 @@ parseFilterKey s = do
     '!' -> go False rest
     _ -> go True s
   where
-    go keep kv = do
-      v <-
-        foldr (<|>) (parseRegexpFilters kv) $
-          fmap (uncurry (parseValueFilter kv)) opPairs
-      return $ FilterKey keep v
+    go keep kv =
+      foldr (<|>) (parseRegexpFilters keep kv) $
+        fmap (uncurry (parseValueFilter keep kv)) opPairs
 
-    parseRegexpFilters kv = do
-      (k, v) <- splitMaybe "~" kv
+    parseRegexpFilters keep kv = do
+      (k, re) <- splitMaybe "~" kv
+      let g = GroupFilter . GroupFilterKey keep re
       case k of
-        "meal" -> Just $ FilterMeal v
-        "ingredient" -> Just $ FilterIngredient v
-        "nutrient" -> Just $ FilterNutrient v
+        "meal" -> Just $ g FilterMeal
+        "ingredient" -> Just $ g FilterIngredient
+        "nutrient" -> Just $ TreeFilter $ TreeFilterKey keep $ FilterNutrient re
         _ -> Nothing
 
-    parseValueFilter kv opChar op = do
+    parseValueFilter keep kv opChar op = do
       (k, v) <- splitMaybe opChar kv
       v' <- case k of
         "value" -> do
@@ -229,7 +228,7 @@ parseFilterKey s = do
             p' -> parseCLIPrefix p'
           return $ toUnity p' d'
         _ -> Nothing
-      return $ FilterValue (Mass v') op
+      return $ TreeFilter $ TreeFilterKey keep $ FilterValue (Mass v') op
 
     opPairs =
       [ ("=", EQ_)
