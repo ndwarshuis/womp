@@ -76,6 +76,7 @@ dependencies:
 - containers
 - yaml
 - dhall-json
+- regex-tdfa
 
 ghc-options:
 - -Wall

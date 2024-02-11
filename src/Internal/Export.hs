@@ -314,7 +314,7 @@ ingredientToTree
       scale = (* (unMass imMass / 100))
       go t =
         bimap (Mass . scale . unMass) (Energy . scale . unEnergy) $
-          DisplayTree_ t (computeCalories cc t) g
+          DisplayTree_ (M.fromList [(totalMass, t)]) (computeCalories cc t) g
 
 -- TODO warn user when modifications don't match
 modifyMap :: Modification -> NutrientMap -> NutrientMap
