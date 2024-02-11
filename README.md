@@ -46,7 +46,11 @@ See `test/exmples` for a starting point to create a meal plan. The `.dhall`
 and `.yml` files are equivalent and should produce the same output. Note that
 yml does not currently support default values so will be slightly more verbose.
 
+
 ### Examples
+
+The `test/examples/yogurt.dhall` file provides a simple exmample for a yogurt
+fruit dish thing to be consumed on Monday, Wednesday, and Friday.
 
 Print a TSV list of ingredients, including the header (`-H`) and their masses
 for the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
@@ -55,14 +59,20 @@ for the next week (`-d 7`) starting on Feb 3, 2024 (`-s 2024-02-03`):
 womp summary -k <APIKEY> -s 2024-02-03 -d 7 -H -c ./test/examples/yogurt.yml
 ```
 
-
 Print a list of all nutrients to be consumed for the next week:
 
 ```
 womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -c ./test/examples/yogurt.dhall
 ```
 
-Same as above but print a tree in JSON format:
+Same as above but calculate a daily average for the entire week (`-N 7`):
+
+```
+womp table -k <APIKEY> -s 2024-02-03 -d 7 -N 7 -H -c ./test/examples/yogurt.dhall
+```
+
+Same as above but print a tree in JSON format (`-j`) (which can be easily viewed
+with the `jq` command):
 
 ```
 womp tree -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -j -c ./test/examples/yogurt.dhall
@@ -79,14 +89,23 @@ womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -c ./test/examples/yogurt.d
 
 Print a list of all nutrients for the next week, group by ingredient (`-G`)
 and sort by nutrient and value within each ingredient in ascending order (`-S
-+nutrient,+value`), then filter for the nutrient you want.
++nutrient,+value`), don't show calories (`-E`), then filter out everything but
+potassium (`-F 'nutrient~Potassium'`).
 
 This will rank all nutrients by absolute potassium content:
 
 ```
-womp table -k <APIKEY> -s 2024-02-03 -d 7 -G -S +nutrient,+value -H \
-  -c ./test/examples/yogurt.dhall | \
-  grep Potassium
+womp table -k <APIKEY> -s 2024-02-03 -d 7 -G -E -H \
+  -S +nutrient,+value \
+  -F 'nutrient~Potassium'  \
+  -c ./test/examples/yogurt.dhall
+```
+
+Display all nutrients above 1 ug:
+
+```
+womp table -k <APIKEY> -s 2024-02-03 -d 7 -I 1 -D -H -F '!value<1u' \
+  -c ./test/examples/yogurt.dhall
 ```
 
 Dump the json blob of a given nutrient (in this case a banana) as reported by

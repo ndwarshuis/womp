@@ -6,6 +6,7 @@ module Internal.Nutrients
   , lipid
   , dispProtein
   , carbDiff
+  , totalMass
   )
 where
 
@@ -17,6 +18,9 @@ import qualified RIO.Text as T
 
 standardMass :: Mass
 standardMass = 100
+
+totalMass :: DisplayNutrient
+totalMass = DisplayNutrient "Total Mass" Unity
 
 water :: MeasuredNutrient
 water = Direct $ DirectNutrient 1051 "Water" Unity

@@ -1,7 +1,7 @@
 module Main (main) where
 
 import qualified Data.Aeson as A
-import Data.Char (ord)
+import Data.Char (isDigit, ord)
 import qualified Data.Csv as C
 import qualified Data.Text.IO as TI
 import qualified Data.Yaml as Y
@@ -20,6 +20,7 @@ import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
 import qualified RIO.Text as T
+import qualified RIO.Text.Partial as TP
 
 main :: IO ()
 main = run =<< parseCLI
@@ -73,12 +74,12 @@ runExportTabular tos@TabularExportOptions {tabCommonExport, tabSort, tabHeader} 
   combineErrorIOM2 readTrees getOpts $ \ts opts ->
     liftIO $
       BL.putStr $
-        treeToCSV opts (tsvOptions tabHeader) (ceoGroup tabCommonExport) ts
+        treeToCSV opts (tsvOptions tabHeader) (ceoGroup tabCommonExport) $
+          N.toList ts
   where
     readTrees = readDisplayTrees (ceoMealplan tabCommonExport)
-    getOpts = do
-      ks <- parseSortKeysIO tabSort
-      allTabularDisplayOpts ks tos
+    filt = ceoFilter tabCommonExport
+    getOpts = allTabularDisplayOpts tabSort filt tos
 
 runSummarize
   :: (MonadReader env m, HasLogFunc env, MonadUnliftIO m)
@@ -93,19 +94,25 @@ runExportTree
   => TreeExportOptions
   -> m ()
 runExportTree t@TreeExportOptions {treeJSON, treeCommonExport} = do
-  combineErrorIOM2 readTrees (allTreeDisplayOpts t) $ \ts atds ->
-    liftIO $ go $ treeToJSON atds gos ts
+  combineErrorIOM2 readTrees (allTreeDisplayOpts filt t) $ \ts atds ->
+    liftIO $ go $ treeToJSON atds gos $ N.toList ts
   where
     readTrees = readDisplayTrees $ ceoMealplan treeCommonExport
     gos = ceoGroup treeCommonExport
+    filt = ceoFilter treeCommonExport
     go = if treeJSON then BL.putStr . A.encode else B.putStr . Y.encode
 
 runListNutrients :: MonadUnliftIO m => m ()
 runListNutrients =
   BL.putStr $ C.encodeDefaultOrderedByNameWith (tsvOptions True) dumpNutrientTree
 
-allTreeDisplayOpts :: MonadUnliftIO m => TreeExportOptions -> m AllTreeDisplayOptions
 allTreeDisplayOpts
+  :: MonadUnliftIO m
+  => Text
+  -> TreeExportOptions
+  -> m AllTreeDisplayOptions
+allTreeDisplayOpts
+  filt
   TreeExportOptions
     { treeDisplay
     , treeCommonExport =
@@ -113,28 +120,41 @@ allTreeDisplayOpts
         { ceoShowUnknowns
         , ceoPrefix
         , ceoMealplan = MealplanOptions {moRoundDigits}
+        , ceoEnergy
         }
     } = do
-    p <- mapM parseCLIPrefixIO ceoPrefix
-    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits
+    (p, fs) <-
+      combineErrorIO2
+        (mapM parseCLIPrefixIO ceoPrefix)
+        (parseFilterKeysIO filt)
+        (,)
+    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits fs (not ceoEnergy)
 
 allTabularDisplayOpts
   :: MonadUnliftIO m
-  => [SortKey]
+  => Text
+  -> Text
   -> TabularExportOptions
   -> m AllTabularDisplayOptions
 allTabularDisplayOpts
-  ks
+  srt
+  filt
   TabularExportOptions
     { tabCommonExport =
       CommonExportOptions
         { ceoShowUnknowns
         , ceoPrefix
         , ceoMealplan = MealplanOptions {moRoundDigits}
+        , ceoEnergy
         }
     } = do
-    p <- mapM parseCLIPrefixIO ceoPrefix
-    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ks
+    (p, ss, fs) <-
+      combineErrorIO3
+        (mapM parseCLIPrefixIO ceoPrefix)
+        (parseSortKeysIO srt)
+        (parseFilterKeysIO filt)
+        (,,)
+    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ss fs (not ceoEnergy)
 
 parseCLIPrefixIO :: MonadUnliftIO m => Text -> m Prefix
 parseCLIPrefixIO s =
@@ -151,9 +171,12 @@ parseSortKeysIO :: MonadUnliftIO m => Text -> m [SortKey]
 parseSortKeysIO s =
   maybe (throwAppErrorIO (SortKeys s)) pure $ parseSortKeys s
 
+parseFilterKeysIO :: MonadUnliftIO m => Text -> m [FilterKey]
+parseFilterKeysIO s =
+  maybe (throwAppErrorIO (FilterKeys s)) pure $ parseFilterKeys s
+
 parseSortKeys :: Text -> Maybe [SortKey]
-parseSortKeys "" = Just []
-parseSortKeys s = fmap L.nub $ mapM parseSortKey $ T.split (== ',') s
+parseSortKeys = parseArgList parseSortKey
 
 parseSortKey :: Text -> Maybe SortKey
 parseSortKey = go <=< T.uncons
@@ -172,3 +195,56 @@ parseSortKey = go <=< T.uncons
         "value" -> pure SortValue
         _ -> Nothing
       pure $ SortKey f a
+
+parseFilterKeys :: Text -> Maybe [FilterKey]
+parseFilterKeys = parseArgList parseFilterKey
+
+parseFilterKey :: Text -> Maybe FilterKey
+parseFilterKey s = do
+  (p, rest) <- T.uncons s
+  case p of
+    '!' -> go False rest
+    _ -> go True s
+  where
+    go keep kv =
+      foldr (<|>) (parseRegexpFilters keep kv) $
+        fmap (uncurry (parseValueFilter keep kv)) opPairs
+
+    parseRegexpFilters keep kv = do
+      (k, re) <- splitMaybe "~" kv
+      let g = GroupFilter . GroupFilterKey keep re
+      case k of
+        "meal" -> Just $ g FilterMeal
+        "ingredient" -> Just $ g FilterIngredient
+        "nutrient" -> Just $ TreeFilter $ TreeFilterKey keep $ FilterNutrient re
+        _ -> Nothing
+
+    parseValueFilter keep kv opChar op = do
+      (k, v) <- splitMaybe opChar kv
+      v' <- case k of
+        "value" -> do
+          let (d, p) = T.span (\x -> isDigit x || x == '.') v
+          d' <- readMaybe $ T.unpack d
+          p' <- case p of
+            "" -> pure Unity
+            p' -> parseCLIPrefix p'
+          return $ toUnity p' d'
+        _ -> Nothing
+      return $ TreeFilter $ TreeFilterKey keep $ FilterValue (Mass v') op
+
+    opPairs =
+      [ ("=", EQ_)
+      , ("<", LT_)
+      , (">", GT_)
+      , ("<=", LTE_)
+      , (">=", GTE_)
+      ]
+
+splitMaybe :: Text -> Text -> Maybe (Text, Text)
+splitMaybe c s = case TP.splitOn c s of
+  [x, y] -> Just (x, y)
+  _ -> Nothing
+
+parseArgList :: Eq a => (Text -> Maybe a) -> Text -> Maybe [a]
+parseArgList _ "" = Just []
+parseArgList f s = fmap L.nub $ mapM f $ T.split (== ',') s

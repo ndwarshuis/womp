@@ -114,6 +114,7 @@ showError other = case other of
   DateDaysEndError x -> [T.append "--end must be 1 or more, got " $ tshow x]
   IntervalError x -> [T.append "--interval must be 1 or more, got " $ tshow x]
   SortKeys s -> [T.append "unable to parse sort order: " s]
+  FilterKeys f -> [T.append "unable to parse filter keys: " f]
   MissingCustom c -> [T.append "Custom ingredient not found: " c]
   CustomIngError c -> [fmtCustomError c]
   FileTypeError f -> [T.append "File must be .yml/yaml or .dhall: " $ T.pack f]
@@ -213,6 +214,12 @@ roundDigits p = (/ d) . go . round . (* d)
     d = 10 ^ p
     go :: Int -> a
     go = fromIntegral
+
+toUnity :: Prefix -> Scientific -> Scientific
+toUnity p = raisePower (prefixValue p)
+
+compareMeasurement :: (Prefix, Scientific) -> (Prefix, Scientific) -> Ordering
+compareMeasurement a b = compare (uncurry toUnity a) (uncurry toUnity b)
 
 autoPrefix :: (Ord a, Fractional a) => a -> Prefix
 autoPrefix s =

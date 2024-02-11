@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 
 module Internal.Types.Main where
@@ -15,6 +14,7 @@ import Internal.Types.CLI
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import RIO
+import qualified RIO.Map as M
 import qualified RIO.Text as T
 import RIO.Time
 
@@ -26,6 +26,8 @@ data AllTreeDisplayOptions = AllTreeDisplayOptions
   , atdoShowUnknowns :: !Bool
   , atdoUnits :: !(Maybe Prefix)
   , atdoRoundDigits :: !Int
+  , atdoFilter :: ![FilterKey]
+  , atdoEnergy :: !Bool
   }
 
 data AllTabularDisplayOptions = AllTabularDisplayOptions
@@ -33,6 +35,8 @@ data AllTabularDisplayOptions = AllTabularDisplayOptions
   , atabUnits :: !(Maybe Prefix)
   , atabRoundDigits :: !Int
   , atabSort :: ![SortKey]
+  , atabFilter :: ![FilterKey]
+  , atabEnergy :: !Bool
   }
 
 data SortKey = SortKey
@@ -49,6 +53,28 @@ data SortField
   | SortParent
   | SortValue
   deriving (Eq)
+
+data FilterKey
+  = GroupFilter !GroupFilterKey
+  | TreeFilter !TreeFilterKey
+  deriving (Eq, Show)
+
+data GroupFilterKey = GroupFilterKey !Bool !Text !GroupFilterType
+  deriving (Eq, Show)
+
+data GroupFilterType = FilterMeal | FilterIngredient
+  deriving (Eq, Show)
+
+data TreeFilterKey = TreeFilterKey !Bool !TreeFilterData
+  deriving (Eq, Show)
+
+data TreeFilterData
+  = FilterNutrient !Text
+  | FilterValue !Mass !Operator
+  deriving (Eq, Show)
+
+data Operator = EQ_ | LT_ | GT_ | LTE_ | GTE_
+  deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 -- Nutrient tree
@@ -246,7 +272,7 @@ ingredientJSON = (.=) "ingredient"
 
 data DisplayNode a = DisplayNode
   { dnValue :: a
-  , dnKnown :: Map DisplayNutrient (DisplayNode a)
+  , dnKnown :: DisplayMap a
   , dnUnknown :: Map [UnknownTree] a
   }
   deriving (Functor, Show)
@@ -267,22 +293,24 @@ instance Semigroup a => Semigroup (DisplayNode a) where
           (MMS.zipWithMatched (\_ x y -> x <> y))
 
 data DisplayTree_ g a b = DisplayTree_
-  { ffMap :: DisplayNode a
-  , ffEnergy :: b
-  , ffGroup :: g
+  { dtMap :: DisplayMap a
+  , dtEnergy :: b
+  , dtGroup :: g
   }
   deriving (Generic, Show)
+
+type DisplayMap a = Map DisplayNutrient (DisplayNode a)
 
 -- fmap cheat code: make mass and energy polymorphic so I don't need to use
 -- a lens to "map" over this structure
 instance Bifunctor (DisplayTree_ g) where
-  bimap f g r@(DisplayTree_ as b _) = r {ffMap = f <$> as, ffEnergy = g b}
+  bimap f g r@(DisplayTree_ as b _) = r {dtMap = fmap f <$> as, dtEnergy = g b}
 
 type DisplayTreeSum = DisplayTree_ () (Sum Mass) (Sum Energy)
 
 -- only allow "adding" together if there is no grouping data to clobber
 instance Semigroup (DisplayTree_ () (Sum Mass) (Sum Energy)) where
-  (<>) a b = DisplayTree_ (ffMap a <> ffMap b) (ffEnergy a + ffEnergy b) ()
+  (<>) a b = DisplayTree_ (M.unionWith (<>) (dtMap a) (dtMap b)) (dtEnergy a + dtEnergy b) ()
 
 type DisplayTree g = DisplayTree_ g Mass Energy
 
@@ -487,6 +515,7 @@ data AppError
   | MissingCustom !Text
   | MassError !IngredientSource !Double
   | SortKeys !Text
+  | FilterKeys !Text
   | EmptySchedule !Bool
   | NormalizeError !Int
   | PrefixError !Text
