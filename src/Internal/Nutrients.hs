@@ -766,6 +766,7 @@ ignoredNutrients =
   S.fromList
     [ 1005 -- carbs by difference
     , 1050 -- carbs by summation
+    , 1104 -- vitamin A (IU)
     , 2039 -- carbs
     , 2040 -- other carotenoids
     , 2041 -- tocopherols and tocotrienols
