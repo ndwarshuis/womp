@@ -259,9 +259,9 @@ validToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
   [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
   where
     go Ingredient {ingMass, ingSource} d =
-      ( source ingSource
-      , IngredientMetadata vsMeal (Mass (vsScale * fromFloatDigits ingMass)) () d
-      )
+      let src = source ingSource
+          m = Mass (vsScale * fromFloatDigits ingMass)
+       in (src, IngredientMetadata vsMeal m src () d)
 
 validToExport
   :: ValidSchedule
@@ -280,8 +280,9 @@ expandIngredient
   -> Ingredient
   -> (Source, ExportIngredientMetadata)
 expandIngredient mg s ds Ingredient {ingMass, ingModifications, ingSource} =
-  (source ingSource, IngredientMetadata mg mass ingModifications ds)
+  (src, IngredientMetadata mg mass src ingModifications ds)
   where
+    src = source ingSource
     mass = Mass $ s * fromFloatDigits ingMass
 
 source :: IngredientSource -> Source
@@ -304,9 +305,9 @@ ingredientToTree
   -> MappedFoodItem
   -> (DisplayTree GroupByAll, [UnusedNutrient])
 ingredientToTree
-  IngredientMetadata {imMeal, imMass, imMods, imDaySpan}
+  IngredientMetadata {imMeal, imMass, imMods, imDaySpan, imSource}
   (FoodItem desc ns cc pc) =
-    bimap go (nutMapToUnused imMeal) $
+    bimap go (nutMapToUnused imSource imMeal) $
       runState (displayTree pc) $
         foldr modifyMap ns imMods
     where
@@ -332,14 +333,17 @@ computeCalories (CalorieConversion ff pf cf) dn =
   where
     go n = unMass $ fromMaybe 0 $ lookupTree n dn
 
-nutMapToUnused :: MealGroup -> NutrientMap -> [UnusedNutrient]
-nutMapToUnused m = fmap (uncurry (UnusedNutrient m)) . M.toList
+nutMapToUnused :: Source -> MealGroup -> NutrientMap -> [UnusedNutrient]
+nutMapToUnused src m = fmap (uncurry (UnusedNutrient m src)) . M.toList
 
 fmtUnused :: UnusedNutrient -> T.Text
-fmtUnused (UnusedNutrient m i n) =
+fmtUnused (UnusedNutrient m src i n) =
   T.concat
-    [ "Unused nutrient with id "
+    [ "Unused nutrient ("
     , tshow i
+    , ") in food ("
+    , either tshow tshow src
+    , ")"
     , T.append " in meal " $ tshow m
     , ": "
     , tshow n
@@ -547,6 +551,7 @@ type SummaryIngredientMetadata = IngredientMetadata () Day
 data IngredientMetadata ms d = IngredientMetadata
   { imMeal :: MealGroup
   , imMass :: Mass
+  , imSource :: Source
   , imMods :: ms
   , imDaySpan :: d
   }
@@ -563,7 +568,9 @@ type ValidCustomMap = Map Text MappedFoodItem
 
 type NutrientState = MonadState NutrientMap
 
-data UnusedNutrient = UnusedNutrient MealGroup NID ValidNutrient
+-- TODO using source here might be overkill because invalid NIDs might be killed
+-- upon initial inspection in the case of custom nutrients
+data UnusedNutrient = UnusedNutrient MealGroup Source NID ValidNutrient
   deriving (Eq)
 
 type DisplayTrees = NonEmpty (DisplayTree GroupByAll)
