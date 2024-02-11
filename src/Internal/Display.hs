@@ -123,8 +123,14 @@ treeToRows (AllTabularDisplayOptions su uu r _ _) (DisplayTree_ ms e g) =
 --------------------------------------------------------------------------------
 -- grouping (which includes filtering)
 
--- TODO not sure how to get the instance constraints out of the rankN function
--- (they don't seem necessary)
+-- | Group and filter a list of trees. First, filter by the group variables we
+-- with to select (ie meal and ingredient). Then group by whatever variables we
+-- desired (meal, ingredient, date) which entails grouping the list by the
+-- appropriate variable then (<>)-ing them together. Finally, filter the
+-- contents of each tree as desired (value and nutrient). This last step
+-- actually needs to come last and cannot happen with the other grouping step
+-- since the value comparison must be done on the post-grouped data (or at least
+-- that's what makes most sense)
 groupAndFilter
   :: forall a
    . GroupOptions
@@ -133,6 +139,8 @@ groupAndFilter
   -> [DisplayTree GroupByAll]
   -> a
 groupAndFilter (GroupOptions d m i) f fks ts = case (d, m, i) of
+  -- TODO not sure how to get the instance constraints out of the rankN function
+  -- (they don't seem necessary)
   (True, True, True) -> f' $ groupTrees id ts'
   (True, True, False) -> f' $ groupTrees (\g -> g {gvIngredient = ()}) ts'
   (True, False, True) -> f' $ groupTrees (\g -> g {gvMeal = ()}) ts'
