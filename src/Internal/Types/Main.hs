@@ -126,7 +126,7 @@ data DirectNutrient = DirectNutrient
 data AltNutrient = AltNutrient
   { anName :: Text
   , anDisplayPrefix :: Prefix
-  , anChoices :: NonEmpty (NID, Maybe Scientific)
+  , anChoices :: NonEmpty (NID, Scientific)
   }
   deriving (Show, Eq, Ord)
 

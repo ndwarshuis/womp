@@ -394,7 +394,7 @@ findMeasured n = case n of
   Direct m -> findMass $ mnId m
   Alternate AltNutrient {anChoices} -> foldM go Nothing anChoices
   where
-    go Nothing (i, s) = liftA2 (*) (Mass <$> s) <$> findMass i
+    go Nothing (i, s) = fmap (* Mass s) <$> findMass i
     go m _ = pure m
 
 fromNutTreeWithMass_ :: NutrientState m => Mass -> NutTree -> m QuantifiedNodeData

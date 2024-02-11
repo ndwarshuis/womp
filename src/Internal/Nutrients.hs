@@ -32,7 +32,7 @@ protein :: ProteinConversion -> MeasuredNutrient
 protein n2Factor =
   Alternate $
     AltNutrient (dnName dispProtein) (dnPrefix dispProtein) $
-      (proteinId, Nothing) :| [(nitrogenId, Just $ unPC n2Factor)]
+      (proteinId, 1) :| [(nitrogenId, unPC n2Factor)]
   where
     nitrogenId = 1002
     proteinId = 1003
@@ -191,13 +191,13 @@ mufa_17_1 :: MeasuredNutrient
 mufa_17_1 = Direct $ DirectNutrient 1323 "MUFA 17:1" Unity
 
 mufa_18_1 :: MeasuredNutrient
-mufa_18_1 = Alternate $ AltNutrient "MUFA 18:1" Unity $ (1315, Nothing) :| [(1268, Nothing)]
+mufa_18_1 = Alternate $ AltNutrient "MUFA 18:1" Unity $ (1315, 1) :| [(1268, 1)]
 
 mufa_20_1 :: MeasuredNutrient
-mufa_20_1 = Alternate $ AltNutrient "MUFA 20:1" Unity $ (2012, Nothing) :| [(1277, Nothing)]
+mufa_20_1 = Alternate $ AltNutrient "MUFA 20:1" Unity $ (2012, 1) :| [(1277, 1)]
 
 mufa_22_1 :: MeasuredNutrient
-mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Unity $ (1317, Nothing) :| [(2012, Nothing)]
+mufa_22_1 = Alternate $ AltNutrient "MUFA 22:1" Unity $ (1317, 1) :| [(2012, 1)]
 
 mufa_22_1_n9 :: MeasuredNutrient
 mufa_22_1_n9 = Direct $ DirectNutrient 2014 "MUFA 22:1 omega-9 (Erucic Acid)" Unity
