@@ -698,6 +698,9 @@ phytoene = Direct $ DirectNutrient 1116 "Phytoene" Milli
 phytofluene :: MeasuredNutrient
 phytofluene = Direct $ DirectNutrient 1117 "Phytofluene" Milli
 
+glutathione :: MeasuredNutrient
+glutathione = Direct $ DirectNutrient 2069 "Glutathione" Milli
+
 otherSFAs :: SummedNutrient
 otherSFAs = SummedNutrient "Other SFAs" Unity
 
@@ -1011,6 +1014,7 @@ nutHierarchy n2Factor =
              , leaf ergothioneine
              , leaf phytoene
              , leaf phytofluene
+             , leaf glutathione
              ]
 
     lycopene_ =
