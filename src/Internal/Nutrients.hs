@@ -587,6 +587,9 @@ tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (gamma-Tocotrienol)" 
 tocotrienolDelta :: MeasuredNutrient
 tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (delta-Tocotrienol)" Micro
 
+addedVitaminE :: MeasuredNutrient
+addedVitaminE = Direct $ DirectNutrient 1242 "Vitamin E (synthetic)" Micro
+
 vitaminK1 :: MeasuredNutrient
 vitaminK1 = Direct $ DirectNutrient 1185 "Vitamin K1 (Phylloquinone)" Micro
 
@@ -916,6 +919,7 @@ allVitaminE =
        , tocotrienolBeta
        , tocotrienolGamma
        , tocotrienolDelta
+       , addedVitaminE
        ]
 
 allVitaminA :: NonEmpty MeasuredNutrient
