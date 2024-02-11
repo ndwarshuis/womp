@@ -34,6 +34,13 @@ let custom =
             {-
             This is the nutrient ID for 'Vitamin D3 (calcifediol)' which can
             be identified by running `womp nutrients`.
+
+            The 'remainder' is the nutrient that gets all mass (out of 100g) not
+            assigned to other nutrients using the 'scNutrients' key. Since we
+            only have on nutrient in this case, all 100g (ie 100%) gets assigned
+            to this nutrient. See 'dhall/Types.dhall' in the root of this
+            repository for more information on all available options to
+            construct at custom ingredient.
             -}
             = 1113
           }
