@@ -395,7 +395,9 @@ findMeasured n = case n of
   Alternate AltNutrient {anChoices} -> foldM go Nothing anChoices
   where
     go Nothing (i, s) = fmap (* Mass s) <$> findMass i
-    go m _ = pure m
+    -- run through all alternatives even after we found a match to prevent an
+    -- unused warning
+    go m (i, _) = void (findMass i) >> pure m
 
 fromNutTreeWithMass_ :: NutrientState m => Mass -> NutTree -> m QuantifiedNodeData
 fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
