@@ -110,6 +110,7 @@ data NutrientChoice a = NutrientSingle a | NutrientMany (NonEmpty a)
 data MeasuredNutrient
   = Direct DirectNutrient
   | Alternate AltNutrient
+  | Linear LinearNutrient
   deriving (Show, Eq, Ord)
 
 -- | Single nutrient ID to be directly measured
@@ -125,7 +126,17 @@ data DirectNutrient = DirectNutrient
 data AltNutrient = AltNutrient
   { anName :: Text
   , anDisplayPrefix :: Prefix
-  , anChoices :: NonEmpty (NID, Scientific)
+  , -- TODO add individual names to these for printing neatly
+    anChoices :: NonEmpty (NID, Scientific)
+  }
+  deriving (Show, Eq, Ord)
+
+-- | A nutrient which is a linear combination of other nutrients
+data LinearNutrient = LinearNutrient
+  { lnOutput :: Maybe NID
+  , lnName :: Text
+  , lnDisplayPrefix :: Prefix
+  , lnInputs :: NonEmpty (NonEmpty (NID, Scientific))
   }
   deriving (Show, Eq, Ord)
 
@@ -144,6 +155,7 @@ data SummedNutrient = SummedNutrient
 -- "Quantified" and "Unquantified" nodes, which are those that do and don't have
 -- measured values associated with them respectively.
 
+-- TODO this is the same as a summed nutrient
 data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
   deriving (Show, Eq, Ord)
 

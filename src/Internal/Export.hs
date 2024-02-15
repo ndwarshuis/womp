@@ -392,12 +392,23 @@ findMass i =
 findMeasured :: NutrientState m => MeasuredNutrient -> m (Maybe Mass)
 findMeasured n = case n of
   Direct m -> findMass $ mnId m
-  Alternate AltNutrient {anChoices} -> foldM go Nothing anChoices
+  Alternate AltNutrient {anChoices} -> foldM goAlt Nothing anChoices
+  Linear LinearNutrient {lnOutput, lnInputs} -> do
+    m <- mapM findMass lnOutput
+    maybe (foldM goLin Nothing lnInputs) return m
   where
-    go Nothing (i, s) = fmap (* Mass s) <$> findMass i
+    goAlt Nothing (i, s) = fmap (* Mass s) <$> findMass i
+    goAlt m (i, _) = noopLookup i m
+
+    goLin Nothing eqn = foldM goLinInner (Just 0) eqn
+    goLin m eqn = foldM_ goLinInner Nothing eqn >> pure m
+
+    goLinInner (Just acc) (i, s) = fmap ((+ acc) . (* Mass s)) <$> findMass i
+    goLinInner Nothing (i, _) = noopLookup i Nothing
+
     -- run through all alternatives even after we found a match to prevent an
     -- unused warning
-    go m (i, _) = void (findMass i) >> pure m
+    noopLookup i x = void (findMass i) >> pure x
 
 fromNutTreeWithMass_ :: NutrientState m => Mass -> NutTree -> m QuantifiedNodeData
 fromNutTreeWithMass_ mass NutTree {ntFractions, ntUnmeasuredHeader, ntUnmeasuredTree} = do
@@ -542,6 +553,7 @@ summedToDisplay (SummedNutrient x y) = DisplayNutrient x y
 measToDisplay :: MeasuredNutrient -> DisplayNutrient
 measToDisplay (Direct (DirectNutrient _ n p)) = DisplayNutrient n p
 measToDisplay (Alternate (AltNutrient n p _)) = DisplayNutrient n p
+measToDisplay (Linear (LinearNutrient _ n p _)) = DisplayNutrient n p
 
 --------------------------------------------------------------------------------
 -- misc types

@@ -62,8 +62,8 @@ sfas = Direct $ DirectNutrient 1258 "Saturated Fatty Acids" Unity
 cholesterol :: MeasuredNutrient
 cholesterol = Direct $ DirectNutrient 1253 "Cholesterol" Unity
 
-phytosterols :: SummedNutrient
-phytosterols = SummedNutrient "Phytosterols" Unity
+phytosterols :: MeasuredNutrient
+phytosterols = Direct $ DirectNutrient 1283 "Phytosterols" Unity
 
 -- this doesn't strictly seem like a phytosterol but is still included in the
 -- same section along with the rest (whatever)
@@ -107,8 +107,11 @@ ergosta_5_7_dienol :: MeasuredNutrient
 ergosta_5_7_dienol = Direct $ DirectNutrient 2062 "Ergosta-5,7-dienol" Micro
 
 -- TODO not exactly sure what this means, but hopefully it means "not the above"
-otherPhytosterols :: MeasuredNutrient
-otherPhytosterols = Direct $ DirectNutrient 1298 "Other Phytosterols" Unity
+-- otherPhytosterols :: MeasuredNutrient
+-- otherPhytosterols = Direct $ DirectNutrient 1298 "Other Phytosterols" Unity
+
+otherPhytosterols :: SummedNutrient
+otherPhytosterols = SummedNutrient "Other Phytosterols" Unity
 
 sfa_4_0 :: MeasuredNutrient
 sfa_4_0 = Direct $ DirectNutrient 1259 "SFA 4:0" Unity
@@ -136,6 +139,9 @@ sfa_11_0 = Direct $ DirectNutrient 1335 "SFA 11:0" Unity
 
 sfa_12_0 :: MeasuredNutrient
 sfa_12_0 = Direct $ DirectNutrient 1263 "SFA 12:0" Unity
+
+sfa_13_0 :: MeasuredNutrient
+sfa_13_0 = Direct $ DirectNutrient 1332 "SFA 13:0" Unity
 
 sfa_14_0 :: MeasuredNutrient
 sfa_14_0 = Direct $ DirectNutrient 1264 "SFA 14:0" Unity
@@ -305,9 +311,12 @@ pufa_22_6 = SummedNutrient "PUFA 22:5" Unity
 pufa_22_6_n3 :: MeasuredNutrient
 pufa_22_6_n3 = Direct $ DirectNutrient 1272 "PUFA 22:6 omega-3 c,c,c,c,c,c (Docosahexaenoic Acid)" Unity
 
--- | Carbohydrate level
+-- TODO what to do with Carbohydrates, Other (1072) or Sugar alcohols (1086)
+
+-- the alt ID is just an older ID for for the same thing (I think), also quite
+-- rare in the database it seems so not that important
 betaGlucan :: MeasuredNutrient
-betaGlucan = Direct $ DirectNutrient 2058 "Beta Glucans" Unity
+betaGlucan = Alternate $ AltNutrient "Beta Glucans" Unity $ (2058, 1) :| [(1068, 1)]
 
 starch :: MeasuredNutrient
 starch = Direct $ DirectNutrient 1009 "Starch" Unity
@@ -330,7 +339,12 @@ solubleFiber = Direct $ DirectNutrient 1082 "Soluble Fiber" Unity
 insolubleFiber :: MeasuredNutrient
 insolubleFiber = Direct $ DirectNutrient 1084 "Insoluble Fiber" Unity
 
--- | Sugar level
+-- 1235 = added sugar, 1236 = "intrinsic" sugar (which usually won't be present,
+-- so this will just be a summation of whatever is beneath it)
+totalSugars :: MeasuredNutrient
+totalSugars =
+  Alternate $ AltNutrient "Total Sugars" Unity $ (1235, 1) :| [(1236, 1)]
+
 sucrose :: MeasuredNutrient
 sucrose = Direct $ DirectNutrient 1010 "Sucrose" Unity
 
@@ -357,6 +371,9 @@ stachyose = Direct $ DirectNutrient 1077 "Stachyose" Unity
 
 verbascose :: MeasuredNutrient
 verbascose = Direct $ DirectNutrient 2063 "Verbascose" Unity
+
+-- TODO add inulin (1403)
+-- TODO add lignin (1080)
 
 tryptophan :: MeasuredNutrient
 tryptophan = Direct $ DirectNutrient 1210 "Tryptophan" Milli
@@ -440,7 +457,10 @@ potassium :: MeasuredNutrient
 potassium = Direct $ DirectNutrient 1092 "Potassium" Milli
 
 sodium :: MeasuredNutrient
-sodium = Direct $ DirectNutrient 1093 "Sodium" Milli
+sodium =
+  Alternate $
+    AltNutrient "Sodium" Milli $
+      (1093, 1) :| [(1149, saltConversion)]
 
 sulfur :: MeasuredNutrient
 sulfur = Direct $ DirectNutrient 1094 "Sulfur" Milli
@@ -459,6 +479,18 @@ copper = Direct $ DirectNutrient 1098 "Copper" Milli
 
 iodine :: MeasuredNutrient
 iodine = Direct $ DirectNutrient 1100 "Iodine" Milli
+
+-- TODO since this actually says "chlorine" and not "chloride" I'm not sure if
+-- this salt conversion really counts.
+chlorine :: MeasuredNutrient
+chlorine =
+  Alternate $
+    AltNutrient "Chlorine" Milli $
+      -- convert NaCl to Cl-
+      (1088, 1) :| [(1149, 1 - saltConversion)]
+
+fluoride :: MeasuredNutrient
+fluoride = Direct $ DirectNutrient 1099 "Fluoride" Milli
 
 manganese :: MeasuredNutrient
 manganese = Direct $ DirectNutrient 1101 "Manganese" Milli
@@ -517,23 +549,38 @@ vitaminB6 = Direct $ DirectNutrient 1175 "Vitamin B6 (pyridoxine)" Milli
 vitaminB7 :: MeasuredNutrient
 vitaminB7 = Direct $ DirectNutrient 1176 "Vitamin B7 (biotin)" Milli
 
-vitaminB9 :: MeasuredNutrient
-vitaminB9 = Direct $ DirectNutrient 1177 "Vitamin B9 (total folate)" Micro
+dfeFolate :: MeasuredNutrient
+dfeFolate =
+  Linear $
+    LinearNutrient (Just 1190) "Vitamin B9 (dietary folate equivalents)" Micro $
+      fromAcidAndFood :| [fromTotalAndFood, fromTotalAndAcid]
+  where
+    -- DFE = 1.7 * folic acid + 1.0 * folate from food
+    -- total folate = folic acid + folate from food
+    fromAcidAndFood = (foodId, 1) :| [(acidId, 1.7)]
+    fromTotalAndFood = (totalId, 1.7) :| [(foodId, -0.7)]
+    fromTotalAndAcid = (totalId, 1) :| [(acidId, 0.7)]
+    foodId = 1187
+    acidId = 1186
+    totalId = totalFolateId
 
-folinicAcid :: MeasuredNutrient
-folinicAcid = Direct $ DirectNutrient 1192 "5-Formyl Tetrahydrofolic acid" Micro
+totalFolateId :: NID
+totalFolateId = 1177
 
-levomefolicAcid :: MeasuredNutrient
-levomefolicAcid = Direct $ DirectNutrient 1188 "5-Methyl Tetrahydrofolate" Micro
+totalFolate :: MeasuredNutrient
+totalFolate = Direct $ DirectNutrient totalFolateId "Vitamin B9 (total folate)" Micro
 
--- There is also this thing called "10-Formyl folic acid (10HCOFA)" which does
--- not appear to be a real thing. It was measured according to the same method
--- as the other two folate species (according to
--- doi.org/10.1016/j.foodchem.2004.08.007) although the cited method only
--- alludes to levomefolic acid.
+-- TODO add 5-Formyltetrahydrofolic acid (1192), 10-Formyl folic acid (1191,
+-- whatever this actually is), and 5-methyl tetrahydrofolate (1188)
 
 vitaminB12 :: MeasuredNutrient
-vitaminB12 = Direct $ DirectNutrient 1178 "Vitamin B12 (cobalamins)" Micro
+vitaminB12 =
+  Alternate $
+    AltNutrient "Vitamin B12 (cobalamins)" Micro $
+      -- The alternative is "added B12" which I will just assume is "close
+      -- enough" to the first ID since it doesn't break B12 down into specific
+      -- molecular species.
+      (1178, 1) :| [(1246, 1)]
 
 vitaminC :: MeasuredNutrient
 vitaminC = Direct $ DirectNutrient 1162 "Vitamin C (ascorbic acid)" Milli
@@ -561,6 +608,8 @@ calcifediol = Direct $ DirectNutrient 1113 "Vitamin D3 (calcifediol)" Micro
 vitaminD4 :: MeasuredNutrient
 vitaminD4 = Direct $ DirectNutrient 2059 "Vitamin D4 (22-dihydroergocalciferol)" Micro
 
+-- TODO what to do with just Vitamin E (1124, 1158, 2068)?
+
 -- TODO if one really wants to get nerdy we could weight these by affinity for
 -- the vitamin E transport receptor (see wikipedia article)
 tocopherolAlpha :: MeasuredNutrient
@@ -587,6 +636,9 @@ tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (gamma-Tocotrienol)" 
 tocotrienolDelta :: MeasuredNutrient
 tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (delta-Tocotrienol)" Micro
 
+-- NOTE this is (probably) different from "normal" vitamin E since synthetic
+-- tocopherol is usually acetylated for stability, so technically this is a
+-- different species
 addedVitaminE :: MeasuredNutrient
 addedVitaminE = Direct $ DirectNutrient 1242 "Vitamin E (synthetic)" Micro
 
@@ -674,8 +726,17 @@ glycitin = Direct $ DirectNutrient 2051 "Glycitin" Milli
 betaine :: MeasuredNutrient
 betaine = Direct $ DirectNutrient 1198 "Betaine" Milli
 
+ethanol :: MeasuredNutrient
+ethanol = Direct $ DirectNutrient 1018 "Ethanol" Milli
+
+aceticAcid :: MeasuredNutrient
+aceticAcid = Direct $ DirectNutrient 1026 "Acetic Acid" Milli
+
 citricAcid :: MeasuredNutrient
 citricAcid = Direct $ DirectNutrient 1032 "Citric Acid" Milli
+
+lacticAcid :: MeasuredNutrient
+lacticAcid = Direct $ DirectNutrient 1038 "Lactic Acid" Milli
 
 malicAcid :: MeasuredNutrient
 malicAcid = Direct $ DirectNutrient 1039 "Malic Acid" Milli
@@ -688,6 +749,28 @@ pyruvicAcid = Direct $ DirectNutrient 1043 "Pyruvic Acid" Milli
 
 quinicAcid :: MeasuredNutrient
 quinicAcid = Direct $ DirectNutrient 1044 "Quinic Acid" Milli
+
+caffeine :: MeasuredNutrient
+caffeine = Direct $ DirectNutrient 1057 "Caffeine" Milli
+
+theobromine :: MeasuredNutrient
+theobromine = Direct $ DirectNutrient 1058 "Theobromine" Milli
+
+epigallocatechin3gallate :: MeasuredNutrient
+epigallocatechin3gallate =
+  Direct $ DirectNutrient 1368 "Epigallocatechin-3-gallate" Milli
+
+totalSugarAlcohols :: MeasuredNutrient
+totalSugarAlcohols = Direct $ DirectNutrient 1086 "Total Sugar Alcohols" Milli
+
+sorbitol :: MeasuredNutrient
+sorbitol = Direct $ DirectNutrient 1056 "Sorbitol" Milli
+
+xylitol :: MeasuredNutrient
+xylitol = Direct $ DirectNutrient 1078 "Xylitol" Milli
+
+inositol :: MeasuredNutrient
+inositol = Direct $ DirectNutrient 1181 "Inositol" Milli
 
 taurine :: MeasuredNutrient
 taurine = Direct $ DirectNutrient 1234 "Taurine" Milli
@@ -703,6 +786,12 @@ phytofluene = Direct $ DirectNutrient 1117 "Phytofluene" Milli
 
 glutathione :: MeasuredNutrient
 glutathione = Direct $ DirectNutrient 2069 "Glutathione" Milli
+
+otherSugars :: SummedNutrient
+otherSugars = SummedNutrient "Other Sugars" Unity
+
+otherSugarAlcohols :: SummedNutrient
+otherSugarAlcohols = SummedNutrient "Other Sugar Alcohols" Unity
 
 otherSFAs :: SummedNutrient
 otherSFAs = SummedNutrient "Other SFAs" Unity
@@ -734,9 +823,6 @@ otherFiberByWeight = SummedNutrient "Other Fiber (unclassified weight)" Unity
 otherInorganics :: SummedNutrient
 otherInorganics = SummedNutrient "Other Inorganics" Unity
 
-totalSugars :: SummedNutrient
-totalSugars = SummedNutrient "Total Sugars" Unity
-
 pufa_18_2_other :: SummedNutrient
 pufa_18_2_other = SummedNutrient "PUFA 18:2 (unclassified)" Unity
 
@@ -752,8 +838,8 @@ mufa_22_1_other = SummedNutrient "MUFA 22:1 (unclassified)" Unity
 otherCholine :: SummedNutrient
 otherCholine = SummedNutrient "Choline (unclassified)" Milli
 
-otherFolate :: SummedNutrient
-otherFolate = SummedNutrient "Folates (unclassified)" Milli
+-- otherFolate :: SummedNutrient
+-- otherFolate = SummedNutrient "Folates (unclassified)" Milli
 
 otherVitaminD :: SummedNutrient
 otherVitaminD = SummedNutrient "Vitamin D (unclassified)" Micro
@@ -811,7 +897,6 @@ allPhytosterols =
        , betaSitostanol
        , delta_5_avenasterol
        , delta_7_stigmastenol
-       , otherPhytosterols
        , ergosterol
        , ergosta_7_enol
        , ergosta_7_22_dienol
@@ -847,10 +932,12 @@ allAminoAcids =
 allMinerals :: NonEmpty MeasuredNutrient
 allMinerals =
   boron
-    :| [ sodium
+    :| [ fluoride
+       , sodium
        , magnesium
        , phosphorus
        , sulfur
+       , chlorine
        , potassium
        , calcium
        , chromium
@@ -894,6 +981,7 @@ allSFAs =
        , sfa_10_0
        , sfa_11_0
        , sfa_12_0
+       , sfa_13_0
        , sfa_14_0
        , sfa_15_0
        , sfa_16_0
@@ -954,7 +1042,7 @@ nutHierarchy n2Factor =
                          , measuredLeaves sfas otherSFAs allSFAs
                          , measured pufas pufas_
                          , measured mufas mufas_
-                         , unmeasuredLeaves phytosterols allPhytosterols
+                         , measuredLeaves phytosterols otherPhytosterols allPhytosterols
                          ]
                   )
              ]
@@ -981,10 +1069,11 @@ nutHierarchy n2Factor =
       nutTree otherCarbs $
         leaf starch
           :| [ leaf betaGlucan
-             , unmeasured totalSugars $ leaf <$> allSugars
+             , measuredLeaves totalSugars otherSugars allSugars
              , fiber
              , vitamins
              , organics
+             , sugarAlcohols
              ]
 
     fiber =
@@ -1009,7 +1098,10 @@ nutHierarchy n2Factor =
              , unmeasuredLeaves isoflavones allIsoflavones
              , measuredLeaves choline otherCholine allCholine
              , leaf betaine
+             , leaf ethanol
              , leaf citricAcid
+             , leaf lacticAcid
+             , leaf aceticAcid
              , leaf malicAcid
              , leaf oxalicAcid
              , leaf pyruvicAcid
@@ -1019,7 +1111,14 @@ nutHierarchy n2Factor =
              , leaf phytoene
              , leaf phytofluene
              , leaf glutathione
+             , leaf caffeine
+             , leaf theobromine
+             , leaf epigallocatechin3gallate
              ]
+
+    sugarAlcohols =
+      measuredLeaves totalSugarAlcohols otherSugarAlcohols $
+        sorbitol :| [xylitol, inositol]
 
     lycopene_ =
       measuredLeaves lycopene (unclassified "Lycopenes" Milli) $
@@ -1039,7 +1138,7 @@ nutHierarchy n2Factor =
                      , leaf vitaminB5
                      , leaf vitaminB6
                      , leaf vitaminB7
-                     , measuredLeaves vitaminB9 otherFolate $ folinicAcid :| [levomefolicAcid]
+                     , vitaminB9
                      , leaf vitaminB12
                      ]
              , leaf vitaminC
@@ -1054,6 +1153,8 @@ nutHierarchy n2Factor =
                 fmap leaf $
                   vitaminK1 :| [vitaminK2, dihydrophylloquinone]
              ]
+
+    vitaminB9 = NutrientMany (Leaf dfeFolate :| [Leaf totalFolate])
 
     mufas_ =
       nutTree otherMUFAs $
@@ -1093,3 +1194,7 @@ nutHierarchy n2Factor =
              , unmeasuredLeaves pufa_22_5 (pufa_22_5_n3 :| [])
              , unmeasuredLeaves pufa_22_6 (pufa_22_6_n3 :| [])
              ]
+
+-- | The fraction of NaCl which is Na+
+saltConversion :: RealFrac a => a
+saltConversion = 22.990 / (22.990 + 35.45)
