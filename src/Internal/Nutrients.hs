@@ -20,6 +20,9 @@ import qualified RIO.Text as T
 standardMass :: Mass
 standardMass = 100
 
+--------------------------------------------------------------------------------
+-- proximates
+
 totalMass :: DisplayNutrient
 totalMass = DisplayNutrient "Total Mass" Unity
 
@@ -47,18 +50,20 @@ ash = Direct $ DirectNutrient 1007 "Ash" Unity
 carbDiff :: SummedNutrient
 carbDiff = SummedNutrient "Carbohydrates (by difference)" Unity
 
--- | Lipid level
-tfas :: MeasuredNutrient
-tfas = Direct $ DirectNutrient 1257 "Trans Fatty Acids" Unity
+otherCarbs :: SummedNutrient
+otherCarbs = SummedNutrient "Other Carbs" Unity
 
-mufas :: MeasuredNutrient
-mufas = Direct $ DirectNutrient 1292 "Monounsaturated Fatty Acids" Unity
+otherLipids :: SummedNutrient
+otherLipids = SummedNutrient "Other Lipids" Unity
 
-pufas :: MeasuredNutrient
-pufas = Direct $ DirectNutrient 1293 "Polyunsaturated Fatty Acids" Unity
+otherProteinMass :: SummedNutrient
+otherProteinMass = SummedNutrient "Other Protein Mass" Milli
 
-sfas :: MeasuredNutrient
-sfas = Direct $ DirectNutrient 1258 "Saturated Fatty Acids" Unity
+otherInorganics :: SummedNutrient
+otherInorganics = SummedNutrient "Other Inorganics" Unity
+
+--------------------------------------------------------------------------------
+-- sterols
 
 cholesterol :: MeasuredNutrient
 cholesterol = Direct $ DirectNutrient 1253 "Cholesterol" Unity
@@ -107,12 +112,70 @@ ergosta_7_22_dienol = Direct $ DirectNutrient 2061 "Ergosta-7,22-dienol" Micro
 ergosta_5_7_dienol :: MeasuredNutrient
 ergosta_5_7_dienol = Direct $ DirectNutrient 2062 "Ergosta-5,7-dienol" Micro
 
+allPhytosterols :: NonEmpty MeasuredNutrient
+allPhytosterols =
+  stigmastadiene
+    :| [ stigmastadiene
+       , stigmasterol
+       , campesterol
+       , brassicasterol
+       , betaSitosterol
+       , campestanol
+       , betaSitostanol
+       , delta_5_avenasterol
+       , delta_7_stigmastenol
+       , ergosterol
+       , ergosta_7_enol
+       , ergosta_7_22_dienol
+       , ergosta_5_7_dienol
+       ]
+
 -- TODO not exactly sure what this means, but hopefully it means "not the above"
 -- otherPhytosterols :: MeasuredNutrient
 -- otherPhytosterols = Direct $ DirectNutrient 1298 "Other Phytosterols" Unity
 
 otherPhytosterols :: SummedNutrient
 otherPhytosterols = SummedNutrient "Other Phytosterols" Unity
+
+--------------------------------------------------------------------------------
+-- fatty acids (enter if you dare)
+--
+-- general nomenclature rules (as far as I can decode) for PUFAs and MUFAs:
+-- - no suffix = toplevel
+-- - c = cis isomers
+-- - t = trans isomers (and distinct from c even though c sometimes means "good trans")
+-- - i = other isomers (not cis and not anything else that might be measured)
+-- - nX = omega X fatty acid (all bonds assumed cis and therefore under c)
+--
+-- NOTE: these rules do not always seem to be followed in the database, so they
+-- might be wrong (or the database has typos in it). For example, sometimes the
+-- "no suffix" amount is the same as the "c" amount even though there is a "t"
+-- amount; however sometimes "c" and "t" add up to "no suffix", which is what
+-- I would expect.
+
+tfas :: MeasuredNutrient
+tfas = Direct $ DirectNutrient 1257 "Trans Fatty Acids" Unity
+
+mufas :: MeasuredNutrient
+mufas = Direct $ DirectNutrient 1292 "Monounsaturated Fatty Acids" Unity
+
+pufas :: MeasuredNutrient
+pufas = Direct $ DirectNutrient 1293 "Polyunsaturated Fatty Acids" Unity
+
+sfas :: MeasuredNutrient
+sfas = Direct $ DirectNutrient 1258 "Saturated Fatty Acids" Unity
+
+otherSFAs :: SummedNutrient
+otherSFAs = SummedNutrient "Other SFAs" Unity
+
+otherTFAs :: SummedNutrient
+otherTFAs = SummedNutrient "Other TFAs" Unity
+
+otherMUFAs :: SummedNutrient
+otherMUFAs = SummedNutrient "Other MUFAs" Unity
+
+otherPUFAs :: SummedNutrient
+otherPUFAs = SummedNutrient "Other PUFAs" Unity
 
 allSFAs :: NonEmpty MeasuredNutrient
 allSFAs = fmap (uncurry go) ids
@@ -318,6 +381,9 @@ toUFA uc FATree {fatParent, fatChildren} cis =
     go i n = leaf $ pufa uc i (Just n)
     nonCis = uncurry go <$> fatChildren
 
+--------------------------------------------------------------------------------
+-- carbohydrates
+
 -- TODO what to do with Carbohydrates, Other (1072) or Sugar alcohols (1086)
 
 -- the alt ID is just an older ID for for the same thing (I think), also quite
@@ -333,6 +399,12 @@ fiberBySolubility = Direct $ DirectNutrient 1079 "Soluble/Insoluble Fiber" Unity
 
 fiberByWeight :: MeasuredNutrient
 fiberByWeight = Direct $ DirectNutrient 2033 "High/Low Molecular Weight Fiber" Unity
+
+otherFiberBySolubility :: SummedNutrient
+otherFiberBySolubility = SummedNutrient "Other Fiber (unclassified solubility)" Unity
+
+otherFiberByWeight :: SummedNutrient
+otherFiberByWeight = SummedNutrient "Other Fiber (unclassified weight)" Unity
 
 highMWFiber :: MeasuredNutrient
 highMWFiber = Direct $ DirectNutrient 2038 "High Molecular Weight Fiber" Unity
@@ -379,8 +451,27 @@ stachyose = Direct $ DirectNutrient 1077 "Stachyose" Unity
 verbascose :: MeasuredNutrient
 verbascose = Direct $ DirectNutrient 2063 "Verbascose" Unity
 
+allSugars :: NonEmpty MeasuredNutrient
+allSugars =
+  sucrose
+    :| [ glucose
+       , fructose
+       , lactose
+       , maltose
+       , galactose
+       , raffinose
+       , stachyose
+       , verbascose
+       ]
+
+otherSugars :: SummedNutrient
+otherSugars = SummedNutrient "Other Sugars" Unity
+
 -- TODO add inulin (1403)
 -- TODO add lignin (1080)
+
+--------------------------------------------------------------------------------
+-- amino acids
 
 tryptophan :: MeasuredNutrient
 tryptophan = Direct $ DirectNutrient 1210 "Tryptophan" Milli
@@ -448,6 +539,35 @@ cysteine = Direct $ DirectNutrient 1232 "Cysteine" Milli
 glutamine :: MeasuredNutrient
 glutamine = Direct $ DirectNutrient 1233 "Glutamine" Milli
 
+allAminoAcids :: NonEmpty MeasuredNutrient
+allAminoAcids =
+  tryptophan
+    :| [ threonine
+       , isoleucine
+       , leucine
+       , lysine
+       , methionine
+       , cystine
+       , phenylalanine
+       , tyrosine
+       , valine
+       , arginine
+       , histidine
+       , alanine
+       , asparticAcid
+       , glutamicAcid
+       , glycine
+       , proline
+       , serine
+       , hydroxyproline
+       , asparagine
+       , cysteine
+       , glutamine
+       ]
+
+--------------------------------------------------------------------------------
+-- minerals
+
 calcium :: MeasuredNutrient
 calcium = Direct $ DirectNutrient 1087 "Calcium" Milli
 
@@ -514,6 +634,32 @@ boron = Direct $ DirectNutrient 1137 "Boron" Milli
 nickel :: MeasuredNutrient
 nickel = Direct $ DirectNutrient 1146 "Nickel" Milli
 
+allMinerals :: NonEmpty MeasuredNutrient
+allMinerals =
+  boron
+    :| [ fluoride
+       , sodium
+       , magnesium
+       , phosphorus
+       , sulfur
+       , chlorine
+       , potassium
+       , calcium
+       , chromium
+       , manganese
+       , iron
+       , cobalt
+       , nickel
+       , copper
+       , zinc
+       , selenium
+       , molybdenum
+       , iodine
+       ]
+
+--------------------------------------------------------------------------------
+-- vitamins
+
 retinol :: MeasuredNutrient
 retinol = Direct $ DirectNutrient 1105 "Retinol" Micro
 
@@ -537,6 +683,18 @@ alphaCryptoxanthin = Direct $ DirectNutrient 2032 "alpha-carotene" Micro
 
 betaCryptoxanthin :: MeasuredNutrient
 betaCryptoxanthin = Direct $ DirectNutrient 1120 "beta-carotene" Micro
+
+allVitaminA :: NonEmpty MeasuredNutrient
+allVitaminA =
+  retinol
+    :| [ alphaCarotene
+       , betaCarotene
+       , cisBetaCarotene
+       , transBetaCarotene
+       , gammaCarotene
+       , alphaCryptoxanthin
+       , betaCryptoxanthin
+       ]
 
 vitaminB1 :: MeasuredNutrient
 vitaminB1 = Direct $ DirectNutrient 1165 "Vitamin B1 (thiamine)" Milli
@@ -615,6 +773,9 @@ calcifediol = Direct $ DirectNutrient 1113 "Vitamin D3 (calcifediol)" Micro
 vitaminD4 :: MeasuredNutrient
 vitaminD4 = Direct $ DirectNutrient 2059 "Vitamin D4 (22-dihydroergocalciferol)" Micro
 
+otherVitaminD :: SummedNutrient
+otherVitaminD = SummedNutrient "Vitamin D (unclassified)" Micro
+
 -- TODO what to do with just Vitamin E (1124, 1158, 2068)?
 
 -- TODO if one really wants to get nerdy we could weight these by affinity for
@@ -649,6 +810,19 @@ tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (delta-Tocotrienol)" 
 addedVitaminE :: MeasuredNutrient
 addedVitaminE = Direct $ DirectNutrient 1242 "Vitamin E (synthetic)" Micro
 
+allVitaminE :: NonEmpty MeasuredNutrient
+allVitaminE =
+  tocopherolAlpha
+    :| [ tocopherolBeta
+       , tocopherolGamma
+       , tocopherolDelta
+       , tocotrienolAlpha
+       , tocotrienolBeta
+       , tocotrienolGamma
+       , tocotrienolDelta
+       , addedVitaminE
+       ]
+
 vitaminK1 :: MeasuredNutrient
 vitaminK1 = Direct $ DirectNutrient 1185 "Vitamin K1 (Phylloquinone)" Micro
 
@@ -664,6 +838,9 @@ vitaminK2 = Direct $ DirectNutrient 1183 "Vitamin K2 (Menaquinone-4)" Micro
 -- above)
 dihydrophylloquinone :: MeasuredNutrient
 dihydrophylloquinone = Direct $ DirectNutrient 1184 "Vitamin K1 (Dihydrophylloquinone)" Micro
+
+--------------------------------------------------------------------------------
+-- other random organics
 
 lycopene :: MeasuredNutrient
 lycopene = Direct $ DirectNutrient 1122 "Lycopene" Micro
@@ -709,6 +886,14 @@ glycerophosphoCholine = Direct $ DirectNutrient 1197 "Choline (glycerophospho-ch
 sphingomyelinCholine :: MeasuredNutrient
 sphingomyelinCholine = Direct $ DirectNutrient 1199 "Choline (sphingomyelin)" Milli
 
+otherCholine :: SummedNutrient
+otherCholine = SummedNutrient "Choline (unclassified)" Milli
+
+allCholine :: NonEmpty MeasuredNutrient
+allCholine =
+  freeCholine
+    :| [phosphoCholine, phosphotidylCholine, glycerophosphoCholine, sphingomyelinCholine]
+
 -- | The phytoestrogens every bro who eats soy is worried about
 isoflavones :: SummedNutrient
 isoflavones = SummedNutrient "Isoflavones" Milli
@@ -727,6 +912,9 @@ genistin = Direct $ DirectNutrient 2050 "Genistin" Milli
 
 glycitin :: MeasuredNutrient
 glycitin = Direct $ DirectNutrient 2051 "Glycitin" Milli
+
+allIsoflavones :: NonEmpty MeasuredNutrient
+allIsoflavones = daidzein :| [daidzin, genistein, genistin, glycitin]
 
 -- | I'm assuming this means "trimethylglycine" since "betaine" actually refers
 -- to a class of molecules that seem quite different
@@ -779,6 +967,9 @@ xylitol = Direct $ DirectNutrient 1078 "Xylitol" Milli
 inositol :: MeasuredNutrient
 inositol = Direct $ DirectNutrient 1181 "Inositol" Milli
 
+otherSugarAlcohols :: SummedNutrient
+otherSugarAlcohols = SummedNutrient "Other Sugar Alcohols" Unity
+
 taurine :: MeasuredNutrient
 taurine = Direct $ DirectNutrient 1234 "Taurine" Milli
 
@@ -794,62 +985,8 @@ phytofluene = Direct $ DirectNutrient 1117 "Phytofluene" Milli
 glutathione :: MeasuredNutrient
 glutathione = Direct $ DirectNutrient 2069 "Glutathione" Milli
 
-otherSugars :: SummedNutrient
-otherSugars = SummedNutrient "Other Sugars" Unity
-
-otherSugarAlcohols :: SummedNutrient
-otherSugarAlcohols = SummedNutrient "Other Sugar Alcohols" Unity
-
-otherSFAs :: SummedNutrient
-otherSFAs = SummedNutrient "Other SFAs" Unity
-
-otherTFAs :: SummedNutrient
-otherTFAs = SummedNutrient "Other TFAs" Unity
-
-otherMUFAs :: SummedNutrient
-otherMUFAs = SummedNutrient "Other MUFAs" Unity
-
-otherPUFAs :: SummedNutrient
-otherPUFAs = SummedNutrient "Other PUFAs" Unity
-
-otherLipids :: SummedNutrient
-otherLipids = SummedNutrient "Other Lipids" Unity
-
-otherProteinMass :: SummedNutrient
-otherProteinMass = SummedNutrient "Other Protein Mass" Milli
-
-otherCarbs :: SummedNutrient
-otherCarbs = SummedNutrient "Other Carbs" Unity
-
-otherFiberBySolubility :: SummedNutrient
-otherFiberBySolubility = SummedNutrient "Other Fiber (unclassified solubility)" Unity
-
-otherFiberByWeight :: SummedNutrient
-otherFiberByWeight = SummedNutrient "Other Fiber (unclassified weight)" Unity
-
-otherInorganics :: SummedNutrient
-otherInorganics = SummedNutrient "Other Inorganics" Unity
-
--- pufa_18_2_other :: SummedNutrient
--- pufa_18_2_other = SummedNutrient "PUFA 18:2 (unclassified)" Unity
-
--- pufa_18_3_other :: SummedNutrient
--- pufa_18_3_other = SummedNutrient "PUFA 18:3 (unclassified)" Unity
-
--- pufa_20_3_other :: SummedNutrient
--- pufa_20_3_other = SummedNutrient "PUFA 20:3 (unclassified)" Unity
-
--- mufa_22_1_other :: SummedNutrient
--- mufa_22_1_other = SummedNutrient "MUFA 22:1 (unclassified)" Unity
-
-otherCholine :: SummedNutrient
-otherCholine = SummedNutrient "Choline (unclassified)" Milli
-
--- otherFolate :: SummedNutrient
--- otherFolate = SummedNutrient "Folates (unclassified)" Milli
-
-otherVitaminD :: SummedNutrient
-otherVitaminD = SummedNutrient "Vitamin D (unclassified)" Micro
+--------------------------------------------------------------------------------
+-- the tree
 
 -- | Nutrients that are calculated which we don't need because we calculate them
 -- on-the-fly ourselves or because they are not masses (IU or something else)
@@ -891,119 +1028,6 @@ ignoredNutrients =
     , 1329 -- lipids trans-mono
     , 1330 -- lipids trans-di
     ]
-
-allPhytosterols :: NonEmpty MeasuredNutrient
-allPhytosterols =
-  stigmastadiene
-    :| [ stigmastadiene
-       , stigmasterol
-       , campesterol
-       , brassicasterol
-       , betaSitosterol
-       , campestanol
-       , betaSitostanol
-       , delta_5_avenasterol
-       , delta_7_stigmastenol
-       , ergosterol
-       , ergosta_7_enol
-       , ergosta_7_22_dienol
-       , ergosta_5_7_dienol
-       ]
-
-allAminoAcids :: NonEmpty MeasuredNutrient
-allAminoAcids =
-  tryptophan
-    :| [ threonine
-       , isoleucine
-       , leucine
-       , lysine
-       , methionine
-       , cystine
-       , phenylalanine
-       , tyrosine
-       , valine
-       , arginine
-       , histidine
-       , alanine
-       , asparticAcid
-       , glutamicAcid
-       , glycine
-       , proline
-       , serine
-       , hydroxyproline
-       , asparagine
-       , cysteine
-       , glutamine
-       ]
-
-allMinerals :: NonEmpty MeasuredNutrient
-allMinerals =
-  boron
-    :| [ fluoride
-       , sodium
-       , magnesium
-       , phosphorus
-       , sulfur
-       , chlorine
-       , potassium
-       , calcium
-       , chromium
-       , manganese
-       , iron
-       , cobalt
-       , nickel
-       , copper
-       , zinc
-       , selenium
-       , molybdenum
-       , iodine
-       ]
-
-allSugars :: NonEmpty MeasuredNutrient
-allSugars =
-  sucrose
-    :| [ glucose
-       , fructose
-       , lactose
-       , maltose
-       , galactose
-       , raffinose
-       , stachyose
-       , verbascose
-       ]
-
-allIsoflavones :: NonEmpty MeasuredNutrient
-allIsoflavones = daidzein :| [daidzin, genistein, genistin, glycitin]
-
-allVitaminE :: NonEmpty MeasuredNutrient
-allVitaminE =
-  tocopherolAlpha
-    :| [ tocopherolBeta
-       , tocopherolGamma
-       , tocopherolDelta
-       , tocotrienolAlpha
-       , tocotrienolBeta
-       , tocotrienolGamma
-       , tocotrienolDelta
-       , addedVitaminE
-       ]
-
-allVitaminA :: NonEmpty MeasuredNutrient
-allVitaminA =
-  retinol
-    :| [ alphaCarotene
-       , betaCarotene
-       , cisBetaCarotene
-       , transBetaCarotene
-       , gammaCarotene
-       , alphaCryptoxanthin
-       , betaCryptoxanthin
-       ]
-
-allCholine :: NonEmpty MeasuredNutrient
-allCholine =
-  freeCholine
-    :| [phosphoCholine, phosphotidylCholine, glycerophosphoCholine, sphingomyelinCholine]
 
 nutHierarchy :: ProteinConversion -> NutTree
 nutHierarchy n2Factor =
@@ -1148,28 +1172,8 @@ nutHierarchy n2Factor =
              , pufa_22_6
              ]
 
--- measuredLeaves
---   pufa_18_2
---   pufa_18_2_other
---   (pufa_18_2_CLA :| [pufa_18_2_n6_cc])
---   :| [ measuredLeaves
---         pufa_18_3
---         pufa_18_3_other
---         (pufa_18_3_n3_ccc :| [pufa_18_3_n6_ccc, pufa_18_3i])
---      , leaf pufa_18_4
---      , unmeasuredLeaves pufa_20_2 (pufa_20_2_n6_cc :| [])
---      , measuredLeaves
---         pufa_20_3
---         pufa_20_3_other
---         (pufa_20_3_n3 :| [pufa_20_3_n6, pufa_20_3_n9])
---      , leaf pufa_20_4
---      , measuredLeaves pufa_20_5 undefined (pufa_20_5_n3 :| [])
---      , leaf pufa_22_2
---      , leaf pufa_22_3
---      , leaf pufa_22_4
---      , measuredLeaves pufa_22_5 undefined (pufa_22_5_n3 :| [])
---      , measuredLeaves pufa_22_6 undefined (pufa_22_6_n3 :| [])
---      ]
+--------------------------------------------------------------------------------
+-- misc functions
 
 leaf :: MeasuredNutrient -> NutrientChoice Node
 leaf = NutrientSingle . Leaf
