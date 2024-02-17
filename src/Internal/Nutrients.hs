@@ -76,7 +76,7 @@ allPhytosterols =
   listDirect Micro $
     -- this doesn't strictly seem like a phytosterol but is still included in
     -- the same section along with the rest
-    (2052, "Stigmastadiene")
+    (2053, "Stigmastadiene")
       :| [ (1285, "Stigmasterol")
          , (1286, "Campesterol")
          , (1287, "Brassicasterol")
