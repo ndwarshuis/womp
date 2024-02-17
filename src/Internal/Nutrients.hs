@@ -71,64 +71,25 @@ cholesterol = Direct $ DirectNutrient 1253 "Cholesterol" Unity
 phytosterols :: MeasuredNutrient
 phytosterols = Direct $ DirectNutrient 1283 "Phytosterols" Unity
 
--- this doesn't strictly seem like a phytosterol but is still included in the
--- same section along with the rest (whatever)
-stigmastadiene :: MeasuredNutrient
-stigmastadiene = Direct $ DirectNutrient 2052 "Stigmastadiene" Micro
-
-stigmasterol :: MeasuredNutrient
-stigmasterol = Direct $ DirectNutrient 1285 "Stigmasterol" Micro
-
-campesterol :: MeasuredNutrient
-campesterol = Direct $ DirectNutrient 1286 "Campesterol" Micro
-
-brassicasterol :: MeasuredNutrient
-brassicasterol = Direct $ DirectNutrient 1287 "Brassicasterol" Micro
-
-betaSitosterol :: MeasuredNutrient
-betaSitosterol = Direct $ DirectNutrient 1288 "BetaSitosterol" Micro
-
-campestanol :: MeasuredNutrient
-campestanol = Direct $ DirectNutrient 1289 "Campestanol" Micro
-
-betaSitostanol :: MeasuredNutrient
-betaSitostanol = Direct $ DirectNutrient 1294 "BetaSitostanol" Micro
-
-delta_5_avenasterol :: MeasuredNutrient
-delta_5_avenasterol = Direct $ DirectNutrient 1296 "Delta5Avenasterol" Micro
-
-delta_7_stigmastenol :: MeasuredNutrient
-delta_7_stigmastenol = Direct $ DirectNutrient 2052 "Delta7Stigmastenol" Micro
-
-ergosterol :: MeasuredNutrient
-ergosterol = Direct $ DirectNutrient 1284 "Ergosterol" Micro
-
-ergosta_7_enol :: MeasuredNutrient
-ergosta_7_enol = Direct $ DirectNutrient 2060 "Ergosta-7-enol" Micro
-
-ergosta_7_22_dienol :: MeasuredNutrient
-ergosta_7_22_dienol = Direct $ DirectNutrient 2061 "Ergosta-7,22-dienol" Micro
-
-ergosta_5_7_dienol :: MeasuredNutrient
-ergosta_5_7_dienol = Direct $ DirectNutrient 2062 "Ergosta-5,7-dienol" Micro
-
 allPhytosterols :: NonEmpty MeasuredNutrient
 allPhytosterols =
-  stigmastadiene
-    :| [ stigmastadiene
-       , stigmasterol
-       , campesterol
-       , brassicasterol
-       , betaSitosterol
-       , campestanol
-       , betaSitostanol
-       , delta_5_avenasterol
-       , delta_7_stigmastenol
-       , ergosterol
-       , ergosta_7_enol
-       , ergosta_7_22_dienol
-       , ergosta_5_7_dienol
-       ]
+  listDirect Micro $
+    -- this doesn't strictly seem like a phytosterol but is still included in
+    -- the same section along with the rest
+    (2052, "Stigmastadiene")
+      :| [ (1285, "Stigmasterol")
+         , (1286, "Campesterol")
+         , (1287, "Brassicasterol")
+         , (1288, "BetaSitosterol")
+         , (1289, "Campestanol")
+         , (1294, "BetaSitostanol")
+         , (1296, "Delta5Avenasterol")
+         , (2052, "Delta7Stigmastenol")
+         , (1284, "Ergosterol")
+         , (2060, "Ergosta-7-enol")
+         , (2061, "Ergosta-7,22-dienol")
+         , (2062, "Ergosta-5,7-dienol")
+         ]
 
 -- TODO not exactly sure what this means, but hopefully it means "not the above"
 -- otherPhytosterols :: MeasuredNutrient
@@ -424,45 +385,19 @@ totalSugars :: MeasuredNutrient
 totalSugars =
   Alternate $ AltNutrient "Total Sugars" Unity $ (1235, 1) :| [(1236, 1)]
 
-sucrose :: MeasuredNutrient
-sucrose = Direct $ DirectNutrient 1010 "Sucrose" Unity
-
-glucose :: MeasuredNutrient
-glucose = Direct $ DirectNutrient 1011 "Glucose" Unity
-
-fructose :: MeasuredNutrient
-fructose = Direct $ DirectNutrient 1012 "Fructose" Unity
-
-lactose :: MeasuredNutrient
-lactose = Direct $ DirectNutrient 1013 "Lactose" Unity
-
-maltose :: MeasuredNutrient
-maltose = Direct $ DirectNutrient 1014 "maltose" Unity
-
-galactose :: MeasuredNutrient
-galactose = Direct $ DirectNutrient 1075 "Galactose" Unity
-
-raffinose :: MeasuredNutrient
-raffinose = Direct $ DirectNutrient 1076 "Raffinose" Unity
-
-stachyose :: MeasuredNutrient
-stachyose = Direct $ DirectNutrient 1077 "Stachyose" Unity
-
-verbascose :: MeasuredNutrient
-verbascose = Direct $ DirectNutrient 2063 "Verbascose" Unity
-
 allSugars :: NonEmpty MeasuredNutrient
 allSugars =
-  sucrose
-    :| [ glucose
-       , fructose
-       , lactose
-       , maltose
-       , galactose
-       , raffinose
-       , stachyose
-       , verbascose
-       ]
+  listDirect Unity $
+    (1010, "Sucrose")
+      :| [ (1011, "Glucose")
+         , (1012, "Fructose")
+         , (1013, "Lactose")
+         , (1014, "maltose")
+         , (1075, "Galactose")
+         , (1076, "Raffinose")
+         , (1077, "Stachyose")
+         , (2063, "Verbascose")
+         ]
 
 otherSugars :: SummedNutrient
 otherSugars = SummedNutrient "Other Sugars" Unity
@@ -473,97 +408,33 @@ otherSugars = SummedNutrient "Other Sugars" Unity
 --------------------------------------------------------------------------------
 -- amino acids
 
-tryptophan :: MeasuredNutrient
-tryptophan = Direct $ DirectNutrient 1210 "Tryptophan" Milli
-
-threonine :: MeasuredNutrient
-threonine = Direct $ DirectNutrient 1211 "Threonine" Milli
-
-isoleucine :: MeasuredNutrient
-isoleucine = Direct $ DirectNutrient 1212 "Isoleucine" Milli
-
-leucine :: MeasuredNutrient
-leucine = Direct $ DirectNutrient 1213 "Leucine" Milli
-
-lysine :: MeasuredNutrient
-lysine = Direct $ DirectNutrient 1214 "Lysine" Milli
-
-methionine :: MeasuredNutrient
-methionine = Direct $ DirectNutrient 1215 "Methionine" Milli
-
-cystine :: MeasuredNutrient
-cystine = Direct $ DirectNutrient 1216 "Cystine" Milli
-
-phenylalanine :: MeasuredNutrient
-phenylalanine = Direct $ DirectNutrient 1217 "Phenylalanine" Milli
-
-tyrosine :: MeasuredNutrient
-tyrosine = Direct $ DirectNutrient 1218 "Tyrosine" Milli
-
-valine :: MeasuredNutrient
-valine = Direct $ DirectNutrient 1219 "Valine" Milli
-
-arginine :: MeasuredNutrient
-arginine = Direct $ DirectNutrient 1220 "Arginine" Milli
-
-histidine :: MeasuredNutrient
-histidine = Direct $ DirectNutrient 1221 "Histidine" Milli
-
-alanine :: MeasuredNutrient
-alanine = Direct $ DirectNutrient 1222 "Alanine" Milli
-
-asparticAcid :: MeasuredNutrient
-asparticAcid = Direct $ DirectNutrient 1223 "Aspartic Acid" Milli
-
-glutamicAcid :: MeasuredNutrient
-glutamicAcid = Direct $ DirectNutrient 1224 "Glutamic Acid" Milli
-
-glycine :: MeasuredNutrient
-glycine = Direct $ DirectNutrient 1225 "Glycine" Milli
-
-proline :: MeasuredNutrient
-proline = Direct $ DirectNutrient 1226 "Proline" Milli
-
-serine :: MeasuredNutrient
-serine = Direct $ DirectNutrient 1227 "Serine" Milli
-
-hydroxyproline :: MeasuredNutrient
-hydroxyproline = Direct $ DirectNutrient 1228 "Hydroxyproline" Milli
-
-asparagine :: MeasuredNutrient
-asparagine = Direct $ DirectNutrient 1231 "Asparagine" Milli
-
-cysteine :: MeasuredNutrient
-cysteine = Direct $ DirectNutrient 1232 "Cysteine" Milli
-
-glutamine :: MeasuredNutrient
-glutamine = Direct $ DirectNutrient 1233 "Glutamine" Milli
-
 allAminoAcids :: NonEmpty MeasuredNutrient
 allAminoAcids =
-  tryptophan
-    :| [ threonine
-       , isoleucine
-       , leucine
-       , lysine
-       , methionine
-       , cystine
-       , phenylalanine
-       , tyrosine
-       , valine
-       , arginine
-       , histidine
-       , alanine
-       , asparticAcid
-       , glutamicAcid
-       , glycine
-       , proline
-       , serine
-       , hydroxyproline
-       , asparagine
-       , cysteine
-       , glutamine
-       ]
+  listDirect
+    Milli
+    $ (1210, "Tryptophan")
+      :| [ (1211, "Threonine")
+         , (1212, "Isoleucine")
+         , (1213, "Leucine")
+         , (1214, "Lysine")
+         , (1215, "Methionine")
+         , (1216, "Cystine")
+         , (1217, "Phenylalanine")
+         , (1218, "Tyrosine")
+         , (1219, "Valine")
+         , (1220, "Arginine")
+         , (1221, "Histidine")
+         , (1222, "Alanine")
+         , (1223, "Aspartic Acid")
+         , (1224, "Glutamic Acid")
+         , (1225, "Glycine")
+         , (1226, "Proline")
+         , (1227, "Serine")
+         , (1228, "Hydroxyproline")
+         , (1231, "Asparagine")
+         , (1232, "Cysteine")
+         , (1233, "Glutamine")
+         ]
 
 --------------------------------------------------------------------------------
 -- minerals
@@ -660,41 +531,18 @@ allMinerals =
 --------------------------------------------------------------------------------
 -- vitamins
 
-retinol :: MeasuredNutrient
-retinol = Direct $ DirectNutrient 1105 "Retinol" Micro
-
-alphaCarotene :: MeasuredNutrient
-alphaCarotene = Direct $ DirectNutrient 1108 "alpha-carotene" Micro
-
-betaCarotene :: MeasuredNutrient
-betaCarotene = Direct $ DirectNutrient 1107 "beta-carotene" Micro
-
-cisBetaCarotene :: MeasuredNutrient
-cisBetaCarotene = Direct $ DirectNutrient 1159 "cis-beta-carotene" Micro
-
-transBetaCarotene :: MeasuredNutrient
-transBetaCarotene = Direct $ DirectNutrient 2028 "trans-beta-carotene" Micro
-
-gammaCarotene :: MeasuredNutrient
-gammaCarotene = Direct $ DirectNutrient 1118 "gamma-carotene" Micro
-
-alphaCryptoxanthin :: MeasuredNutrient
-alphaCryptoxanthin = Direct $ DirectNutrient 2032 "alpha-carotene" Micro
-
-betaCryptoxanthin :: MeasuredNutrient
-betaCryptoxanthin = Direct $ DirectNutrient 1120 "beta-carotene" Micro
-
 allVitaminA :: NonEmpty MeasuredNutrient
 allVitaminA =
-  retinol
-    :| [ alphaCarotene
-       , betaCarotene
-       , cisBetaCarotene
-       , transBetaCarotene
-       , gammaCarotene
-       , alphaCryptoxanthin
-       , betaCryptoxanthin
-       ]
+  listDirect Micro $
+    (1105, "Retinol")
+      :| [ (1108, "alpha-carotene")
+         , (1107, "beta-carotene")
+         , (1159, "cis-beta-carotene")
+         , (2028, "trans-beta-carotene")
+         , (1118, "gamma-carotene")
+         , (2032, "alpha-carotene")
+         , (1120, "beta-carotene")
+         ]
 
 vitaminB1 :: MeasuredNutrient
 vitaminB1 = Direct $ DirectNutrient 1165 "Vitamin B1 (thiamine)" Milli
@@ -780,48 +628,22 @@ otherVitaminD = SummedNutrient "Vitamin D (unclassified)" Micro
 
 -- TODO if one really wants to get nerdy we could weight these by affinity for
 -- the vitamin E transport receptor (see wikipedia article)
-tocopherolAlpha :: MeasuredNutrient
-tocopherolAlpha = Direct $ DirectNutrient 1109 "Vitamin E (alpha-Tocopherol)" Micro
-
-tocopherolBeta :: MeasuredNutrient
-tocopherolBeta = Direct $ DirectNutrient 1125 "Vitamin E (beta-Tocopherol)" Micro
-
-tocopherolGamma :: MeasuredNutrient
-tocopherolGamma = Direct $ DirectNutrient 1126 "Vitamin E (gamma-Tocopherol)" Micro
-
-tocopherolDelta :: MeasuredNutrient
-tocopherolDelta = Direct $ DirectNutrient 1127 "Vitamin E (delta-Tocopherol)" Micro
-
-tocotrienolAlpha :: MeasuredNutrient
-tocotrienolAlpha = Direct $ DirectNutrient 1128 "Vitamin E (alpha-Tocotrienol)" Micro
-
-tocotrienolBeta :: MeasuredNutrient
-tocotrienolBeta = Direct $ DirectNutrient 1129 "Vitamin E (beta-Tocotrienol)" Micro
-
-tocotrienolGamma :: MeasuredNutrient
-tocotrienolGamma = Direct $ DirectNutrient 1130 "Vitamin E (gamma-Tocotrienol)" Micro
-
-tocotrienolDelta :: MeasuredNutrient
-tocotrienolDelta = Direct $ DirectNutrient 1131 "Vitamin E (delta-Tocotrienol)" Micro
-
--- NOTE this is (probably) different from "normal" vitamin E since synthetic
--- tocopherol is usually acetylated for stability, so technically this is a
--- different species
-addedVitaminE :: MeasuredNutrient
-addedVitaminE = Direct $ DirectNutrient 1242 "Vitamin E (synthetic)" Micro
-
 allVitaminE :: NonEmpty MeasuredNutrient
 allVitaminE =
-  tocopherolAlpha
-    :| [ tocopherolBeta
-       , tocopherolGamma
-       , tocopherolDelta
-       , tocotrienolAlpha
-       , tocotrienolBeta
-       , tocotrienolGamma
-       , tocotrienolDelta
-       , addedVitaminE
-       ]
+  listDirect Micro $
+    (1109, "Vitamin E (alpha-Tocopherol)")
+      :| [ (1125, "Vitamin E (beta-Tocopherol)")
+         , (1126, "Vitamin E (gamma-Tocopherol)")
+         , (1127, "Vitamin E (delta-Tocopherol)")
+         , (1128, "Vitamin E (alpha-Tocotrienol)")
+         , (1129, "Vitamin E (beta-Tocotrienol)")
+         , (1130, "Vitamin E (gamma-Tocotrienol)")
+         , (1131, "Vitamin E (delta-Tocotrienol)")
+         , -- NOTE this is (probably) different from "normal" vitamin E since
+           -- synthetic tocopherol is usually acetylated for stability, so
+           -- technically this is a different species
+           (1242, "Vitamin E (synthetic)")
+         ]
 
 vitaminK1 :: MeasuredNutrient
 vitaminK1 = Direct $ DirectNutrient 1185 "Vitamin K1 (Phylloquinone)" Micro
@@ -1217,3 +1039,8 @@ unclassified x = SummedNutrient (T.append x " (unclassified)")
 -- | The fraction of NaCl which is Na+
 saltConversion :: RealFrac a => a
 saltConversion = 22.990 / (22.990 + 35.45)
+
+listDirect :: Prefix -> NonEmpty (NID, Text) -> NonEmpty MeasuredNutrient
+listDirect p = fmap (uncurry go)
+  where
+    go i n = Direct $ DirectNutrient i n p
