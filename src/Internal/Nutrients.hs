@@ -119,6 +119,48 @@ otherPhytosterols = SummedNutrient "Other Phytosterols" Unity
 tfas :: MeasuredNutrient
 tfas = Direct $ DirectNutrient 1257 "Trans Fatty Acids" Unity
 
+monoTFAs :: MeasuredNutrient
+monoTFAs = Direct $ DirectNutrient 1329 "Trans Fatty acids (monoenoic)" Unity
+
+diTFAs :: MeasuredNutrient
+diTFAs = Direct $ DirectNutrient 1330 "Trans Fatty acids (dienoic)" Unity
+
+polyTFAs :: MeasuredNutrient
+polyTFAs = Direct $ DirectNutrient 1331 "Trans Fatty acids (polyenoic)" Unity
+
+otherMonoTFAs :: SummedNutrient
+otherMonoTFAs = SummedNutrient "Trans Fatty acids (other monoenoic)" Unity
+
+otherDiTFAs :: SummedNutrient
+otherDiTFAs = SummedNutrient "Trans Fatty acids (other dienoic)" Unity
+
+otherPolyTFAs :: SummedNutrient
+otherPolyTFAs = SummedNutrient "Trans Fatty acids (other polyenoic)" Unity
+
+allMonoTFAs :: NonEmpty MeasuredNutrient
+allMonoTFAs = listDirect Unity $ fmap (second go) ids
+  where
+    ids =
+      (1281, 14 :: Int)
+        :| [ (1303, 16)
+           , (2011, 17)
+           , (1304, 18)
+           , -- , (1306, (18, 2))
+             -- , (2019, (18, 3))
+             (2013, 20)
+           , (1305, 22)
+           ]
+    go = tfaName . (,1)
+
+tfa_18_2 :: MeasuredNutrient
+tfa_18_2 = Direct $ DirectNutrient 1306 (tfaName (18, 2)) Unity
+
+tfa_18_3 :: MeasuredNutrient
+tfa_18_3 = Direct $ DirectNutrient 2019 (tfaName (18, 3)) Unity
+
+tfaName :: FACarbons -> Text
+tfaName (carbons, bonds) = T.concat ["TFA ", tshow carbons, ":", tshow bonds]
+
 mufas :: MeasuredNutrient
 mufas = Direct $ DirectNutrient 1292 "Monounsaturated Fatty Acids" Unity
 
@@ -166,21 +208,6 @@ allSFAs = listDirect Unity $ fmap (second go) ids
            , (1301, 24)
            ]
     go carbons = T.concat ["SFA ", tshow carbons, ":0"]
-
-allTFAs :: NonEmpty MeasuredNutrient
-allTFAs = listDirect Unity $ fmap (second (uncurry go)) ids
-  where
-    ids =
-      (1281, (14 :: Int, 1 :: Int))
-        :| [ (1303, (16, 1))
-           , (2011, (17, 1))
-           , (1304, (18, 1))
-           , (1306, (18, 2))
-           , (2019, (18, 3))
-           , (2013, (20, 1))
-           , (1305, (22, 1))
-           ]
-    go carbons bonds = T.concat ["TFA ", tshow carbons, ":", tshow bonds]
 
 mufa_12_1 :: MeasuredNutrient
 mufa_12_1 = mufa 12 2008 Nothing
@@ -384,7 +411,7 @@ insolubleFiber = Direct $ DirectNutrient 1084 "Insoluble Fiber" Unity
 -- so this will just be a summation of whatever is beneath it)
 totalSugars :: MeasuredNutrient
 totalSugars =
-  Alternate $ AltNutrient "Total Sugars" Unity $ (1235, 1) :| [(1236, 1)]
+  Alternate $ AltNutrient "Total Sugars" Unity $ (1235, 1) :| [(1236, 1), (2000, 1)]
 
 allSugars :: NonEmpty MeasuredNutrient
 allSugars =
@@ -790,7 +817,14 @@ nutHierarchy n2Factor =
                 nutTree
                   otherLipids
                   ( leaf cholesterol
-                      :| [ measuredLeaves tfas otherTFAs allTFAs
+                      :| [ measured tfas $
+                            nutTree
+                              otherTFAs
+                              ( measuredLeaves monoTFAs otherMonoTFAs allMonoTFAs
+                                  :| [ measuredLeaves diTFAs otherDiTFAs $ pure tfa_18_2
+                                     , measuredLeaves polyTFAs otherPolyTFAs $ pure tfa_18_3
+                                     ]
+                              )
                          , measuredLeaves sfas otherSFAs allSFAs
                          , measured pufas pufas_
                          , measured mufas mufas_
