@@ -12,6 +12,7 @@ where
 
 import Internal.Types.FoodItem
 import Internal.Types.Main
+import Internal.Utils
 import RIO
 import qualified RIO.NonEmpty as N
 import qualified RIO.Set as S
@@ -91,7 +92,8 @@ allPhytosterols =
          , (2062, "Ergosta-5,7-dienol")
          ]
 
--- TODO not exactly sure what this means, but hopefully it means "not the above"
+-- TODO not sure how to use this, I already calculate "unknown phytosterols"
+-- within the tree construction by default (see summed nutrient below)
 -- otherPhytosterols :: MeasuredNutrient
 -- otherPhytosterols = Direct $ DirectNutrient 1298 "Other Phytosterols" Unity
 
@@ -139,47 +141,46 @@ otherPUFAs :: SummedNutrient
 otherPUFAs = SummedNutrient "Other PUFAs" Unity
 
 allSFAs :: NonEmpty MeasuredNutrient
-allSFAs = fmap (uncurry go) ids
+allSFAs = listDirect Unity $ fmap (second go) ids
   where
-    go carbons i = Direct $ DirectNutrient i (T.concat ["SFA ", tshow carbons, ":0"]) Unity
     ids =
-      (4 :: Int, 1259)
-        :| [ (5, 2003)
-           , (6, 1260)
-           , (7, 2004)
-           , (8, 1261)
-           , (9, 2005)
-           , (10, 1262)
-           , (11, 1335)
-           , (12, 1263)
-           , (13, 1332)
-           , (14, 1264)
-           , (15, 1299)
-           , (16, 1265)
-           , (17, 1300)
-           , (18, 1266)
-           , (20, 1267)
-           , (21, 2006)
-           , (22, 1273)
-           , (23, 2007)
-           , (24, 1301)
+      (1259, 4 :: Int)
+        :| [ (2003, 5)
+           , (1260, 6)
+           , (2004, 7)
+           , (1261, 8)
+           , (2005, 9)
+           , (1262, 10)
+           , (1335, 11)
+           , (1263, 12)
+           , (1332, 13)
+           , (1264, 14)
+           , (1299, 15)
+           , (1265, 16)
+           , (1300, 17)
+           , (1266, 18)
+           , (1267, 20)
+           , (2006, 21)
+           , (1273, 22)
+           , (2007, 23)
+           , (1301, 24)
            ]
+    go carbons = T.concat ["SFA ", tshow carbons, ":0"]
 
 allTFAs :: NonEmpty MeasuredNutrient
-allTFAs = fmap (uncurry go) ids
+allTFAs = listDirect Unity $ fmap (second (uncurry go)) ids
   where
-    go (carbons, bonds) i = Direct $ DirectNutrient i (fmt carbons bonds) Unity
-    fmt carbons bonds = T.concat ["TFA ", tshow carbons, ":", tshow bonds]
     ids =
-      ((14 :: Int, 1 :: Int), 1281)
-        :| [ ((16, 1), 1303)
-           , ((17, 1), 2011)
-           , ((18, 1), 1304)
-           , ((18, 2), 1306)
-           , ((18, 3), 2019)
-           , ((20, 1), 2013)
-           , ((22, 1), 1305)
+      (1281, (14 :: Int, 1 :: Int))
+        :| [ (1303, (16, 1))
+           , (2011, (17, 1))
+           , (1304, (18, 1))
+           , (1306, (18, 2))
+           , (2019, (18, 3))
+           , (2013, (20, 1))
+           , (1305, (22, 1))
            ]
+    go carbons bonds = T.concat ["TFA ", tshow carbons, ":", tshow bonds]
 
 mufa_12_1 :: MeasuredNutrient
 mufa_12_1 = mufa 12 2008 Nothing
@@ -204,7 +205,7 @@ mufa_17_1 = toMUFA 17 (FATree 1323 []) (Just (FATree 2010 []))
 mufa_18_1 :: NutrientChoice Node
 mufa_18_1 = toMUFA 18 (FATree 1268 []) (Just cis)
   where
-    cis = FATree 1315 [(1412, "11t")] -- must be in important trans fat...
+    cis = FATree 1315 [(1412, "11t")] -- must be an important trans fat...
 
 mufa_20_1 :: NutrientChoice Node
 mufa_20_1 = toMUFA 20 (FATree 1277 []) (Just (FATree 2012 []))
@@ -305,10 +306,10 @@ ufaName (carbons, 1) = T.concat ["MUFA ", tshow carbons, ":1"]
 ufaName (carbons, bonds) = T.concat ["PUFA ", tshow carbons, ":", tshow bonds]
 
 ufa :: FACarbons -> NID -> Maybe Text -> MeasuredNutrient
-ufa uc i append = Direct $ DirectNutrient i (T.append n t) Unity
+ufa uc i extra = Direct $ DirectNutrient i (T.append n t) Unity
   where
     n = ufaName uc
-    t = maybe "" (T.append " ") append
+    t = maybe "" (T.append " ") extra
 
 pufa :: FACarbons -> NID -> Maybe Text -> MeasuredNutrient
 pufa = ufa
@@ -439,94 +440,39 @@ allAminoAcids =
 --------------------------------------------------------------------------------
 -- minerals
 
-calcium :: MeasuredNutrient
-calcium = Direct $ DirectNutrient 1087 "Calcium" Milli
-
-iron :: MeasuredNutrient
-iron = Direct $ DirectNutrient 1089 "Iron" Milli
-
-magnesium :: MeasuredNutrient
-magnesium = Direct $ DirectNutrient 1090 "Magnesium" Milli
-
-phosphorus :: MeasuredNutrient
-phosphorus = Direct $ DirectNutrient 1091 "Phosphorus" Milli
-
-potassium :: MeasuredNutrient
-potassium = Direct $ DirectNutrient 1092 "Potassium" Milli
-
-sodium :: MeasuredNutrient
-sodium =
-  Alternate $
-    AltNutrient "Sodium" Milli $
-      (1093, 1) :| [(1149, saltConversion)]
-
-sulfur :: MeasuredNutrient
-sulfur = Direct $ DirectNutrient 1094 "Sulfur" Milli
-
-zinc :: MeasuredNutrient
-zinc = Direct $ DirectNutrient 1095 "Zinc" Milli
-
-chromium :: MeasuredNutrient
-chromium = Direct $ DirectNutrient 1096 "Chromium" Milli
-
-cobalt :: MeasuredNutrient
-cobalt = Direct $ DirectNutrient 1097 "Cobalt" Milli
-
-copper :: MeasuredNutrient
-copper = Direct $ DirectNutrient 1098 "Copper" Milli
-
-iodine :: MeasuredNutrient
-iodine = Direct $ DirectNutrient 1100 "Iodine" Milli
-
--- TODO since this actually says "chlorine" and not "chloride" I'm not sure if
--- this salt conversion really counts.
-chlorine :: MeasuredNutrient
-chlorine =
-  Alternate $
-    AltNutrient "Chlorine" Milli $
-      -- convert NaCl to Cl-
-      (1088, 1) :| [(1149, 1 - saltConversion)]
-
-fluoride :: MeasuredNutrient
-fluoride = Direct $ DirectNutrient 1099 "Fluoride" Milli
-
-manganese :: MeasuredNutrient
-manganese = Direct $ DirectNutrient 1101 "Manganese" Milli
-
-molybdenum :: MeasuredNutrient
-molybdenum = Direct $ DirectNutrient 1102 "Molybdenum" Milli
-
-selenium :: MeasuredNutrient
-selenium = Direct $ DirectNutrient 1103 "Selenium" Milli
-
-boron :: MeasuredNutrient
-boron = Direct $ DirectNutrient 1137 "Boron" Milli
-
-nickel :: MeasuredNutrient
-nickel = Direct $ DirectNutrient 1146 "Nickel" Milli
-
 allMinerals :: NonEmpty MeasuredNutrient
-allMinerals =
-  boron
-    :| [ fluoride
-       , sodium
-       , magnesium
-       , phosphorus
-       , sulfur
-       , chlorine
-       , potassium
-       , calcium
-       , chromium
-       , manganese
-       , iron
-       , cobalt
-       , nickel
-       , copper
-       , zinc
-       , selenium
-       , molybdenum
-       , iodine
-       ]
+allMinerals = append simple [na, cl]
+  where
+    simple =
+      listDirect Milli $
+        (1087, "Calcium")
+          :| [ (1089, "Iron")
+             , (1090, "Magnesium")
+             , (1091, "Phosphorus")
+             , (1092, "Potassium")
+             , (1094, "Sulfur")
+             , (1095, "Zinc")
+             , (1096, "Chromium")
+             , (1097, "Cobalt")
+             , (1098, "Copper")
+             , (1100, "Iodine")
+             , (1099, "Fluoride")
+             , (1101, "Manganese")
+             , (1102, "Molybdenum")
+             , (1103, "Selenium")
+             , (1137, "Boron")
+             , (1146, "Nickel")
+             ]
+
+    na = fromSalt "Sodium" 1093 saltConversion
+
+    -- TODO since this actually says "chlorine" and not "chloride" I'm not sure
+    -- if this salt conversion really counts.
+    cl = fromSalt "Clorine" 1088 (1 - saltConversion)
+
+    fromSalt n i c = Alternate $ AltNutrient n Milli $ (i, 1) :| [(1149, c)]
+
+    saltConversion = 22.990 / (22.990 + 35.45)
 
 --------------------------------------------------------------------------------
 -- vitamins
@@ -693,50 +639,32 @@ zeaxanthin = Direct $ DirectNutrient 1119 "Zeaxanthin" Micro
 choline :: MeasuredNutrient
 choline = Direct $ DirectNutrient 1180 "Choline" Milli
 
-freeCholine :: MeasuredNutrient
-freeCholine = Direct $ DirectNutrient 1194 "Choline (unbound)" Milli
-
-phosphoCholine :: MeasuredNutrient
-phosphoCholine = Direct $ DirectNutrient 1195 "Choline (phosphocholine)" Milli
-
-phosphotidylCholine :: MeasuredNutrient
-phosphotidylCholine = Direct $ DirectNutrient 1196 "Choline (phosphotidyl-choline)" Milli
-
-glycerophosphoCholine :: MeasuredNutrient
-glycerophosphoCholine = Direct $ DirectNutrient 1197 "Choline (glycerophospho-choline)" Milli
-
-sphingomyelinCholine :: MeasuredNutrient
-sphingomyelinCholine = Direct $ DirectNutrient 1199 "Choline (sphingomyelin)" Milli
+allCholine :: NonEmpty MeasuredNutrient
+allCholine =
+  listDirect Milli $
+    (1194, "Choline (unbound)")
+      :| [ (1195, "Choline (phosphocholine)")
+         , (1196, "Choline (phosphotidyl-choline)")
+         , (1197, "Choline (glycerophospho-choline)")
+         , (1199, "Choline (sphingomyelin)")
+         ]
 
 otherCholine :: SummedNutrient
 otherCholine = SummedNutrient "Choline (unclassified)" Milli
-
-allCholine :: NonEmpty MeasuredNutrient
-allCholine =
-  freeCholine
-    :| [phosphoCholine, phosphotidylCholine, glycerophosphoCholine, sphingomyelinCholine]
 
 -- | The phytoestrogens every bro who eats soy is worried about
 isoflavones :: SummedNutrient
 isoflavones = SummedNutrient "Isoflavones" Milli
 
-daidzein :: MeasuredNutrient
-daidzein = Direct $ DirectNutrient 1340 "Daidzein" Milli
-
-daidzin :: MeasuredNutrient
-daidzin = Direct $ DirectNutrient 2049 "Daidzin" Milli
-
-genistein :: MeasuredNutrient
-genistein = Direct $ DirectNutrient 1341 "Genistein" Milli
-
-genistin :: MeasuredNutrient
-genistin = Direct $ DirectNutrient 2050 "Genistin" Milli
-
-glycitin :: MeasuredNutrient
-glycitin = Direct $ DirectNutrient 2051 "Glycitin" Milli
-
 allIsoflavones :: NonEmpty MeasuredNutrient
-allIsoflavones = daidzein :| [daidzin, genistein, genistin, glycitin]
+allIsoflavones =
+  listDirect Milli $
+    (1340, "Daidzein")
+      :| [ (2049, "Daidzin")
+         , (1341, "Genistein")
+         , (2050, "Genistin")
+         , (2051, "Glycitin")
+         ]
 
 -- | I'm assuming this means "trimethylglycine" since "betaine" actually refers
 -- to a class of molecules that seem quite different
@@ -1035,10 +963,6 @@ groupLeaves h u xs = group h u (leaf <$> xs)
 
 unclassified :: Text -> Prefix -> SummedNutrient
 unclassified x = SummedNutrient (T.append x " (unclassified)")
-
--- | The fraction of NaCl which is Na+
-saltConversion :: RealFrac a => a
-saltConversion = 22.990 / (22.990 + 35.45)
 
 listDirect :: Prefix -> NonEmpty (NID, Text) -> NonEmpty MeasuredNutrient
 listDirect p = fmap (uncurry go)
