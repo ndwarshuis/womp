@@ -6,7 +6,6 @@ import Control.Monad.Error.Class
 import Data.Aeson
 import Data.Aeson.Types (Pair)
 import qualified Data.Csv as C
-import qualified Data.Map.Merge.Strict as MMS
 import Data.Monoid
 import Data.Scientific
 import GHC.Generics
@@ -111,6 +110,7 @@ data NutrientChoice a = NutrientSingle a | NutrientMany (NonEmpty a)
 data MeasuredNutrient
   = Direct DirectNutrient
   | Alternate AltNutrient
+  | Linear LinearNutrient
   deriving (Show, Eq, Ord)
 
 -- | Single nutrient ID to be directly measured
@@ -126,7 +126,17 @@ data DirectNutrient = DirectNutrient
 data AltNutrient = AltNutrient
   { anName :: Text
   , anDisplayPrefix :: Prefix
-  , anChoices :: NonEmpty (NID, Maybe Scientific)
+  , -- TODO add individual names to these for printing neatly
+    anChoices :: NonEmpty (NID, Scientific)
+  }
+  deriving (Show, Eq, Ord)
+
+-- | A nutrient which is a linear combination of other nutrients
+data LinearNutrient = LinearNutrient
+  { lnOutput :: Maybe NID
+  , lnName :: Text
+  , lnDisplayPrefix :: Prefix
+  , lnInputs :: NonEmpty (NonEmpty (NID, Scientific))
   }
   deriving (Show, Eq, Ord)
 
@@ -145,6 +155,7 @@ data SummedNutrient = SummedNutrient
 -- "Quantified" and "Unquantified" nodes, which are those that do and don't have
 -- measured values associated with them respectively.
 
+-- TODO this is the same as a summed nutrient
 data DisplayNutrient = DisplayNutrient {dnName :: Text, dnPrefix :: Prefix}
   deriving (Show, Eq, Ord)
 
@@ -281,16 +292,9 @@ instance Semigroup a => Semigroup (DisplayNode a) where
   (<>) a b =
     DisplayNode
       { dnValue = dnValue a <> dnValue b
-      , dnKnown = merge_ (dnKnown a) (dnKnown b)
-      , dnUnknown = merge_ (dnUnknown a) (dnUnknown b)
+      , dnKnown = M.unionWith (<>) (dnKnown a) (dnKnown b)
+      , dnUnknown = M.unionWith (<>) (dnUnknown a) (dnUnknown b)
       }
-    where
-      merge_ :: (Ord k, Semigroup v) => Map k v -> Map k v -> Map k v
-      merge_ =
-        MMS.merge
-          MMS.preserveMissing
-          MMS.preserveMissing
-          (MMS.zipWithMatched (\_ x y -> x <> y))
 
 data DisplayTree_ g a b = DisplayTree_
   { dtMap :: DisplayMap a
