@@ -395,7 +395,7 @@ findMeasured n = case n of
   Alternate AltNutrient {anChoices} -> foldM goAlt Nothing anChoices
   Linear LinearNutrient {lnOutput, lnInputs} -> do
     m <- mapM findMass lnOutput
-    maybe (foldM goLin Nothing lnInputs) return m
+    foldM goLin (join m) lnInputs
   where
     goAlt Nothing (i, s) = fmap (* Mass s) <$> findMass i
     goAlt m (i, _) = noopLookup i m
