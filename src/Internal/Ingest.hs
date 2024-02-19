@@ -29,23 +29,33 @@ downloadFoodItem
   -> m MappedFoodItem
 downloadFoodItem forceAPI k fid = do
   j <- jsonDecodeIO =<< fetchFID forceAPI k fid
-  let (ws, mfi) = mapFoodItem $ filterFoodItem j
-  mapM_ (logWarn . displayText . fmtWarning fid) ws
+  let (warn, removed, mfi) = mapFoodItem $ filterFoodItem j
+  mapM_ (logWarn . displayText . fmtWarning fid) warn
+  mapM_ (logDebug . displayText . fmtRemoved fid) removed
   return mfi
 
-mapFoodItem :: ParsedFoodItem -> ([NutrientWarning], MappedFoodItem)
+mapFoodItem :: ParsedFoodItem -> ([NutrientWarning], [RemovedNutrient], MappedFoodItem)
 mapFoodItem f@FoodItem {fiFoodNutrients = ns} =
-  second (\ns' -> f {fiFoodNutrients = M.fromList ns'}) $
-    partitionEithers $
-      fmap go ns
+  (warn, remove, f {fiFoodNutrients = M.fromList good})
   where
-    go (FoodNutrient (Just (Nutrient (Just i) (Just n) (Just u))) (Just v)) =
-      case parseUnit u of
-        Just (Unit p Gram) ->
-          Right (i, ValidNutrient (Mass $ raisePower (prefixValue p) $ unMass v) p $ Just n)
-        Just _ -> Left $ NotGram i u
-        Nothing -> Left $ UnknownUnit i u
-    go n = Left $ InvalidNutrient n
+    (warn, remove) = partitionEithers bad
+    (bad, good) = partitionEithers $ fmap go ns
+    -- NOTE remove all nutrients with a derivation id 4 or 49 (summed or
+    -- calculated) since we do this ourselves in a way that is totally
+    -- predictable (and is also hopefully comparable to what the database does)
+    -- and also assume that if it doesn't have a derivation id that it is
+    -- likely correct, which is probably BS but if we don't assume this we would
+    -- lose 30-40% of the database.
+    go (FoodNutrient (Just (Nutrient (Just i) (Just n) (Just u))) (Just v) d) =
+      case d of
+        Just 4 -> Left $ Right $ RemovedNutrient i 4
+        Just 49 -> Left $ Right $ RemovedNutrient i 49
+        _ -> case parseUnit u of
+          Just (Unit p Gram) ->
+            Right (i, ValidNutrient (Mass $ raisePower (prefixValue p) $ unMass v) p $ Just n)
+          Just _ -> Left $ Left $ NotGram i u
+          Nothing -> Left $ Left $ UnknownUnit i u
+    go n = Left $ Left $ InvalidNutrient n
 
 filterFoodItem :: ParsedFoodItem -> ParsedFoodItem
 filterFoodItem f@FoodItem {fiFoodNutrients = ns} =
@@ -121,6 +131,17 @@ apiFoodURL =
     /~ ("v1" :: Text)
     /~ ("food" :: Text)
 
+fmtRemoved :: FID -> RemovedNutrient -> Text
+fmtRemoved fi (RemovedNutrient ni di) =
+  T.unwords
+    [ "Removed nutrient"
+    , tshow ni
+    , "with derivation id"
+    , tshow di
+    , "from food with id"
+    , tshow fi
+    ]
+
 fmtWarning :: FID -> NutrientWarning -> T.Text
 fmtWarning fi (NotGram ni n) =
   T.unwords
@@ -176,3 +197,5 @@ data NutrientWarning
   = NotGram !NID !Text
   | UnknownUnit !NID !Text
   | InvalidNutrient !FoodNutrient
+
+data RemovedNutrient = RemovedNutrient !NID !DID

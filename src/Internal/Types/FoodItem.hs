@@ -11,6 +11,7 @@ module Internal.Types.FoodItem
   , ValidNutrient (..)
   , FID (..)
   , NID (..)
+  , DID (..)
   , Mass (..)
   , ProteinConversion (..)
   , Unit (..)
@@ -50,6 +51,7 @@ data ValidNutrient = ValidNutrient
   }
   deriving (Show, Eq)
 
+-- TODO filter out nutrients that aren't analytical (or similar)
 -- TODO need a way to filter out/warn user on bad nutrient data
 data FoodItem n = FoodItem
   { fiDescription :: Text
@@ -106,11 +108,18 @@ firstM f (x : xs) = maybe (firstM f xs) (return . Just) =<< f x
 data FoodNutrient = FoodNutrient
   { fnNutrient :: Maybe Nutrient
   , fnAmount :: Maybe Mass
+  , fnDerivationID :: Maybe DID
   }
   deriving (Show, Generic)
 
 instance FromJSON FoodNutrient where
-  parseJSON = recordParseJSON "fn"
+  parseJSON (Object v) = do
+    d <- v .:? "foodNutrientDerivation"
+    FoodNutrient
+      <$> v .:? "nutrient"
+      <*> v .:? "amount"
+      <*> (join <$> mapM (.:? "id") d)
+  parseJSON _ = mempty
 
 data Nutrient = Nutrient
   { nId :: Maybe NID
@@ -124,6 +133,9 @@ instance FromJSON Nutrient where
 
 newtype FID = FID {unFID :: Natural}
   deriving (Eq, Read, Show, FromJSON, ToJSON) via Natural
+
+newtype DID = DID {unDID :: Natural}
+  deriving (Eq, Read, Show, FromJSON, ToJSON, Num) via Natural
 
 newtype NID = NID {unNID :: Natural}
   deriving (Read, Show, FromJSON, ToJSON, Eq, Ord, Num, ToField) via Natural

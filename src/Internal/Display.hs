@@ -315,12 +315,16 @@ dumpNutrientTree = goTree Nothing $ nutHierarchy 0
 
     measuredName (Direct DirectNutrient {mnName}) = mnName
     measuredName (Alternate AltNutrient {anName}) = anName
+    measuredName (Linear LinearNutrient {lnName}) = lnName
 
+    -- TODO this won't print all the alt nutrient and linear nutrient ids
     goMeasured parent m = case m of
       (Direct DirectNutrient {mnName, mnId}) ->
         [NutTreeRow mnName parent $ Just mnId]
       (Alternate AltNutrient {anName, anChoices}) ->
         NutTreeRow anName parent . Just . fst <$> N.toList anChoices
+      (Linear LinearNutrient {lnName, lnInputs}) ->
+        NutTreeRow lnName parent . Just . fst <$> N.toList (sconcat lnInputs)
 
     goSummed parent SummedNutrient {snName} = NutTreeRow snName parent Nothing
 
