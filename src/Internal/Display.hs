@@ -167,14 +167,11 @@ fromSumTree :: g -> DisplayTreeSum -> DisplayTree g
 fromSumTree g (DisplayTree_ ms e _) =
   bimap getSum getSum $ DisplayTree_ ms e g
 
-groupTrees
-  :: Eq g1
-  => (g0 -> g1)
-  -> [DisplayTree g0]
-  -> [DisplayTree g1]
+groupTrees :: Ord g1 => (g0 -> g1) -> [DisplayTree g0] -> [DisplayTree g1]
 groupTrees f =
   fmap go
     . N.groupWith fst
+    . L.sortOn fst
     . fmap (first f . toSumTree)
   where
     go xs@((g, _) :| _) = fromSumTree g $ sconcat $ fmap snd xs
