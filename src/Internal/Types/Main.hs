@@ -212,7 +212,7 @@ data GroupVars d m i = GroupVars
   , gvMeal :: m
   , gvIngredient :: i
   }
-  deriving (Eq, Generic)
+  deriving (Eq, Generic, Ord)
 
 type GroupByNone = GroupVars () () ()
 
