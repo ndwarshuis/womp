@@ -1,3 +1,7 @@
+# 1.2.1
+
+- fix bug where ingredients might not be grouped depending on order in mealplan
+
 # 1.2.0
 
 - fix lots of bugs and typos relating to nutrient calculations
