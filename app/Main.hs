@@ -10,6 +10,7 @@ import Internal.Display
 import Internal.Export
 import Internal.Ingest
 import Internal.Types.CLI
+import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils
@@ -19,6 +20,7 @@ import qualified RIO.ByteString as B
 import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.List as L
 import qualified RIO.NonEmpty as N
+import qualified RIO.Set as S
 import qualified RIO.Text as T
 import qualified RIO.Text.Partial as TP
 
@@ -114,21 +116,22 @@ allTreeDisplayOpts
 allTreeDisplayOpts
   filt
   TreeExportOptions
-    { treeDisplay
+    { treeDisplay = td
     , treeCommonExport =
       CommonExportOptions
-        { ceoShowUnknowns
-        , ceoPrefix
-        , ceoMealplan = MealplanOptions {moRoundDigits}
-        , ceoEnergy
+        { ceoShowUnknowns = su
+        , ceoPrefix = p
+        , ceoMealplan = MealplanOptions {moRoundDigits = rd}
+        , ceoEnergy = e
+        , ceoAnnotations = as
         }
     } = do
-    (p, fs) <-
-      combineErrorIO2
-        (mapM parseCLIPrefixIO ceoPrefix)
-        (parseFilterKeysIO filt)
-        (,)
-    return $ AllTreeDisplayOptions treeDisplay ceoShowUnknowns p moRoundDigits fs (not ceoEnergy)
+    combineErrorIO3 getPrefix getFilter getAnno $ \p' fs as' ->
+      AllTreeDisplayOptions td su p' rd fs (not e) as'
+    where
+      getPrefix = mapM parseCLIPrefixIO p
+      getFilter = parseFilterKeysIO filt
+      getAnno = parseAnnotations as
 
 allTabularDisplayOpts
   :: MonadUnliftIO m
@@ -142,19 +145,27 @@ allTabularDisplayOpts
   TabularExportOptions
     { tabCommonExport =
       CommonExportOptions
-        { ceoShowUnknowns
-        , ceoPrefix
-        , ceoMealplan = MealplanOptions {moRoundDigits}
-        , ceoEnergy
+        { ceoShowUnknowns = su
+        , ceoPrefix = p
+        , ceoMealplan = MealplanOptions {moRoundDigits = rd}
+        , ceoEnergy = e
+        , ceoAnnotations = as
         }
-    } = do
-    (p, ss, fs) <-
-      combineErrorIO3
-        (mapM parseCLIPrefixIO ceoPrefix)
-        (parseSortKeysIO srt)
-        (parseFilterKeysIO filt)
-        (,,)
-    return $ AllTabularDisplayOptions ceoShowUnknowns p moRoundDigits ss fs (not ceoEnergy)
+    } =
+    combineErrorIO2 getPS getFA $ \(p', srt') (filt', as') ->
+      AllTabularDisplayOptions su p' rd srt' filt' (not e) as'
+    where
+      getPS = combineErrorIO2 getPrefix getSort (,)
+      getPrefix = mapM parseCLIPrefixIO p
+      getSort = parseSortKeysIO srt
+
+      getFA = combineErrorIO2 getFilt getAnno (,)
+      getFilt = parseFilterKeysIO filt
+      getAnno = parseAnnotations as
+
+parseAnnotations :: MonadUnliftIO m => Text -> m AnnotationList
+parseAnnotations s =
+  maybe (throwAppErrorIO $ AnnotationCLIError s) (return . S.fromList) $ parseArgList pure s
 
 parseCLIPrefixIO :: MonadUnliftIO m => Text -> m Prefix
 parseCLIPrefixIO s =

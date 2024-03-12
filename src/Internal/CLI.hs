@@ -151,6 +151,13 @@ common =
           <> short 'E'
           <> help "Don't show energy in output"
       )
+    <*> strOption
+      ( long "annotations"
+          <> short 'A'
+          <> metavar "ANNOTATIONS"
+          <> help "Comma-separated list of annotations to show"
+          <> value ""
+      )
   where
     -- TODO fix this once I figure out what I'm really doing
     filterHelp =

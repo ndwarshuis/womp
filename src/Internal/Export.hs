@@ -21,6 +21,7 @@ import RIO.FilePath
 import qualified RIO.List as L
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
+import qualified RIO.Set as S
 import RIO.State
 import qualified RIO.Text as T
 import RIO.Time
@@ -214,7 +215,8 @@ readPlan f norm = do
           if isYaml f
             then Y.decodeFileThrow f
             else throwAppErrorIO $ FileTypeError f
-  ss <- mapM (`checkSched` norm) $ schedule p
+  let al = annotations p
+  ss <- mapM (checkSched al norm) $ schedule p
   vs <- maybe (throwAppErrorIO (EmptySchedule False)) return $ N.nonEmpty ss
   cm <- fromCustomMap $ customIngredients p
   return (vs, cm)
@@ -222,19 +224,23 @@ readPlan f norm = do
     isDhall = isExtensionOf "dhall"
     isYaml p = isExtensionOf "yaml" p || isExtensionOf "yml" p
 
-checkSched :: MonadUnliftIO m => Schedule -> Int -> m ValidSchedule
-checkSched Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} norm = do
+checkSched :: MonadUnliftIO m => AnnotationList -> Int -> Schedule -> m ValidSchedule
+checkSched annoList norm Schedule {schMeal = Meal {mlIngs, mlName}, schWhen, schScale} = do
   fromEither $ checkCronPat schWhen
   is <- maybe (throwAppErrorIO $ EmptyMeal mlName) return $ N.nonEmpty mlIngs
-  _ <- mapErrorsIO checkIngredient is
+  _ <- mapErrorsIO (checkIngredient annoList) is
   return $
     ValidSchedule is (MealGroup mlName) schWhen $
       fromFloatDigits (fromMaybe 1.0 schScale / fromIntegral norm)
 
-checkIngredient :: MonadUnliftIO m => Ingredient -> m ()
-checkIngredient Ingredient {ingMass, ingSource} =
+checkIngredient :: MonadUnliftIO m => AnnotationList -> Ingredient -> m ()
+checkIngredient annoList Ingredient {ingMass, ingSource, ingAnnotations} = do
   -- TODO check that modifications are valid
   when (ingMass < 0) $ throwAppErrorIO $ MassError ingSource ingMass
+  maybe (return ()) (throwAppErrorIO . AnnotationsError) $
+    N.nonEmpty $
+      S.toList $
+        S.difference (M.keysSet ingAnnotations) annoList
 
 --------------------------------------------------------------------------------
 -- "expanding" meal plan
@@ -258,10 +264,10 @@ validToSummary
 validToSummary ValidSchedule {vsIngs, vsMeal, vsScale, vsCron} ds =
   [go i d | i <- N.toList vsIngs, d <- expandCronPat ds vsCron]
   where
-    go Ingredient {ingMass, ingSource} d =
+    go Ingredient {ingMass, ingSource, ingAnnotations} d =
       let src = source ingSource
           m = Mass (vsScale * fromFloatDigits ingMass)
-       in (src, IngredientMetadata vsMeal m src () d)
+       in (src, IngredientMetadata vsMeal m src () ingAnnotations d)
 
 validToExport
   :: ValidSchedule
@@ -279,8 +285,8 @@ expandIngredient
   -> DaySpan
   -> Ingredient
   -> (Source, ExportIngredientMetadata)
-expandIngredient mg s ds Ingredient {ingMass, ingModifications, ingSource} =
-  (src, IngredientMetadata mg mass src ingModifications ds)
+expandIngredient mg s ds Ingredient {ingMass, ingModifications, ingSource, ingAnnotations} =
+  (src, IngredientMetadata mg mass src ingModifications ingAnnotations ds)
   where
     src = source ingSource
     mass = Mass $ s * fromFloatDigits ingMass
@@ -305,17 +311,18 @@ ingredientToTree
   -> MappedFoodItem
   -> (DisplayTree GroupByAll, [UnusedNutrient])
 ingredientToTree
-  IngredientMetadata {imMeal, imMass, imMods, imDaySpan, imSource}
+  IngredientMetadata {imMeal, imMass, imMods, imDaySpan, imSource, imAnnotations}
   (FoodItem desc ns cc pc) =
     bimap go (nutMapToUnused imSource imMeal) $
       runState (displayTree pc) $
         foldr modifyMap ns imMods
     where
       g = GroupVars imDaySpan imMeal $ IngredientGroup desc
-      scale = (* (unMass imMass / 100))
+      scale = (* unMass (imMass / standardMass))
+      annos = fmap scale imAnnotations
       go t =
         bimap (Mass . scale . unMass) (Energy . scale . unEnergy) $
-          DisplayTree_ (M.fromList [(totalMass, t)]) (computeCalories cc t) g
+          DisplayTree_ (M.fromList [(totalMass, t)]) (computeCalories cc t) g annos
 
 -- TODO warn user when modifications don't match
 modifyMap :: Modification -> NutrientMap -> NutrientMap
@@ -567,6 +574,7 @@ data IngredientMetadata ms d = IngredientMetadata
   , imMass :: Mass
   , imSource :: Source
   , imMods :: ms
+  , imAnnotations :: Annotations
   , imDaySpan :: d
   }
   deriving (Show)

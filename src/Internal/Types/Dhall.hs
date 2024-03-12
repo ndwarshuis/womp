@@ -7,6 +7,7 @@
 module Internal.Types.Dhall where
 
 import Data.Aeson
+import Data.Scientific
 import Dhall.Marshal.Decode
 import Dhall.TH
 import GHC.Err
@@ -26,11 +27,34 @@ makeHaskellTypesWith
   , SingleConstructor "CustomIngredient" "CustomIngredient" "(./dhall/Types.dhall).CustomIngredient.Type"
   , SingleConstructor "RepeatPat" "RepeatPat" "(./dhall/Types.dhall).RepeatPat"
   , SingleConstructor "Modification" "Modification" "(./dhall/Types.dhall).Modification"
-  , SingleConstructor "Ingredient" "Ingredient" "(./dhall/Types.dhall).Ingredient.Type"
-  , SingleConstructor "Meal" "Meal" "(./dhall/Types.dhall).Meal"
-  , SingleConstructor "Cron" "Cron" "(./dhall/Types.dhall).Cron.Type"
-  , SingleConstructor "Schedule" "Schedule" "(./dhall/Types.dhall).Schedule.Type"
+  , -- , SingleConstructor "Ingredient" "Ingredient" "(./dhall/Types.dhall).Ingredient.Type"
+    -- , SingleConstructor "Meal" "Meal" "(./dhall/Types.dhall).Meal"
+    SingleConstructor "Cron" "Cron" "(./dhall/Types.dhall).Cron.Type"
+    -- , SingleConstructor "Schedule" "Schedule" "(./dhall/Types.dhall).Schedule.Type"
   ]
+
+type Annotations = Map Text Scientific
+
+data Ingredient = Ingredient
+  { ingSource :: IngredientSource
+  , ingMass :: Double
+  , ingModifications :: [Modification]
+  , ingAnnotations :: Annotations
+  }
+  deriving (Generic, FromDhall)
+
+data Meal = Meal
+  { mlName :: Text
+  , mlIngs :: [Ingredient]
+  }
+  deriving (Generic, FromDhall)
+
+data Schedule = Schedule
+  { schMeal :: Meal
+  , schWhen :: Cron
+  , schScale :: Maybe Double
+  }
+  deriving (Generic, FromDhall)
 
 deriveProduct
   ["Eq", "Show", "FromJSON"]
@@ -52,9 +76,12 @@ deriveProduct
 
 type CustomMap = Map Text CustomIngredient
 
+type AnnotationList = Set Text
+
 data Plan = Plan
   { schedule :: [Schedule]
   , customIngredients :: CustomMap
+  , annotations :: AnnotationList
   }
   deriving (Eq, Show, Generic, FromDhall, FromJSON)
 

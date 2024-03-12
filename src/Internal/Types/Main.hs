@@ -13,6 +13,7 @@ import Internal.Types.CLI
 import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import RIO
+import qualified RIO.HashMap as H
 import qualified RIO.Map as M
 import qualified RIO.Text as T
 import RIO.Time
@@ -27,6 +28,7 @@ data AllTreeDisplayOptions = AllTreeDisplayOptions
   , atdoRoundDigits :: !Int
   , atdoFilter :: ![FilterKey]
   , atdoEnergy :: !Bool
+  , atdoAnnotations :: AnnotationList
   }
 
 data AllTabularDisplayOptions = AllTabularDisplayOptions
@@ -36,6 +38,7 @@ data AllTabularDisplayOptions = AllTabularDisplayOptions
   , atabSort :: ![SortKey]
   , atabFilter :: ![FilterKey]
   , atabEnergy :: !Bool
+  , atabAnnotations :: AnnotationList
   }
 
 data SortKey = SortKey
@@ -300,6 +303,7 @@ data DisplayTree_ g a b = DisplayTree_
   { dtMap :: DisplayMap a
   , dtEnergy :: b
   , dtGroup :: g
+  , dtAnnotations :: Annotations
   }
   deriving (Generic, Show)
 
@@ -308,13 +312,19 @@ type DisplayMap a = Map DisplayNutrient (DisplayNode a)
 -- fmap cheat code: make mass and energy polymorphic so I don't need to use
 -- a lens to "map" over this structure
 instance Bifunctor (DisplayTree_ g) where
-  bimap f g r@(DisplayTree_ as b _) = r {dtMap = fmap f <$> as, dtEnergy = g b}
+  bimap f g r@(DisplayTree_ as b _ _) = r {dtMap = fmap f <$> as, dtEnergy = g b}
 
+-- TODO the sum part isn't really necessary since I can just use (+) below
 type DisplayTreeSum = DisplayTree_ () (Sum Mass) (Sum Energy)
 
 -- only allow "adding" together if there is no grouping data to clobber
 instance Semigroup (DisplayTree_ () (Sum Mass) (Sum Energy)) where
-  (<>) a b = DisplayTree_ (M.unionWith (<>) (dtMap a) (dtMap b)) (dtEnergy a + dtEnergy b) ()
+  (<>) a b =
+    DisplayTree_
+      (M.unionWith (<>) (dtMap a) (dtMap b))
+      (dtEnergy a + dtEnergy b)
+      ()
+      (M.unionWith (+) (dtAnnotations a) (dtAnnotations b))
 
 type DisplayTree g = DisplayTree_ g Mass Energy
 
@@ -326,6 +336,7 @@ type DisplayTree g = DisplayTree_ g Mass Energy
 
 data DisplayRow g = DisplayRow
   { drGroup :: g
+  , drAnnotations :: Annotations
   , drNutrient :: Text
   , drParentNutrient :: Maybe Text
   , drValue :: Scientific
@@ -430,8 +441,10 @@ instance C.ToNamedRecord (DisplayRow GroupByAll) where
       <> nutrientRecord r
 
 nutrientRecord :: DisplayRow g -> C.NamedRecord
-nutrientRecord (DisplayRow _ n p v u) =
-  zipApply nutrientHeaders [(C..= n), (C..= p), (C..= v), (C..= u)]
+nutrientRecord (DisplayRow _ a n p v u) =
+  zipApply nutrientHeaders [(C..= n), (C..= p), (C..= v), (C..= u)] <> go a
+  where
+    go = H.fromList . fmap (bimap encodeUtf8 (encodeUtf8 . tshow)) . M.toList
 
 type PartialField = ByteString -> (ByteString, ByteString)
 
@@ -523,6 +536,8 @@ data AppError
   | EmptySchedule !Bool
   | NormalizeError !Int
   | PrefixError !Text
+  | AnnotationsError (NonEmpty Text)
+  | AnnotationCLIError Text
   deriving (Show)
 
 data PatternSuberr = ZeroLength | ZeroRepeats deriving (Show)

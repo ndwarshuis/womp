@@ -78,6 +78,7 @@ library
       TypeFamilies
       BinaryLiterals
       ViewPatterns
+      StrictData
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Wpartial-fields -Werror -O2
   build-depends:
       aeson
@@ -146,6 +147,7 @@ executable womp
       TypeFamilies
       BinaryLiterals
       ViewPatterns
+      StrictData
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Wpartial-fields -Werror -O2 -threaded
   build-depends:
       aeson

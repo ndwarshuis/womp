@@ -160,8 +160,20 @@ let Ingredient =
             ingredients (like water)
             -}
             : List Modification
+          , ingAnnotations
+            {-
+            Extra quantitative data to include in this ingredient. Numbers
+            here should be scaled to 100g of the ingredient and will be
+            added/multiplied accordingly.
+
+            Useful for adding things like cost to the final output.
+            -}
+            : Map Text Double
           }
-      , default.ingModifications = [] : List Modification
+      , default =
+        { ingModifications = [] : List Modification
+        , ingAnnotations = [] : Map Text Double
+        }
       }
 
 let Meal =
@@ -297,8 +309,17 @@ let Plan =
       { Type =
           { schedule : List Schedule.Type
           , customIngredients : Map Text CustomIngredient.Type
+          , annotations
+            {-
+            Annotations to optionally add to ingredient (such as cost). This
+            is simply a mapping between the annotation name and the unit name.
+            -}
+            : List Text
           }
-      , default.customIngredients = [] : Map Text CustomIngredient.Type
+      , default =
+        { customIngredients = [] : Map Text CustomIngredient.Type
+        , annotations = [] : List Text
+        }
       }
 
 in  { Modification

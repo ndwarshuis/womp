@@ -106,6 +106,12 @@ mapPooledErrorsIO f xs = pooledMapConcurrently go $ enumTraversable xs
 
 showError :: AppError -> [Text]
 showError other = case other of
+  AnnotationCLIError as -> [T.append "Invalid annotations on CLI: " as]
+  AnnotationsError as ->
+    [ T.append "Invalid annotations in plan: " $
+        T.intercalate ", " $
+          tshow <$> N.toList as
+    ]
   PrefixError p -> [T.append "Could not parse to prefix: " p]
   NormalizeError x -> [T.append "Normalization constant must be 1 or more, got " $ tshow x]
   EmptySchedule True -> ["Empty schedule after expanding date ranges"]

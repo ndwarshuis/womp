@@ -35,6 +35,7 @@ data CommonExportOptions = CommonExportOptions
   , ceoPrefix :: !(Maybe Text)
   , ceoFilter :: !Text
   , ceoEnergy :: !Bool
+  , ceoAnnotations :: Text
   }
 
 data TabularExportOptions = TabularExportOptions

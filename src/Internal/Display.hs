@@ -12,6 +12,7 @@ import Data.Scientific
 import Data.Semigroup (sconcat)
 import Internal.Nutrients
 import Internal.Types.CLI
+import Internal.Types.Dhall
 import Internal.Types.FoodItem
 import Internal.Types.Main
 import Internal.Utils
@@ -20,6 +21,8 @@ import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.List as L
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as N
+import qualified RIO.Set as S
+import qualified RIO.Vector as V
 import Text.Regex.TDFA
 
 --------------------------------------------------------------------------------
@@ -33,7 +36,7 @@ treeToJSON
 treeToJSON dos gos = groupAndFilter gos (fmap (treeToJSON_ dos)) (atdoFilter dos)
 
 treeToJSON_ :: ToJSON g => AllTreeDisplayOptions -> DisplayTree g -> Value
-treeToJSON_ o (DisplayTree_ ms e g) =
+treeToJSON_ o (DisplayTree_ ms e g as) =
   object $
     [ "group" .= toJSON g
     , "mass" .= (uncurry (nodeToJSON o) <$> M.toList ms)
@@ -45,6 +48,9 @@ treeToJSON_ o (DisplayTree_ ms e g) =
             ]
          | atdoEnergy o
          ]
+      ++ ["annotations" .= toJSON as' | not (null as')]
+  where
+    as' = M.restrictKeys as (atdoAnnotations o)
 
 nodeToJSON
   :: AllTreeDisplayOptions
@@ -52,7 +58,7 @@ nodeToJSON
   -> DisplayNode Mass
   -> Value
 nodeToJSON
-  o@(AllTreeDisplayOptions u e uy r _ _)
+  o@(AllTreeDisplayOptions u e uy r _ _ _)
   (DisplayNutrient n p)
   (DisplayNode v ks us) =
     object $
@@ -96,19 +102,34 @@ treeToCSV tos eos gos = groupAndFilter gos go (atabFilter tos)
   where
     go :: ThisGroup d m i => [DisplayTree (GroupVars d m i)] -> BL.ByteString
     go =
-      C.encodeDefaultOrderedByNameWith eos
+      encodeByVariableNameWith (atabAnnotations tos) eos
         . L.sortBy (compareRow (atabSort tos))
         . mconcat
         . fmap (treeToRows tos)
 
+encodeByVariableNameWith
+  :: forall d m i
+   . ( C.ToNamedRecord (DisplayRow (GroupVars d m i))
+     , C.DefaultOrdered (DisplayRow (GroupVars d m i))
+     )
+  => AnnotationList
+  -> C.EncodeOptions
+  -> [DisplayRow (GroupVars d m i)]
+  -> BL.ByteString
+encodeByVariableNameWith annos eos = C.encodeByNameWith eos h
+  where
+    h =
+      C.headerOrder (undefined :: DisplayRow (GroupVars d m i))
+        <> fmap encodeUtf8 (V.fromList $ S.toList annos)
+
 treeToRows :: AllTabularDisplayOptions -> DisplayTree g -> [DisplayRow g]
-treeToRows (AllTabularDisplayOptions su uu r _ _ ne) (DisplayTree_ ms e g) =
+treeToRows (AllTabularDisplayOptions su uu r _ _ ne _) (DisplayTree_ ms e g as) =
   -- TODO this "Nothing" won't be valid in general after filtering (unless we
   -- don't want parental information to be retained for the top of any selected
   -- tree)
   [energy | ne] ++ goK Nothing ms
   where
-    row = DisplayRow g
+    row = DisplayRow g as
 
     energy = row "Energy" Nothing (unEnergy $ roundDigits r e) kcal
 
@@ -161,11 +182,11 @@ groupAndFilter (GroupOptions d m i) f fks ts = case (d, m, i) of
     ts' = mapMaybe (filterGroupKeys gfs) ts
 
 toSumTree :: DisplayTree g -> (g, DisplayTreeSum)
-toSumTree (DisplayTree_ ms e g) = (g, bimap Sum Sum $ DisplayTree_ ms e ())
+toSumTree (DisplayTree_ ms e g as) = (g, bimap Sum Sum $ DisplayTree_ ms e () as)
 
 fromSumTree :: g -> DisplayTreeSum -> DisplayTree g
-fromSumTree g (DisplayTree_ ms e _) =
-  bimap getSum getSum $ DisplayTree_ ms e g
+fromSumTree g (DisplayTree_ ms e _ as) =
+  bimap getSum getSum $ DisplayTree_ ms e g as
 
 groupTrees :: Ord g1 => (g0 -> g1) -> [DisplayTree g0] -> [DisplayTree g1]
 groupTrees f =
@@ -241,7 +262,7 @@ filterGroup (GroupFilterKey keep re kt) t
       FilterIngredient -> matchesIngredient
 
 filterTree :: TreeFilterKey -> DisplayTree g -> DisplayTree g
-filterTree (TreeFilterKey keep k) t@(DisplayTree_ ms _ _) =
+filterTree (TreeFilterKey keep k) t@(DisplayTree_ ms _ _ _) =
   t {dtMap = f ms}
   where
     f =
@@ -260,10 +281,10 @@ opFun LTE_ = (<=)
 opFun GTE_ = (>=)
 
 matchesMeal :: Text -> DisplayTree GroupByAll -> Bool
-matchesMeal f (DisplayTree_ _ _ GroupVars {gvMeal}) = unMealGroup gvMeal =~ f
+matchesMeal f (DisplayTree_ _ _ GroupVars {gvMeal} _) = unMealGroup gvMeal =~ f
 
 matchesIngredient :: Text -> DisplayTree GroupByAll -> Bool
-matchesIngredient f (DisplayTree_ _ _ GroupVars {gvIngredient}) =
+matchesIngredient f (DisplayTree_ _ _ GroupVars {gvIngredient} _) =
   unIngredientGroup gvIngredient =~ f
 
 selectTreesWith :: (Text -> a -> Bool) -> DisplayMap a -> DisplayMap a

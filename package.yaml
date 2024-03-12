@@ -55,6 +55,7 @@ default-extensions:
   - TypeFamilies
   - BinaryLiterals
   - ViewPatterns
+  - StrictData
 
 dependencies:
 - base >= 4.7 && < 5
